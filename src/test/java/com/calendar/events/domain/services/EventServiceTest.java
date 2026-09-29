@@ -2,6 +2,8 @@ package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.exception.EventErrorCode;
+import com.calendar.events.exception.EventException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,14 +70,37 @@ class EventServiceTest {
     }
 
     @Test
-    void deleteEvent_shouldCallRepositoryDelete() {
+    void deleteEvent_shouldDeleteWhenRequesterIsOrganizer() {
+        Event event = Event.builder().id("1").organizerId("organizer").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
 
-        Mono<Void> result = eventService.deleteEvent("1");
-
-        StepVerifier.create(result)
+        StepVerifier.create(eventService.deleteEvent("1", "organizer"))
                 .verifyComplete();
         verify(eventRepository, times(1)).deleteById("1");
+    }
+
+    @Test
+    void deleteEvent_shouldRejectWhenRequesterIsNotOrganizer() {
+        Event event = Event.builder().id("1").organizerId("organizer").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.deleteEvent("1", "someone-else"))
+                .expectErrorMatches(e -> e instanceof EventException
+                        && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_ACCESS_DENIED)
+                .verify();
+        verify(eventRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void deleteEvent_shouldFailWhenEventDoesNotExist() {
+        when(eventRepository.findById("missing")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("missing", "organizer"))
+                .expectErrorMatches(e -> e instanceof EventException
+                        && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_NOT_FOUND)
+                .verify();
+        verify(eventRepository, never()).deleteById(any());
     }
 
     @Test

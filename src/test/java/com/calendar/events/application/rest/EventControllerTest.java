@@ -107,9 +107,10 @@ class EventControllerTest {
 
     @Test
     void deleteEvent_shouldReturnVoid() {
-        when(eventService.deleteEvent("1")).thenReturn(Mono.empty());
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.deleteEvent("1", "user1")).thenReturn(Mono.empty());
 
-        Mono<Void> result = controller.deleteEvent("1");
+        Mono<Void> result = controller.deleteEvent("1", jwt);
 
         StepVerifier.create(result)
                 .verifyComplete();

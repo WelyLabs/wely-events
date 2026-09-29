@@ -59,8 +59,9 @@ public class EventController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public Mono<Void> deleteEvent(@PathVariable String id) {
-        return eventService.deleteEvent(id);
+    public Mono<Void> deleteEvent(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
+        String userId = jwt.getClaimAsString("businessId");
+        return eventService.deleteEvent(id, userId);
     }
 
     @PostMapping("/{id}/subscribe")
