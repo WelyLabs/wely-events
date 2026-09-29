@@ -45,17 +45,19 @@ public class EventService {
                 });
     }
 
+    /**
+     * Subscribes or unsubscribes the user, depending on their current state.
+     *
+     * <p>The read decides the direction, then a single idempotent write applies it.
+     * The alternative — mutating the participant list and saving the event back —
+     * loses a concurrent subscription from another user.
+     */
     public Mono<Event> toggleSubscription(String id, String userId) {
         return eventRepository.findById(id)
-                .flatMap(event -> {
-                    List<String> participants = event.getParticipantIds();
-                    if (participants.contains(userId)) {
-                        participants.remove(userId);
-                    } else {
-                        participants.add(userId);
-                    }
-                    return eventRepository.save(event);
-                });
+                .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                .flatMap(event -> event.getParticipantIds().contains(userId)
+                        ? eventRepository.removeParticipant(id, userId)
+                        : eventRepository.addParticipant(id, userId));
     }
 
     public Flux<Event> getSubscribedEvents(String userId) {
