@@ -1,4 +1,4 @@
-# calendar-events-api
+# wely-events
 
 Service de gestion des **événements et des abonnements** de la plateforme [Wely Calendar](https://github.com/WelyLabs/wely-platform).
 
@@ -186,5 +186,5 @@ kubectl apply -k overlays/local --server-side
 - **Aucune pagination.** `/me/feed` et `/me/subscribed` renvoient l'intégralité du résultat.
 - **Le modèle de domaine est anémique.** `Event` est un POJO à setters sans invariant : rien n'interdit `endDate` antérieure à `startDate`, et la logique de création (`organizerId`, `subscribeByDefault`) vit dans le contrôleur au lieu d'une fabrique de domaine.
 - **`EventResponse` n'expose pas `participantIds`**, ce qui empêche le client de connaître l'état d'abonnement à la lecture.
-- **Pas de gestion d'erreurs métier** : contrairement à `calendar-users-api` et `calendar-social-api`, seule la validation est traitée.
+- **Pas de gestion d'erreurs métier** : contrairement à `wely-users` et `wely-social`, seule la validation est traitée.
 - **Le Dockerfile installe Maven via `apk`** alors que le wrapper `mvnw` est présent dans le dépôt — build non reproductible, à aligner sur les autres services.
