@@ -88,6 +88,31 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("les probes de santé répondent sans token, sinon le kubelet voit 401")
+    void springSecurityFilterChain_shouldExposeHealthProbesAnonymously() {
+        // Le kubelet ne porte pas de JWT. Si ces deux chemins exigeaient une
+        // authentification, la liveness échouerait en boucle et Kubernetes
+        // redémarrerait des pods parfaitement sains.
+        client().get().uri("/actuator/health/liveness")
+                .exchange()
+                .expectStatus().isOk();
+
+        client().get().uri("/actuator/health/readiness")
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    @DisplayName("le reste d'actuator n'est pas ouvert pour autant")
+    void springSecurityFilterChain_shouldNotExposeTheRestOfActuator() {
+        // /actuator/health tout court n'est pas dans la liste blanche, et les endpoints
+        // qui décrivent les internes ne sont même pas exposés.
+        client().get().uri("/actuator/env")
+                .exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
     void springSecurityFilterChain_shouldBeTheOnlyChainDeclared() {
         // Une seconde chaîne plus permissive annulerait silencieusement celle-ci.
         assertThat(context.getBeansOfType(
