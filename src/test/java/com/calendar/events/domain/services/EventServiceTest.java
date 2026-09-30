@@ -117,7 +117,7 @@ class EventServiceTest {
 
         verify(eventRepository).addParticipant("1", "user123");
         verify(eventRepository, never()).removeParticipant(any(), any());
-        // Pas de save : une réécriture du document perdrait une inscription concurrente.
+        // No save: rewriting the document would lose a concurrent subscription.
         verify(eventRepository, never()).save(any());
     }
 

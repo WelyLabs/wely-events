@@ -156,7 +156,7 @@ class MongoEventRepositoryAdapterTest {
         assertThat(set).containsKey("$addToSet");
         assertThat(options.getValue().isReturnNew()).isTrue();
 
-        // Pas de save : une réécriture complète perdrait une inscription concurrente.
+        // No save: a full rewrite would lose a concurrent subscription.
         verify(mongoRepository, never()).save(any());
     }
 

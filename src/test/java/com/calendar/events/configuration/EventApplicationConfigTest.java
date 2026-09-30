@@ -17,8 +17,8 @@ class EventApplicationConfigTest {
 
         EventService service = config.eventService(repository);
 
-        // Le service de domaine est instancié à la main, sans annotation Spring :
-        // c'est ce qui le rend testable hors contexte.
+        // The domain service is built by hand, with no Spring annotation: that is what
+        // makes it testable outside a context.
         assertThat(service).isNotNull();
     }
 }

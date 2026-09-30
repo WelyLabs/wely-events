@@ -20,8 +20,8 @@ class WebConfigTest {
 
         config.configurePathMatching(configurer);
 
-        // La gateway fait stripPrefix(2) sur /api/v1/events-service/** et laisse
-        // /events-service : ce préfixe est réattaché ici.
+        // The gateway strips /api/v1 from /api/v1/events-service/** and leaves
+        // /events-service: that prefix is reattached here.
         verify(configurer).addPathPrefix(eq("/events-service"), any(HandlerTypePredicate.class));
     }
 }

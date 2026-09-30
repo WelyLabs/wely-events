@@ -38,8 +38,9 @@ class SecurityConfigTest {
     private ReactiveJwtDecoder jwtDecoder;
 
     /**
-     * Le port est mocké pour que ce test ne porte que sur la sécurité : sans cela, une
-     * requête autorisée atteint un MongoDB absent et le test expire au lieu d'échouer.
+     * The port is mocked so this test covers security rather than persistence: without it
+     * an authorised request reaches an absent MongoDB and the test times out instead of
+     * failing.
      */
     @MockitoBean
     private EventRepository eventRepository;
@@ -52,7 +53,7 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("sans token, une route métier répond 401 et non 200")
+    @DisplayName("without a token, a business route answers 401 rather than 200")
     void springSecurityFilterChain_shouldRejectUnauthenticatedRequests() {
         client().get().uri("/events-service/events/me/feed")
                 .exchange()
@@ -60,7 +61,7 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("la suppression n'est plus atteignable sans authentification")
+    @DisplayName("deletion is no longer reachable without authentication")
     void springSecurityFilterChain_shouldRejectUnauthenticatedDeletion() {
         client().delete().uri("/events-service/events/some-id")
                 .exchange()
@@ -78,7 +79,7 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("le préflight CORS reste ouvert, sinon le navigateur bloque tout")
+    @DisplayName("the CORS preflight stays open, or the browser blocks everything")
     void springSecurityFilterChain_shouldAllowCorsPreflight() {
         client().options().uri("/events-service/events")
                 .header("Origin", "http://localhost:4200")
@@ -88,11 +89,11 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("les probes de santé répondent sans token, sinon le kubelet voit 401")
+    @DisplayName("the health probes answer without a token, or the kubelet sees 401")
     void springSecurityFilterChain_shouldExposeHealthProbesAnonymously() {
-        // Le kubelet ne porte pas de JWT. Si ces deux chemins exigeaient une
-        // authentification, la liveness échouerait en boucle et Kubernetes
-        // redémarrerait des pods parfaitement sains.
+        // The kubelet carries no JWT. Were these two paths to require authentication,
+        // liveness would fail in a loop and Kubernetes would restart perfectly
+        // healthy pods.
         client().get().uri("/actuator/health/liveness")
                 .exchange()
                 .expectStatus().isOk();
@@ -103,10 +104,10 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("le reste d'actuator n'est pas ouvert pour autant")
+    @DisplayName("the rest of actuator is not opened along with it")
     void springSecurityFilterChain_shouldNotExposeTheRestOfActuator() {
-        // /actuator/health tout court n'est pas dans la liste blanche, et les endpoints
-        // qui décrivent les internes ne sont même pas exposés.
+        // Plain /actuator/health is not on the allow-list, and the endpoints that
+        // describe the internals are not even exposed.
         client().get().uri("/actuator/env")
                 .exchange()
                 .expectStatus().isUnauthorized();
@@ -114,7 +115,7 @@ class SecurityConfigTest {
 
     @Test
     void springSecurityFilterChain_shouldBeTheOnlyChainDeclared() {
-        // Une seconde chaîne plus permissive annulerait silencieusement celle-ci.
+        // A second, more permissive chain would silently override this one.
         assertThat(context.getBeansOfType(
                 org.springframework.security.web.server.SecurityWebFilterChain.class)).hasSize(1);
     }

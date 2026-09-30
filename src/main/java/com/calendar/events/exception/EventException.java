@@ -13,7 +13,7 @@ public class EventException extends RuntimeException {
     private final EventErrorCode errorCode;
 
     public EventException(EventErrorCode errorCode) {
-        super(errorCode.getMessage());
+        super(errorCode.getDetail());
         this.errorCode = errorCode;
     }
 }
