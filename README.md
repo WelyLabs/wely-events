@@ -98,6 +98,23 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `POST` | `/events/{id}/subscribe` | Inscrit ou désinscrit l'utilisateur |
 | `DELETE` | `/events/{id}` | Supprime un événement (204) |
 
+### OpenAPI
+
+La spécification est générée par `springdoc-openapi` et servie sans jeton :
+
+| | |
+|---|---|
+| Spec JSON | `http://localhost:8086/v3/api-docs` |
+| Swagger UI | `http://localhost:8086/swagger-ui.html` |
+
+Ces deux chemins ne sont **pas** routés par la gateway, et le Service est en `ClusterIP` : rien
+hors du cluster ne peut les atteindre. La documentation reste donc active en permanence — c'est
+la topologie réseau qui la protège, pas un drapeau.
+
+> Le préfixe de chemin du service est appliqué par package (`…application.rest`) et non par
+> annotation. Sélectionner sur `@RestController` attrapait aussi le contrôleur de springdoc, ce
+> qui déplaçait la spec en `/events-service/v3/api-docs` derrière l'authentification.
+
 ### Contrat d'entrée
 
 ```java
@@ -134,12 +151,39 @@ public class Event {
 
 ## Gestion des erreurs
 
-Un `@RestControllerAdvice` traduit les échecs de validation en 400, avec le détail par champ :
+| Code | HTTP | Signification |
+|---|---|---|
+| `EVT-BUS-001` | 404 | Événement introuvable |
+| `EVT-BUS-002` | 403 | Seul l'organisateur peut effectuer cette action |
+| `EVT-VAL-001` | 400 | Validation du corps de requête, détail par champ |
+| `EVT-REQ-000` | *repris* | Chemin inconnu, méthode non autorisée |
+| `EVT-TEC-000` | 500 | Erreur inattendue |
+
+La validation du corps renvoie le détail champ par champ :
 
 ```json
 { "title": "Title is required", "location": "Location is required" }
 ```
 
+Toutes les réponses d'erreur sont des `ProblemDetail` (RFC 7807), avec un `code` stable qu'un
+client peut tester et un `timestamp` :
+
+```json
+{
+  "type": "https://welylabs.app/problems/evt-bus-002",
+  "title": "Not the organizer",
+  "status": 403,
+  "detail": "Only the organizer may perform this action.",
+  "instance": "/events-service/events/7c9e…",
+  "code": "EVT-BUS-002",
+  "timestamp": "2026-09-30T19:23:43.598673Z"
+}
+```
+
+> `EVT-REQ-000` rend le statut d'origine d'une `ResponseStatusException` — 404 sur un
+> chemin inconnu, 405 sur une méthode non autorisée. Sans lui, le handler `Exception.class`
+> les avalait toutes et **tout chemin inconnu répondait 500**. C'est le genre de défaut qu'un
+> test de route nominale ne voit jamais.
 ---
 
 ## Configuration

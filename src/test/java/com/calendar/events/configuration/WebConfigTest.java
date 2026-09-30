@@ -1,10 +1,14 @@
 package com.calendar.events.configuration;
 
+import com.calendar.events.application.rest.EventController;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.HandlerTypePredicate;
 import org.springframework.web.reactive.config.PathMatchConfigurer;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -15,6 +19,7 @@ class WebConfigTest {
     private final WebConfig config = new WebConfig();
 
     @Test
+    @DisplayName("controllers are prefixed with the service segment")
     void configurePathMatching_shouldPrefixControllersWithTheServiceSegment() {
         PathMatchConfigurer configurer = mock(PathMatchConfigurer.class);
 
@@ -24,4 +29,29 @@ class WebConfigTest {
         // /events-service: that prefix is reattached here.
         verify(configurer).addPathPrefix(eq("/events-service"), any(HandlerTypePredicate.class));
     }
+
+    @Test
+    @DisplayName("the prefix applies to this service's own controllers only")
+    void configurePathMatching_shouldTargetThisServicesControllersOnly() {
+        PathMatchConfigurer configurer = mock(PathMatchConfigurer.class);
+        ArgumentCaptor<HandlerTypePredicate> predicate =
+                ArgumentCaptor.forClass(HandlerTypePredicate.class);
+
+        config.configurePathMatching(configurer);
+        verify(configurer).addPathPrefix(eq("/events-service"), predicate.capture());
+
+        assertThat(predicate.getValue().test(EventController.class)).isTrue();
+
+        // Selecting on the @RestController annotation instead would also match springdoc's
+        // OpenApiWebfluxResource, which served the specification at
+        // /events-service/v3/api-docs — behind authentication — and left /v3/api-docs a 404.
+        // ForeignController stands in for it: annotated, but not ours.
+        assertThat(predicate.getValue().test(ForeignController.class)).isFalse();
+        assertThat(predicate.getValue().test(PlainClass.class)).isFalse();
+    }
+
+    @RestController
+    private static class ForeignController { }
+
+    private static class PlainClass { }
 }
