@@ -2,6 +2,8 @@ package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.exception.EventErrorCode;
+import com.calendar.events.exception.EventException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,49 +70,82 @@ class EventServiceTest {
     }
 
     @Test
-    void deleteEvent_shouldCallRepositoryDelete() {
+    void deleteEvent_shouldDeleteWhenRequesterIsOrganizer() {
+        Event event = Event.builder().id("1").organizerId("organizer").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
 
-        Mono<Void> result = eventService.deleteEvent("1");
-
-        StepVerifier.create(result)
+        StepVerifier.create(eventService.deleteEvent("1", "organizer"))
                 .verifyComplete();
         verify(eventRepository, times(1)).deleteById("1");
     }
 
     @Test
-    void toggleSubscription_shouldAddUserIdIfNotPresent() {
-        List<String> participants = new ArrayList<>();
-        Event event = Event.builder().id("1").participantIds(participants).build();
-
+    void deleteEvent_shouldRejectWhenRequesterIsNotOrganizer() {
+        Event event = Event.builder().id("1").organizerId("organizer").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
-        when(eventRepository.save(any(Event.class))).thenReturn(Mono.just(event));
 
-        Mono<Event> result = eventService.toggleSubscription("1", "user123");
-
-        StepVerifier.create(result)
-                .expectNextMatches(evt -> evt.getParticipantIds().contains("user123"))
-                .verifyComplete();
-
-        verify(eventRepository).save(argThat(evt -> evt.getParticipantIds().contains("user123")));
+        StepVerifier.create(eventService.deleteEvent("1", "someone-else"))
+                .expectErrorMatches(e -> e instanceof EventException
+                        && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_ACCESS_DENIED)
+                .verify();
+        verify(eventRepository, never()).deleteById(any());
     }
 
     @Test
-    void toggleSubscription_shouldRemoveUserIdIfPresent() {
-        List<String> participants = new ArrayList<>();
-        participants.add("user123");
-        Event event = Event.builder().id("1").participantIds(participants).build();
+    void deleteEvent_shouldFailWhenEventDoesNotExist() {
+        when(eventRepository.findById("missing")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("missing", "organizer"))
+                .expectErrorMatches(e -> e instanceof EventException
+                        && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_NOT_FOUND)
+                .verify();
+        verify(eventRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void toggleSubscription_shouldSubscribeWhenNotParticipant() {
+        Event event = Event.builder().id("1").participantIds(new ArrayList<>()).build();
+        Event subscribed = Event.builder().id("1").participantIds(List.of("user123")).build();
 
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
-        when(eventRepository.save(any(Event.class))).thenReturn(Mono.just(event));
+        when(eventRepository.addParticipant("1", "user123")).thenReturn(Mono.just(subscribed));
 
-        Mono<Event> result = eventService.toggleSubscription("1", "user123");
+        StepVerifier.create(eventService.toggleSubscription("1", "user123"))
+                .expectNextMatches(evt -> evt.getParticipantIds().contains("user123"))
+                .verifyComplete();
 
-        StepVerifier.create(result)
+        verify(eventRepository).addParticipant("1", "user123");
+        verify(eventRepository, never()).removeParticipant(any(), any());
+        // No save: rewriting the document would lose a concurrent subscription.
+        verify(eventRepository, never()).save(any());
+    }
+
+    @Test
+    void toggleSubscription_shouldUnsubscribeWhenAlreadyParticipant() {
+        Event event = Event.builder().id("1").participantIds(new ArrayList<>(List.of("user123"))).build();
+        Event unsubscribed = Event.builder().id("1").participantIds(new ArrayList<>()).build();
+
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.removeParticipant("1", "user123")).thenReturn(Mono.just(unsubscribed));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "user123"))
                 .expectNextMatches(evt -> !evt.getParticipantIds().contains("user123"))
                 .verifyComplete();
 
-        verify(eventRepository).save(argThat(evt -> !evt.getParticipantIds().contains("user123")));
+        verify(eventRepository).removeParticipant("1", "user123");
+        verify(eventRepository, never()).addParticipant(any(), any());
+        verify(eventRepository, never()).save(any());
+    }
+
+    @Test
+    void toggleSubscription_shouldFailWhenEventDoesNotExist() {
+        when(eventRepository.findById("missing")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.toggleSubscription("missing", "user123"))
+                .expectErrorMatches(e -> e instanceof EventException
+                        && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_NOT_FOUND)
+                .verify();
     }
 
     @Test
