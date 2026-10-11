@@ -24,7 +24,8 @@ public class FreeSlotService {
     /** Proposed slots start on a quarter hour, like the calendar's selection. */
     static final Duration GRID = Duration.ofMinutes(15);
     static final Duration MIN_DURATION = Duration.ofMinutes(15);
-    static final Duration MAX_WINDOW = Duration.ofDays(31);
+    /** A month grid shows six weeks: 62 days covers it, as for a friend's calendar. */
+    static final Duration MAX_WINDOW = Duration.ofDays(62);
     static final int MAX_FRIENDS = 20;
 
     private final EventRepository eventRepository;

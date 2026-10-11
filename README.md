@@ -180,7 +180,7 @@ et renvoie les plages, dans cette période, où l'utilisateur **et** tous ces am
 - **Occupé** = inscrit à un événement **ou** organisateur, même non inscrit. Un événement sans fin dure 1 h, comme dans le calendrier.
 - **Seulement des amis.** La liste vient de `wely-social`, interrogé avec le jeton de l'utilisateur : la réponse ne peut porter que sur ses propres amis. Un non-ami donne `EVT-BUS-003` (403), et aucun événement n'est lu.
 - **Rien d'autre que des plages libres.** Ni titre, ni lieu, ni participants des événements qui occupent les autres.
-- Les plages commencent et finissent au quart d'heure, comme la sélection du calendrier. 1 à 20 amis, au moins 15 min, période de 31 jours au plus (`EVT-BUS-004`).
+- Les plages commencent et finissent au quart d'heure, comme la sélection du calendrier. 1 à 20 amis, au moins 15 min, période de 62 jours au plus — six semaines, la grille du mois (`EVT-BUS-004`).
 - Le calcul (`FreeSlotFinder`) est du Java pur : fusion des plages occupées, puis trous de la période. Deux index `{participantIds, startDate}` et `{organizerId, startDate}` servent la recherche.
 
 ## Le calendrier d'un ami
