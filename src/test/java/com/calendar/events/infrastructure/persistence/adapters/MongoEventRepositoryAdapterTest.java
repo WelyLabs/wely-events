@@ -19,6 +19,9 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Instant;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -114,6 +117,23 @@ class MongoEventRepositoryAdapterTest {
         Flux<Event> result = adapter.findByParticipantId("user1");
 
         StepVerifier.create(result)
+                .expectNext(domain)
+                .verifyComplete();
+    }
+
+    @Test
+    void findOccupying_shouldLetEventsWithoutAnEndLastTheDefaultDuration() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        Instant from = Instant.parse("2026-10-16T08:00:00Z");
+        Instant to = Instant.parse("2026-10-16T20:00:00Z");
+        List<String> users = List.of("user1", "user2");
+
+        when(mongoRepository.findOccupying(users, from, to, from.minus(Event.DEFAULT_DURATION)))
+                .thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findOccupying(users, from, to))
                 .expectNext(domain)
                 .verifyComplete();
     }

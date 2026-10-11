@@ -76,20 +76,7 @@ public class MongoEventRepositoryAdapter implements EventRepository {
 
     @Override
     public Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to) {
-        Criteria involved = new Criteria().orOperator(
-                Criteria.where("participantIds").in(userIds),
-                Criteria.where("organizerId").in(userIds));
-        // Overlaps [from, to): starts before the end, and ends after the start. Without an end,
-        // the event lasts Event.DEFAULT_DURATION, so it ends after from if it starts after this.
-        Criteria overlapping = new Criteria().andOperator(
-                Criteria.where("startDate").lt(to),
-                new Criteria().orOperator(
-                        Criteria.where("endDate").gt(from),
-                        new Criteria().andOperator(
-                                Criteria.where("endDate").is(null),
-                                Criteria.where("startDate").gt(from.minus(Event.DEFAULT_DURATION)))));
-
-        return mongoTemplate.find(Query.query(new Criteria().andOperator(involved, overlapping)), EventEntity.class)
+        return mongoRepository.findOccupying(userIds, from, to, from.minus(Event.DEFAULT_DURATION))
                 .map(mapper::toDomain);
     }
 
