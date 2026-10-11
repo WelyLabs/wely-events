@@ -22,6 +22,7 @@ public class EventResponse {
     private Instant startDate;
     private Instant endDate;
     private String location;
+    private CoordinatesDto coordinates;
     private String image;
     private String description;
     private Visibility visibility;

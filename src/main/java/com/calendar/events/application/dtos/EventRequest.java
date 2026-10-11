@@ -1,5 +1,6 @@
 package com.calendar.events.application.dtos;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -23,6 +24,9 @@ public class EventRequest {
     private Instant endDate;
     @NotBlank(message = "Location is required")
     private String location;
+    /** Optional: set when the location was picked on the map. */
+    @Valid
+    private CoordinatesDto coordinates;
     private String image;
     private String description;
     private boolean subscribeByDefault;

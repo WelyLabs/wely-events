@@ -1,6 +1,7 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -71,6 +72,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                 .startDate(Instant.parse("2025-06-01T10:00:00Z"))
                 .endDate(Instant.parse("2025-06-01T12:00:00Z"))
                 .location("Room 1")
+                .coordinates(new GeoPoint(45.764, 4.8357))
                 .description("...")
                 .participantIds(new ArrayList<>())
                 .build()).block();
@@ -90,6 +92,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(found.getOrganizerId()).isEqualTo(ORGANIZER);
                     assertThat(found.getStartDate()).isEqualTo(Instant.parse("2025-06-01T10:00:00Z"));
                     assertThat(found.getLocation()).isEqualTo("Room 1");
+                    assertThat(found.getCoordinates()).isEqualTo(new GeoPoint(45.764, 4.8357));
                 })
                 .verifyComplete();
     }
