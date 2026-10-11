@@ -222,4 +222,54 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         assertThat(all).hasSize(2).extracting(Event::getTitle).containsExactlyInAnyOrder("One", "Two");
     }
+
+    private Event saveAt(String title, String organizer, List<String> participants, String start, String end) {
+        return adapter.save(Event.builder()
+                .title(title)
+                .organizerId(organizer)
+                .startDate(Instant.parse(start))
+                .endDate(end == null ? null : Instant.parse(end))
+                .location("Somewhere")
+                .participantIds(new ArrayList<>(participants))
+                .build()).block();
+    }
+
+    private List<String> occupyingTitles(List<String> userIds, String from, String to) {
+        return adapter.findOccupying(userIds, Instant.parse(from), Instant.parse(to))
+                .map(Event::getTitle).collectList().block();
+    }
+
+    @Test
+    @DisplayName("events a user takes part in or organizes keep them busy; other people's do not")
+    void findOccupying_shouldMatchParticipantsAndOrganizers() {
+        saveAt("lea joins", "someone", List.of("lea"), "2026-10-17T10:00:00Z", "2026-10-17T11:00:00Z");
+        saveAt("hugo organizes", "hugo", List.of(), "2026-10-17T12:00:00Z", "2026-10-17T13:00:00Z");
+        saveAt("strangers", "x", List.of("y"), "2026-10-17T14:00:00Z", "2026-10-17T15:00:00Z");
+
+        assertThat(occupyingTitles(List.of("lea", "hugo"), "2026-10-17T00:00:00Z", "2026-10-18T00:00:00Z"))
+                .containsExactlyInAnyOrder("lea joins", "hugo organizes");
+    }
+
+    @Test
+    @DisplayName("only events overlapping the window count; touching its edges is not overlapping")
+    void findOccupying_shouldKeepOverlappingEventsOnly() {
+        saveAt("before", "lea", List.of(), "2026-10-17T08:00:00Z", "2026-10-17T10:00:00Z");
+        saveAt("across the start", "lea", List.of(), "2026-10-17T09:00:00Z", "2026-10-17T11:00:00Z");
+        saveAt("inside", "lea", List.of(), "2026-10-17T12:00:00Z", "2026-10-17T13:00:00Z");
+        saveAt("across the end", "lea", List.of(), "2026-10-17T17:00:00Z", "2026-10-17T19:00:00Z");
+        saveAt("after", "lea", List.of(), "2026-10-17T18:00:00Z", "2026-10-17T19:00:00Z");
+
+        assertThat(occupyingTitles(List.of("lea"), "2026-10-17T10:00:00Z", "2026-10-17T18:00:00Z"))
+                .containsExactlyInAnyOrder("across the start", "inside", "across the end");
+    }
+
+    @Test
+    @DisplayName("an event without an end lasts an hour")
+    void findOccupying_shouldGiveAnEventWithoutAnEndOneHour() {
+        saveAt("started 30 min before, still running", "lea", List.of(), "2026-10-17T09:30:00Z", null);
+        saveAt("started 2 hours before, over", "lea", List.of(), "2026-10-17T08:00:00Z", null);
+
+        assertThat(occupyingTitles(List.of("lea"), "2026-10-17T10:00:00Z", "2026-10-17T18:00:00Z"))
+                .containsExactly("started 30 min before, still running");
+    }
 }

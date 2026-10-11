@@ -4,6 +4,9 @@ import com.calendar.events.domain.models.Event;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Instant;
+import java.util.Collection;
+
 public interface EventRepository {
     Flux<Event> findAll();
 
@@ -26,4 +29,11 @@ public interface EventRepository {
 
     /** Removes the user from the event's participants, idempotently. */
     Mono<Event> removeParticipant(String eventId, String userId);
+
+    /**
+     * Events that keep one of these users busy between {@code from} and {@code to}: those they
+     * take part in or organize, overlapping the window. An event without an end lasts
+     * {@link Event#DEFAULT_DURATION}.
+     */
+    Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to);
 }

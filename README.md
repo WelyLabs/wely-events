@@ -97,6 +97,7 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `POST` | `/events` | Crée un événement (201) |
 | `POST` | `/events/{id}/subscribe` | Inscrit ou désinscrit l'utilisateur |
 | `DELETE` | `/events/{id}` | Supprime un événement (204) |
+| `POST` | `/events/me/free-slots` | Créneaux où l'utilisateur et des amis sont tous libres (voir plus bas) |
 
 ### OpenAPI
 
@@ -149,12 +150,35 @@ public class Event {
 
 ---
 
+## Trouver un créneau avec des amis
+
+`POST /events/me/free-slots` reçoit une période continue, des amis et une durée :
+
+```json
+{ "friendIds": ["…", "…"], "start": "2026-10-16T14:00:00Z", "end": "2026-10-18T20:00:00Z", "durationMinutes": 120 }
+```
+
+et renvoie les plages, dans cette période, où l'utilisateur **et** tous ces amis sont libres, chacune d'au moins la durée demandée :
+
+```json
+[ { "start": "2026-10-16T14:00:00Z", "end": "2026-10-17T09:00:00Z" }, … ]
+```
+
+- **Occupé** = inscrit à un événement **ou** organisateur, même non inscrit. Un événement sans fin dure 1 h, comme dans le calendrier.
+- **Seulement des amis.** La liste vient de `wely-social`, interrogé avec le jeton de l'utilisateur : la réponse ne peut porter que sur ses propres amis. Un non-ami donne `EVT-BUS-003` (403), et aucun événement n'est lu.
+- **Rien d'autre que des plages libres.** Ni titre, ni lieu, ni participants des événements qui occupent les autres.
+- Les plages commencent et finissent au quart d'heure, comme la sélection du calendrier. 1 à 20 amis, au moins 15 min, période de 31 jours au plus (`EVT-BUS-004`).
+- Le calcul (`FreeSlotFinder`) est du Java pur : fusion des plages occupées, puis trous de la période. Deux index `{participantIds, startDate}` et `{organizerId, startDate}` servent la recherche.
+
 ## Gestion des erreurs
 
 | Code | HTTP | Signification |
 |---|---|---|
 | `EVT-BUS-001` | 404 | Événement introuvable |
 | `EVT-BUS-002` | 403 | Seul l'organisateur peut effectuer cette action |
+| `EVT-BUS-003` | 403 | Recherche de créneau avec quelqu'un qui n'est pas un ami |
+| `EVT-BUS-004` | 400 | Recherche de créneau invalide (amis, durée ou période) |
+| `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
 | `EVT-VAL-001` | 400 | Validation du corps de requête, détail par champ |
 | `EVT-REQ-000` | *repris* | Chemin inconnu, méthode non autorisée |
 | `EVT-TEC-000` | 500 | Erreur inattendue |
@@ -193,6 +217,7 @@ client peut tester et un `timestamp` :
 | `MONGODB_URI` | URI de connexion MongoDB |
 | `KEYCLOAK_ISSUER_URI` | Issuer public — validation de l'émetteur |
 | `KEYCLOAK_INTERNAL_JWK_SET_URI` | JWKS interne — récupération des clés |
+| `SOCIAL_API_URL` | URL interne de `wely-social`, interrogé pour la liste d'amis |
 
 ---
 

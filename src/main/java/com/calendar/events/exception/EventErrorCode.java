@@ -24,7 +24,25 @@ public enum EventErrorCode {
             "EVT-BUS-002",
             "Not the organizer",
             "Only the organizer may perform this action.",
-            HttpStatus.FORBIDDEN);
+            HttpStatus.FORBIDDEN),
+
+    NOT_A_FRIEND(
+            "EVT-BUS-003",
+            "Not a friend",
+            "Free slots can only be searched with your friends.",
+            HttpStatus.FORBIDDEN),
+
+    INVALID_SLOT_SEARCH(
+            "EVT-BUS-004",
+            "Invalid slot search",
+            "Pick 1 to 20 friends, a duration of at least 15 minutes that fits the period, and a period of at most 31 days.",
+            HttpStatus.BAD_REQUEST),
+
+    SOCIAL_UNAVAILABLE(
+            "EVT-TEC-001",
+            "Social service unavailable",
+            "Friendships could not be checked; try again shortly.",
+            HttpStatus.BAD_GATEWAY);
 
     private final String code;
     private final String title;

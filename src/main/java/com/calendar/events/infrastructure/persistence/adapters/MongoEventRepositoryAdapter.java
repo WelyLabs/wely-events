@@ -14,6 +14,9 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Instant;
+import java.util.Collection;
+
 @Component
 public class MongoEventRepositoryAdapter implements EventRepository {
 
@@ -69,6 +72,25 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     @Override
     public Mono<Event> removeParticipant(String eventId, String userId) {
         return applyToParticipants(eventId, new Update().pull("participantIds", userId));
+    }
+
+    @Override
+    public Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to) {
+        Criteria involved = new Criteria().orOperator(
+                Criteria.where("participantIds").in(userIds),
+                Criteria.where("organizerId").in(userIds));
+        // Overlaps [from, to): starts before the end, and ends after the start. Without an end,
+        // the event lasts Event.DEFAULT_DURATION, so it ends after from if it starts after this.
+        Criteria overlapping = new Criteria().andOperator(
+                Criteria.where("startDate").lt(to),
+                new Criteria().orOperator(
+                        Criteria.where("endDate").gt(from),
+                        new Criteria().andOperator(
+                                Criteria.where("endDate").is(null),
+                                Criteria.where("startDate").gt(from.minus(Event.DEFAULT_DURATION)))));
+
+        return mongoTemplate.find(Query.query(new Criteria().andOperator(involved, overlapping)), EventEntity.class)
+                .map(mapper::toDomain);
     }
 
     private Mono<Event> applyToParticipants(String eventId, Update update) {

@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
@@ -18,6 +20,11 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Document(collection = "events")
+// For the free-slot search: whose events, then when.
+@CompoundIndexes({
+        @CompoundIndex(name = "participant_start", def = "{'participantIds': 1, 'startDate': 1}"),
+        @CompoundIndex(name = "organizer_start", def = "{'organizerId': 1, 'startDate': 1}")
+})
 public class EventEntity {
     @Id
     private String id;
