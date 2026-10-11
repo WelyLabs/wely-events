@@ -3,8 +3,10 @@ package com.calendar.events.application.mappers;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.dtos.CalendarEntryResponse;
+import com.calendar.events.application.dtos.CoordinatesDto;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -86,5 +88,25 @@ class EventRestMapperTest {
 
         assertEquals(new CalendarEntryResponse(start, start.plusSeconds(3600), null, "Dinner", null, null),
                 mapper.toResponse(entry));
+    }
+
+    @Test
+    void toDomain_shouldCarryThePointPickedOnTheMap() {
+        EventRequest request = EventRequest.builder().title("t").coordinates(new CoordinatesDto(45.764, 4.8357)).build();
+
+        assertEquals(new GeoPoint(45.764, 4.8357), mapper.toDomain(request).getCoordinates());
+    }
+
+    @Test
+    void toResponse_shouldGiveBackTheCoordinates() {
+        Event domain = Event.builder().coordinates(new GeoPoint(45.764, 4.8357)).build();
+
+        assertEquals(new CoordinatesDto(45.764, 4.8357), mapper.toResponse(domain).getCoordinates());
+    }
+
+    @Test
+    void toDomain_shouldLeaveATypedLocationWithoutCoordinates() {
+        assertNull(mapper.toDomain(EventRequest.builder().title("t").location("Lyon").build()).getCoordinates());
+        assertNull(mapper.toResponse(Event.builder().location("Lyon").build()).getCoordinates());
     }
 }

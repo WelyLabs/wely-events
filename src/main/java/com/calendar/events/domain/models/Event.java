@@ -28,6 +28,8 @@ public class Event {
     private Instant startDate;
     private Instant endDate;
     private String location;
+    /** Null when the location was typed rather than picked on the map. */
+    private GeoPoint coordinates;
     private String image;
     private String description;
     @Builder.Default

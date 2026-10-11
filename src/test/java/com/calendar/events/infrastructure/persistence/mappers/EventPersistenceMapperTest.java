@@ -1,10 +1,12 @@
 package com.calendar.events.infrastructure.persistence.mappers;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
+import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -69,5 +71,26 @@ class EventPersistenceMapperTest {
     @Test
     void toDomain_shouldLeaveAMissingVisibilityNull() {
         assertNull(mapper.toDomain(new EventEntity()).getVisibility());
+    }
+
+    @Test
+    void toEntity_shouldStoreTheCoordinatesAsGeoJsonLongitudeFirst() {
+        Event domain = Event.builder().coordinates(new GeoPoint(45.764, 4.8357)).build();
+
+        assertEquals(new GeoJsonPoint(4.8357, 45.764), mapper.toEntity(domain).getCoordinates());
+    }
+
+    @Test
+    void toDomain_shouldReadTheGeoJsonBackAsLatitudeAndLongitude() {
+        EventEntity entity = new EventEntity();
+        entity.setCoordinates(new GeoJsonPoint(4.8357, 45.764));
+
+        assertEquals(new GeoPoint(45.764, 4.8357), mapper.toDomain(entity).getCoordinates());
+    }
+
+    @Test
+    void toGeoJson_shouldKeepAMissingPointNull() {
+        assertNull(mapper.toGeoJson(null));
+        assertNull(mapper.toGeoPoint(null));
     }
 }

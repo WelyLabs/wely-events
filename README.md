@@ -137,6 +137,7 @@ public class EventRequest {
     @NotNull (message = "Date is required")     private Instant startDate;
                                                 private Instant endDate;
     @NotBlank(message = "Location is required") private String location;
+    @Valid                                      private CoordinatesDto coordinates; // facultatif
                                                 private String image;
                                                 private String description;
     private boolean subscribeByDefault;   // inscrit l'organisateur à la création
@@ -144,6 +145,8 @@ public class EventRequest {
 ```
 
 Les dates sont des `Instant` — stockage en UTC, conversion en fuseau local à l'affichage.
+
+`coordinates` (`{ "latitude": 45.764, "longitude": 4.8357 }`) est renseigné quand le lieu a été choisi sur la carte, absent quand il a été tapé. Hors bornes, la requête est refusée en 400. En base, le point est stocké en **GeoJSON** (`[longitude, latitude]`, dans cet ordre), ce qui permettra un index `2dsphere` pour une recherche « près de chez moi ».
 
 ### Modèle de domaine
 
@@ -155,6 +158,7 @@ public class Event {
     private Instant startDate;
     private Instant endDate;
     private String location;
+    private GeoPoint coordinates;   // null si le lieu a été tapé
     private String image;
     private String description;
     private List<String> participantIds;
