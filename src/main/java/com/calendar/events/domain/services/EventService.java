@@ -1,6 +1,7 @@
 package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.FriendDirectory;
@@ -10,14 +11,19 @@ import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Clock;
 import java.util.Objects;
 import java.util.Set;
 
 @RequiredArgsConstructor
 public class EventService {
 
+    /** Enough pins for a city; past this, the map asks the user to zoom in. */
+    public static final int MAP_LIMIT = 200;
+
     private final EventRepository eventRepository;
     private final FriendDirectory friendDirectory;
+    private final Clock clock;
 
     public Flux<Event> getAllEvents() {
         return eventRepository.findAll();
@@ -86,6 +92,17 @@ public class EventService {
                 .defaultIfEmpty(Set.of())
                 .onErrorResume(EventService::isSocialOutage, error -> Mono.just(Set.of()))
                 .flatMapMany(friendIds -> eventRepository.findFeed(userId, friendIds));
+    }
+
+    /**
+     * Upcoming and ongoing events the user may see, placed inside the area the map shows.
+     * Like the feed, a social outage narrows it to what needs no friendship.
+     */
+    public Flux<Event> getMapEvents(String userId, GeoBox box) {
+        return friendDirectory.findFriendIds(userId)
+                .defaultIfEmpty(Set.of())
+                .onErrorResume(EventService::isSocialOutage, error -> Mono.just(Set.of()))
+                .flatMapMany(friendIds -> eventRepository.findOnMap(userId, friendIds, box, clock.instant(), MAP_LIMIT));
     }
 
     /** The event if the viewer may see it, empty otherwise. Asks for friends only when it matters. */

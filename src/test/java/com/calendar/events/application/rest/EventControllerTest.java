@@ -4,6 +4,9 @@ import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.exception.EventErrorCode;
+import com.calendar.events.exception.EventException;
 import com.calendar.events.domain.services.EventService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -131,5 +134,28 @@ class EventControllerTest {
         StepVerifier.create(result)
                 .expectNext(response)
                 .verifyComplete();
+    }
+
+    @Test
+    void getMapEvents_shouldShowTheCallersEventsInTheArea() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        Event event = Event.builder().id("1").build();
+        EventResponse response = EventResponse.builder().id("1").build();
+        when(eventService.getMapEvents("user1", new GeoBox(45.70, 4.77, 45.81, 4.92))).thenReturn(Flux.just(event));
+        when(mapper.toResponse(event)).thenReturn(response);
+
+        StepVerifier.create(controller.getMapEvents(45.70, 4.77, 45.81, 4.92, jwt))
+                .expectNext(response)
+                .verifyComplete();
+    }
+
+    @Test
+    void getMapEvents_shouldRejectAnAreaUpsideDown() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+
+        StepVerifier.create(controller.getMapEvents(45.81, 4.77, 45.70, 4.92, jwt))
+                .expectErrorMatches(error -> error instanceof EventException e
+                        && e.getErrorCode() == EventErrorCode.INVALID_MAP_AREA)
+                .verify();
     }
 }

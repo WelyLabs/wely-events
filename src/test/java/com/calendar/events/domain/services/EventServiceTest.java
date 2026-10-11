@@ -1,6 +1,7 @@
 package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.FriendDirectory;
@@ -15,6 +16,9 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -33,9 +37,12 @@ class EventServiceTest {
 
     private EventService eventService;
 
+    private static final Instant NOW = Instant.parse("2026-10-11T16:00:00Z");
+    private static final GeoBox LYON = new GeoBox(45.70, 4.77, 45.81, 4.92);
+
     @BeforeEach
     void setUp() {
-        eventService = new EventService(eventRepository, friendDirectory);
+        eventService = new EventService(eventRepository, friendDirectory, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -294,6 +301,37 @@ class EventServiceTest {
         when(friendDirectory.findFriendIds("user123")).thenReturn(Mono.error(new IllegalStateException("bug")));
 
         StepVerifier.create(eventService.getFeedEvents("user123"))
+                .expectError(IllegalStateException.class)
+                .verify();
+    }
+
+    @Test
+    void getMapEvents_shouldAskForWhatIsVisibleInTheAreaFromNowOn() {
+        Event event = Event.builder().id("2").build();
+        when(friendDirectory.findFriendIds("user123")).thenReturn(Mono.just(Set.of("bob")));
+        when(eventRepository.findOnMap("user123", Set.of("bob"), LYON, NOW, EventService.MAP_LIMIT)).thenReturn(Flux.just(event));
+
+        StepVerifier.create(eventService.getMapEvents("user123", LYON))
+                .expectNext(event)
+                .verifyComplete();
+    }
+
+    @Test
+    void getMapEvents_shouldFallBackToNoFriends_whenTheSocialServiceIsDown() {
+        when(friendDirectory.findFriendIds("user123"))
+                .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
+        when(eventRepository.findOnMap("user123", Set.of(), LYON, NOW, EventService.MAP_LIMIT)).thenReturn(Flux.empty());
+
+        StepVerifier.create(eventService.getMapEvents("user123", LYON)).verifyComplete();
+
+        verify(eventRepository).findOnMap("user123", Set.of(), LYON, NOW, EventService.MAP_LIMIT);
+    }
+
+    @Test
+    void getMapEvents_shouldNotHideOtherFailures() {
+        when(friendDirectory.findFriendIds("user123")).thenReturn(Mono.error(new IllegalStateException("bug")));
+
+        StepVerifier.create(eventService.getMapEvents("user123", LYON))
                 .expectError(IllegalStateException.class)
                 .verify();
     }

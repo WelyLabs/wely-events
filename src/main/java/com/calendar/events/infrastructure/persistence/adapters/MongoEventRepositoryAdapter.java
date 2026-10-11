@@ -1,9 +1,11 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.infrastructure.persistence.mappers.EventPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveEventMongoRepository;
+import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -51,6 +53,13 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     @Override
     public Flux<Event> findFeed(String userId, Collection<String> friendIds) {
         return mongoRepository.findFeed(userId, friendIds).map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Event> findOnMap(String userId, Collection<String> friendIds, GeoBox box, Instant endingAfter, int limit) {
+        return mongoRepository.findOnMap(userId, friendIds, box.south(), box.west(), box.north(), box.east(),
+                        endingAfter, endingAfter.minus(Event.DEFAULT_DURATION), Limit.of(limit))
+                .map(mapper::toDomain);
     }
 
     @Override

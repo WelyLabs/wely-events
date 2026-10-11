@@ -8,6 +8,8 @@ import lombok.Setter;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.GeoSpatialIndexType;
+import org.springframework.data.mongodb.core.index.GeoSpatialIndexed;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -34,7 +36,8 @@ public class EventEntity {
     private Instant startDate;
     private Instant endDate;
     private String location;
-    /** GeoJSON, so a 2dsphere index can serve "events near me" later. */
+    /** GeoJSON, indexed 2dsphere for the map's area queries. */
+    @GeoSpatialIndexed(type = GeoSpatialIndexType.GEO_2DSPHERE)
     private GeoJsonPoint coordinates;
     private String image;
     private String description;

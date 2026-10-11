@@ -1,6 +1,7 @@
 package com.calendar.events.infrastructure.persistence.repositories;
 
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.mongodb.repository.Query;
 import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
 import org.springframework.data.mongodb.repository.Update;
@@ -29,6 +30,27 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
                 ] }
             ] }""")
     Flux<EventEntity> findFeed(String userId, Collection<String> friendIds);
+
+    /**
+     * The map: inside the box (a GeoJSON polygon, longitude first), not over yet, and visible to
+     * the user. An event without an end is over once {@code startedAfter} passes it, as in
+     * {@link #findOccupying}.
+     */
+    @Query(value = """
+            { $and: [
+                { coordinates: { $geoWithin: { $geometry: { type: 'Polygon', coordinates:
+                    [ [ [ ?3, ?2 ], [ ?5, ?2 ], [ ?5, ?4 ], [ ?3, ?4 ], [ ?3, ?2 ] ] ] } } } },
+                { $or: [ { endDate: { $gt: ?6 } }, { endDate: null, startDate: { $gt: ?7 } } ] },
+                { $or: [
+                    { organizerId: ?0 },
+                    { participantIds: ?0 },
+                    { visibility: 'PUBLIC' },
+                    { organizerId: { $in: ?1 }, visibility: { $in: [ 'FRIENDS', null ] } }
+                ] }
+            ] }""", sort = "{ startDate: 1 }")
+    Flux<EventEntity> findOnMap(String userId, Collection<String> friendIds,
+                                double south, double west, double north, double east,
+                                Instant endingAfter, Instant startedAfter, Limit limit);
 
     // $addToSet and $pull touch only the array, so concurrent subscriptions cannot overwrite each other.
     @Query("{ '_id': ?0 }")

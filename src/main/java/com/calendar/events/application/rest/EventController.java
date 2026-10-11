@@ -1,6 +1,7 @@
 package com.calendar.events.application.rest;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
@@ -36,6 +37,17 @@ public class EventController {
     public Flux<EventResponse> getMyFeedEvents(@AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         return eventService.getFeedEvents(userId).map(mapper::toResponse);
+    }
+
+    /** What the Explore map shows: upcoming events the caller may see, inside the area on screen. */
+    @GetMapping("/map")
+    public Flux<EventResponse> getMapEvents(@RequestParam double south, @RequestParam double west,
+                                            @RequestParam double north, @RequestParam double east,
+                                            @AuthenticationPrincipal Jwt jwt) {
+        String userId = jwt.getClaimAsString("businessId");
+        return Mono.fromCallable(() -> new GeoBox(south, west, north, east))
+                .flatMapMany(box -> eventService.getMapEvents(userId, box))
+                .map(mapper::toResponse);
     }
 
     @GetMapping("/{id}")
