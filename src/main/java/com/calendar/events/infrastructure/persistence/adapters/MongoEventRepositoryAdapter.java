@@ -49,8 +49,8 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
-    public Flux<Event> findByParticipantIdNot(String userId) {
-        return mongoRepository.findAllByParticipantIdsNotContains(userId).map(mapper::toDomain);
+    public Flux<Event> findFeed(String userId, Collection<String> friendIds) {
+        return mongoRepository.findFeed(userId, friendIds).map(mapper::toDomain);
     }
 
     @Override

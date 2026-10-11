@@ -15,7 +15,20 @@ import java.util.Collection;
 public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<EventEntity, String> {
     Flux<EventEntity> findAllByParticipantIdsContains(String userId);
 
-    Flux<EventEntity> findAllByParticipantIdsNotContains(String userId);
+    /**
+     * The feed: not taken part in, and either mine, public, or shared with friends by one of
+     * mine. A missing visibility counts as FRIENDS, which {@code $in} with null matches.
+     */
+    @Query("""
+            { $and: [
+                { participantIds: { $ne: ?0 } },
+                { $or: [
+                    { organizerId: ?0 },
+                    { visibility: 'PUBLIC' },
+                    { organizerId: { $in: ?1 }, visibility: { $in: [ 'FRIENDS', null ] } }
+                ] }
+            ] }""")
+    Flux<EventEntity> findFeed(String userId, Collection<String> friendIds);
 
     // $addToSet and $pull touch only the array, so concurrent subscriptions cannot overwrite each other.
     @Query("{ '_id': ?0 }")

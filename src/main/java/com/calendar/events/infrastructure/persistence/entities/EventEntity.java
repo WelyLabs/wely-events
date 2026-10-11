@@ -37,4 +37,6 @@ public class EventEntity {
     private String description;
     @Builder.Default
     private List<String> participantIds = new ArrayList<>();
+    /** PUBLIC, FRIENDS or PRIVATE. Absent on events stored before it existed, which count as FRIENDS. */
+    private String visibility;
 }

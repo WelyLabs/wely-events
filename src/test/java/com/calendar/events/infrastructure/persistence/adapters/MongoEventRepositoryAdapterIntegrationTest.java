@@ -1,6 +1,7 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -178,29 +179,80 @@ class MongoEventRepositoryAdapterIntegrationTest {
     }
 
     @Test
-    @DisplayName("the feed splits on whether the caller is a participant")
-    void findByParticipantId_shouldPartitionTheEvents() {
+    @DisplayName("the subscribed list holds only the events the caller takes part in")
+    void findByParticipantId_shouldKeepJoinedEventsOnly() {
         Event subscribed = anEvent("Subscribed");
-        Event other = anEvent("Not subscribed");
+        anEvent("Not subscribed");
         adapter.addParticipant(subscribed.getId(), "alice").block();
 
         StepVerifier.create(adapter.findByParticipantId("alice"))
                 .assertNext(event -> assertThat(event.getId()).isEqualTo(subscribed.getId()))
                 .verifyComplete();
+    }
 
-        StepVerifier.create(adapter.findByParticipantIdNot("alice"))
-                .assertNext(event -> assertThat(event.getId()).isEqualTo(other.getId()))
-                .verifyComplete();
+    private void visible(String title, String organizer, Visibility visibility, List<String> participants) {
+        adapter.save(Event.builder()
+                .title(title)
+                .organizerId(organizer)
+                .startDate(Instant.parse("2026-10-17T10:00:00Z"))
+                .location("Lyon")
+                .participantIds(new ArrayList<>(participants))
+                .visibility(visibility)
+                .build()).block();
+    }
+
+    private List<String> feedTitles(String userId, List<String> friendIds) {
+        return adapter.findFeed(userId, friendIds).map(Event::getTitle).collectList().block();
     }
 
     @Test
-    @DisplayName("an event with no participants counts as not subscribed")
-    void findByParticipantIdNot_shouldIncludeEmptyEvents() {
+    @DisplayName("the feed shows my events, public ones and my friends' shared ones, never what I joined")
+    void findFeed_shouldApplyTheVisibility() {
+        visible("mine, not joined", "alice", Visibility.FRIENDS, List.of());
+        visible("public, by a stranger", "carol", Visibility.PUBLIC, List.of());
+        visible("shared by a friend", "bob", Visibility.FRIENDS, List.of());
+        visible("before visibility existed, by a friend", "bob", null, List.of());
+        visible("shared by a stranger", "carol", Visibility.FRIENDS, List.of());
+        visible("before visibility existed, by a stranger", "carol", null, List.of());
+        visible("private, by a friend", "bob", Visibility.PRIVATE, List.of());
+        visible("public, already joined", "carol", Visibility.PUBLIC, List.of("alice"));
+
+        assertThat(feedTitles("alice", List.of("bob"))).containsExactlyInAnyOrder(
+                "mine, not joined",
+                "public, by a stranger",
+                "shared by a friend",
+                "before visibility existed, by a friend");
+    }
+
+    @Test
+    @DisplayName("without friends, the feed keeps public events and my own")
+    void findFeed_shouldKeepPublicAndOwnEvents_withoutFriends() {
+        visible("mine", "alice", Visibility.PRIVATE, List.of());
+        visible("public", "carol", Visibility.PUBLIC, List.of());
+        visible("shared by bob", "bob", Visibility.FRIENDS, List.of());
+
+        assertThat(feedTitles("alice", List.of())).containsExactlyInAnyOrder("mine", "public");
+    }
+
+    @Test
+    @DisplayName("an event with no participants counts as not joined")
+    void findFeed_shouldIncludeEventsWithoutParticipants() {
         // $ne on an array is true when the array is missing the value, empty included — worth
         // pinning, because the alternative reading would hide every new event from the feed.
-        anEvent("Nobody yet");
+        visible("Nobody yet", "carol", Visibility.PUBLIC, List.of());
 
-        StepVerifier.create(adapter.findByParticipantIdNot("alice")).expectNextCount(1).verifyComplete();
+        assertThat(feedTitles("alice", List.of())).containsExactly("Nobody yet");
+    }
+
+    @Test
+    @DisplayName("visibility round-trips, and an event saved without one stores none")
+    void save_shouldStoreTheVisibility() {
+        visible("private", "bob", Visibility.PRIVATE, List.of());
+        visible("legacy", "bob", null, List.of());
+
+        assertThat(adapter.findAll().collectMap(Event::getTitle, e -> String.valueOf(e.getVisibility())).block())
+                .containsEntry("private", "PRIVATE")
+                .containsEntry("legacy", "null");
     }
 
     @Test

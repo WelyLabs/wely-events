@@ -7,7 +7,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.Instant;
+import com.calendar.events.domain.models.Visibility;
+
 import java.time.Instant;
 
 @Data
@@ -25,4 +26,6 @@ public class EventRequest {
     private String image;
     private String description;
     private boolean subscribeByDefault;
+    /** Optional: FRIENDS when left out. */
+    private Visibility visibility;
 }

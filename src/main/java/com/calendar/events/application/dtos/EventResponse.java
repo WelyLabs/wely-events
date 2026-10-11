@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import com.calendar.events.domain.models.Visibility;
+
 import java.time.Instant;
 
 @Getter
@@ -22,4 +24,5 @@ public class EventResponse {
     private String location;
     private String image;
     private String description;
+    private Visibility visibility;
 }

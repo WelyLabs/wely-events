@@ -1,5 +1,6 @@
 package com.calendar.events.infrastructure.social;
 
+import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import com.sun.net.httpserver.HttpServer;
@@ -87,5 +88,47 @@ class SocialFriendDirectoryAdapterTest {
                 .verify();
 
         assertThat(requestedUri.get()).isNull();
+    }
+
+    @Test
+    void findCloseness_shouldReadTheClosenessOfTheFriendship() {
+        body = "{\"friendId\":\"bob\",\"closeness\":\"INTIMATE\",\"proposal\":null,\"proposedByFriend\":false}";
+
+        StepVerifier.create(adapter.findCloseness("me", "bob")
+                        .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("abc"))))
+                .expectNext(Closeness.INTIMATE)
+                .verifyComplete();
+
+        assertThat(requestedUri.get()).isEqualTo("/social-service/relationships/bob");
+        assertThat(authorization.get()).isEqualTo("Bearer abc");
+    }
+
+    @Test
+    void findCloseness_shouldBeEmpty_whenSocialSaysTheyAreNotFriends() {
+        status = 404;
+        body = "{\"code\":\"SCL-BUS-007\"}";
+
+        StepVerifier.create(adapter.findCloseness("me", "carol")
+                        .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("t"))))
+                .verifyComplete();
+    }
+
+    @Test
+    void findCloseness_shouldReportAnOutage_whenSocialFails() {
+        status = 500;
+
+        StepVerifier.create(adapter.findCloseness("me", "bob")
+                        .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("t"))))
+                .expectErrorMatches(e -> e instanceof EventException ex
+                        && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
+                .verify();
+    }
+
+    @Test
+    void findCloseness_shouldRefuse_whenThereIsNoTokenToRelay() {
+        StepVerifier.create(adapter.findCloseness("me", "bob"))
+                .expectErrorMatches(e -> e instanceof EventException ex
+                        && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
+                .verify();
     }
 }

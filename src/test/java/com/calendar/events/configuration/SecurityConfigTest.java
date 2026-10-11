@@ -13,7 +13,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.FriendDirectory;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +49,10 @@ class SecurityConfigTest {
     @MockitoBean
     private EventRepository eventRepository;
 
+    /** Mocked for the same reason: the feed asks wely-social for the caller's friends. */
+    @MockitoBean
+    private FriendDirectory friendDirectory;
+
     private WebTestClient client() {
         return WebTestClient.bindToApplicationContext(context)
                 .apply(springSecurity())
@@ -70,7 +78,8 @@ class SecurityConfigTest {
 
     @Test
     void springSecurityFilterChain_shouldAllowAuthenticatedRequests() {
-        when(eventRepository.findByParticipantIdNot(any())).thenReturn(Flux.empty());
+        when(friendDirectory.findFriendIds(any())).thenReturn(Mono.just(Set.of()));
+        when(eventRepository.findFeed(any(), any())).thenReturn(Flux.empty());
 
         client().mutateWith(mockJwt().jwt(jwt -> jwt.claim("businessId", "user-1")))
                 .get().uri("/events-service/events/me/feed")

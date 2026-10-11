@@ -1,6 +1,7 @@
 package com.calendar.events.infrastructure.persistence.mappers;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -55,5 +56,18 @@ class EventPersistenceMapperTest {
         assertEquals(domain.getStartDate(), entity.getStartDate());
         assertEquals(domain.getEndDate(), entity.getEndDate());
         assertEquals(domain.getParticipantIds(), entity.getParticipantIds());
+    }
+
+    @Test
+    void visibility_shouldRoundTripAsItsName() {
+        EventEntity entity = mapper.toEntity(Event.builder().visibility(Visibility.PRIVATE).build());
+
+        assertEquals("PRIVATE", entity.getVisibility());
+        assertEquals(Visibility.PRIVATE, mapper.toDomain(entity).getVisibility());
+    }
+
+    @Test
+    void toDomain_shouldLeaveAMissingVisibilityNull() {
+        assertNull(mapper.toDomain(new EventEntity()).getVisibility());
     }
 }
