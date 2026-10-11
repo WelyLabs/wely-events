@@ -1,6 +1,7 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.BeforeEach;
@@ -326,5 +327,70 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         assertThat(occupyingTitles(List.of("lea"), "2026-10-17T10:00:00Z", "2026-10-17T18:00:00Z"))
                 .containsExactly("started 30 min before, still running");
+    }
+
+    private static final GeoBox LYON = new GeoBox(45.70, 4.77, 45.81, 4.92);
+    private static final Instant MAP_NOW = Instant.parse("2026-10-11T16:00:00Z");
+    private static final GeoPoint TRANSBORDEUR = new GeoPoint(45.784, 4.8608);
+
+    private void placed(String title, String organizer, Visibility visibility, GeoPoint where, String start, String end) {
+        adapter.save(Event.builder()
+                .title(title)
+                .organizerId(organizer)
+                .startDate(Instant.parse(start))
+                .endDate(end == null ? null : Instant.parse(end))
+                .location(title)
+                .coordinates(where)
+                .participantIds(new ArrayList<>())
+                .visibility(visibility)
+                .build()).block();
+    }
+
+    private List<String> mapTitles(String userId, List<String> friendIds, int limit) {
+        return adapter.findOnMap(userId, friendIds, LYON, MAP_NOW, limit).map(Event::getTitle).collectList().block();
+    }
+
+    @Test
+    @DisplayName("the map keeps what is inside the area, ignoring places elsewhere and events without a point")
+    void findOnMap_shouldKeepEventsInsideTheArea() {
+        placed("Concert", "lea", Visibility.PUBLIC, TRANSBORDEUR, "2026-10-12T19:00:00Z", "2026-10-12T23:00:00Z");
+        placed("Biarritz", "lea", Visibility.PUBLIC, new GeoPoint(43.48, -1.56), "2026-10-12T10:00:00Z", null);
+        placed("Typed only", "lea", Visibility.PUBLIC, null, "2026-10-12T10:00:00Z", null);
+
+        assertThat(mapTitles("camille", List.of(), 200)).containsExactly("Concert");
+    }
+
+    @Test
+    @DisplayName("the map applies the same visibility as the feed, and shows the caller's own events")
+    void findOnMap_shouldApplyTheVisibility() {
+        placed("Mine, private", "camille", Visibility.PRIVATE, TRANSBORDEUR, "2026-10-12T10:00:00Z", null);
+        placed("Friend's", "lea", Visibility.FRIENDS, TRANSBORDEUR, "2026-10-12T11:00:00Z", null);
+        placed("Stranger's", "zoe", Visibility.FRIENDS, TRANSBORDEUR, "2026-10-12T12:00:00Z", null);
+        placed("Friend's, private", "lea", Visibility.PRIVATE, TRANSBORDEUR, "2026-10-12T13:00:00Z", null);
+
+        assertThat(mapTitles("camille", List.of("lea"), 200)).containsExactly("Mine, private", "Friend's");
+    }
+
+    @Test
+    @DisplayName("the map shows events the caller joined, even private ones")
+    void findOnMap_shouldShowJoinedEvents() {
+        placed("Private dinner", "zoe", Visibility.PRIVATE, TRANSBORDEUR, "2026-10-12T19:00:00Z", null);
+        String id = adapter.findOnMap("zoe", List.of(), LYON, MAP_NOW, 10).blockFirst().getId();
+        adapter.addParticipant(id, "camille").block();
+
+        assertThat(mapTitles("camille", List.of(), 200)).containsExactly("Private dinner");
+    }
+
+    @Test
+    @DisplayName("the map drops what is over, keeps what is still running, soonest first, up to the limit")
+    void findOnMap_shouldKeepUpcomingAndOngoingEventsSoonestFirst() {
+        placed("Later", "lea", Visibility.PUBLIC, TRANSBORDEUR, "2026-10-13T10:00:00Z", null);
+        placed("Running", "lea", Visibility.PUBLIC, TRANSBORDEUR, "2026-10-11T15:00:00Z", "2026-10-11T17:00:00Z");
+        placed("Over", "lea", Visibility.PUBLIC, TRANSBORDEUR, "2026-10-11T10:00:00Z", "2026-10-11T12:00:00Z");
+        placed("No end, started 30 min ago", "lea", Visibility.PUBLIC, TRANSBORDEUR, "2026-10-11T15:30:00Z", null);
+        placed("No end, started 2 hours ago", "lea", Visibility.PUBLIC, TRANSBORDEUR, "2026-10-11T14:00:00Z", null);
+
+        assertThat(mapTitles("camille", List.of(), 200)).containsExactly("Running", "No end, started 30 min ago", "Later");
+        assertThat(mapTitles("camille", List.of(), 2)).containsExactly("Running", "No end, started 30 min ago");
     }
 }

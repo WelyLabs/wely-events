@@ -1,6 +1,7 @@
 package com.calendar.events.domain.ports;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoBox;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -23,6 +24,13 @@ public interface EventRepository {
      * with the organizer's friends when the organizer is one of {@code friendIds}.
      */
     Flux<Event> findFeed(String userId, Collection<String> friendIds);
+
+    /**
+     * Events the user may see that are placed inside the box and end after {@code endingAfter}:
+     * their own, those they take part in, public ones, and those shared by friends. Soonest first,
+     * at most {@code limit}.
+     */
+    Flux<Event> findOnMap(String userId, Collection<String> friendIds, GeoBox box, Instant endingAfter, int limit);
 
     /**
      * Adds the user to the event's participants, idempotently, and returns the

@@ -44,6 +44,12 @@ public enum EventErrorCode {
             "Ask for a friend's calendar, not your own, over a period of at most 62 days that ends after it starts.",
             HttpStatus.BAD_REQUEST),
 
+    INVALID_MAP_AREA(
+            "EVT-BUS-006",
+            "Invalid map area",
+            "Ask for an area within the globe, south before north and west before east, at most 90 degrees wide.",
+            HttpStatus.BAD_REQUEST),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",

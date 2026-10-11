@@ -1,6 +1,7 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import com.calendar.events.infrastructure.persistence.mappers.EventPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveEventMongoRepository;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.springframework.data.domain.Limit;
 import org.springframework.data.mongodb.core.query.Update;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Flux;
@@ -183,5 +185,19 @@ class MongoEventRepositoryAdapterTest {
                 .verifyComplete();
 
         verify(mongoRepository, never()).save(any());
+    }
+
+    @Test
+    void findOnMap_shouldPassTheBoxAndEndAnEventWithoutOneAfterAnHour() {
+        Instant now = Instant.parse("2026-10-11T16:00:00Z");
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().id("1").build();
+        when(mongoRepository.findOnMap("u", List.of("f"), 45.70, 4.77, 45.81, 4.92,
+                now, now.minus(Event.DEFAULT_DURATION), Limit.of(200))).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findOnMap("u", List.of("f"), new GeoBox(45.70, 4.77, 45.81, 4.92), now, 200))
+                .expectNext(domain)
+                .verifyComplete();
     }
 }
