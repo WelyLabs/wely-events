@@ -35,7 +35,7 @@ public enum EventErrorCode {
     INVALID_SLOT_SEARCH(
             "EVT-BUS-004",
             "Invalid slot search",
-            "Pick 1 to 20 friends, a duration of at least 15 minutes that fits the period, and a period of at most 31 days.",
+            "Pick 1 to 20 friends, a duration of at least 15 minutes that fits the period, and a period of at most 62 days.",
             HttpStatus.BAD_REQUEST),
 
     INVALID_CALENDAR_REQUEST(

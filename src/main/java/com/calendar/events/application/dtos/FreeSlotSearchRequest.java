@@ -14,5 +14,5 @@ public record FreeSlotSearchRequest(
         @NotEmpty @Size(max = 20) Set<String> friendIds,
         @NotNull Instant start,
         @NotNull Instant end,
-        @Min(15) @Max(44640) int durationMinutes
+        @Min(15) @Max(89280) int durationMinutes
 ) {}

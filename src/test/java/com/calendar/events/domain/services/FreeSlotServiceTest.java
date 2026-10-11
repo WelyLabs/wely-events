@@ -99,7 +99,7 @@ class FreeSlotServiceTest {
     @Test
     void findCommonFreeRanges_shouldRejectAnInvalidSearch_beforeAskingAnyone() {
         Set<String> tooMany = IntStream.range(0, 21).mapToObj(i -> "f" + i).collect(Collectors.toSet());
-        TimeRange tooLong = new TimeRange(TEN, TEN.plus(Duration.ofDays(32)));
+        TimeRange tooLong = new TimeRange(TEN, TEN.plus(FreeSlotService.MAX_WINDOW).plusSeconds(1));
 
         for (var search : new Object[][]{
                 {Set.of(), WINDOW, HOUR},                                // nobody to meet
@@ -107,7 +107,7 @@ class FreeSlotServiceTest {
                 {new HashSet<>(Set.of("lea", "me")), WINDOW, HOUR},       // the requester listed as a friend
                 {Set.of("lea"), WINDOW, Duration.ofMinutes(10)},          // shorter than 15 minutes
                 {Set.of("lea"), WINDOW, Duration.ofHours(9)},             // longer than the period
-                {Set.of("lea"), tooLong, HOUR}}) {                        // period over 31 days
+                {Set.of("lea"), tooLong, HOUR}}) {                        // period over 62 days
             @SuppressWarnings("unchecked")
             Set<String> friends = (Set<String>) search[0];
             StepVerifier.create(service.findCommonFreeRanges("me", friends, (TimeRange) search[1], (Duration) search[2]))
@@ -117,5 +117,16 @@ class FreeSlotServiceTest {
 
         verify(friendDirectory, never()).findFriendIds(any());
         verify(eventRepository, never()).findOccupying(anyCollection(), any(), any());
+    }
+
+    @Test
+    void findCommonFreeRanges_shouldAcceptAMonthGrid_ofSixWeeks() {
+        TimeRange sixWeeks = new TimeRange(TEN, TEN.plus(Duration.ofDays(42)));
+        when(friendDirectory.findFriendIds("me")).thenReturn(Mono.just(Set.of("lea")));
+        when(eventRepository.findOccupying(anyCollection(), any(), any())).thenReturn(Flux.empty());
+
+        StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), sixWeeks, HOUR))
+                .expectNext(sixWeeks)
+                .verifyComplete();
     }
 }
