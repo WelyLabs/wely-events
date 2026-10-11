@@ -3,8 +3,10 @@ package com.calendar.events.infrastructure.persistence.repositories;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import org.springframework.data.mongodb.repository.Query;
 import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
+import org.springframework.data.mongodb.repository.Update;
 import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -14,6 +16,15 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     Flux<EventEntity> findAllByParticipantIdsContains(String userId);
 
     Flux<EventEntity> findAllByParticipantIdsNotContains(String userId);
+
+    // $addToSet and $pull touch only the array, so concurrent subscriptions cannot overwrite each other.
+    @Query("{ '_id': ?0 }")
+    @Update("{ '$addToSet': { 'participantIds': ?1 } }")
+    Mono<Long> addParticipant(String eventId, String userId);
+
+    @Query("{ '_id': ?0 }")
+    @Update("{ '$pull': { 'participantIds': ?1 } }")
+    Mono<Long> removeParticipant(String eventId, String userId);
 
     /**
      * Events the users take part in or organise that overlap [from, to). An event without an end

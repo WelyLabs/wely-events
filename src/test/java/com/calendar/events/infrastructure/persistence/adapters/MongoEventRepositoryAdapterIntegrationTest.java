@@ -27,9 +27,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Runs {@link MongoEventRepositoryAdapter} against a real MongoDB.
  *
  * <p>The subscription methods are the reason this exists. {@code addParticipant} uses
- * {@code $addToSet} and {@code removeParticipant} uses {@code $pull}, both through
- * {@code findAndModify} with {@code returnNew} — chosen so that two people subscribing at the
- * same time cannot overwrite each other, which is exactly what a read-modify-write would do.
+ * {@code $addToSet} and {@code removeParticipant} uses {@code $pull}, both as in-place updates
+ * declared on the repository — chosen so that two people subscribing at the same time cannot
+ * overwrite each other, which is exactly what a read-modify-write would do.
  * That property is a claim about MongoDB, and only MongoDB can settle it.
  *
  * <p>Opt-in: CI sets {@code CI=true}, locally pass {@code -Dintegration.tests=true}.
@@ -169,7 +169,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
     @Test
     @DisplayName("touching a missing event yields nothing rather than creating one")
     void addParticipant_shouldNotUpsert() {
-        // findAndModify without upsert: subscribing to an event that does not exist must not
+        // An update without upsert: subscribing to an event that does not exist must not
         // bring it into being.
         StepVerifier.create(adapter.addParticipant("64b7f9f2e4b0a1c2d3e4f5a6", "alice"))
                 .verifyComplete();
