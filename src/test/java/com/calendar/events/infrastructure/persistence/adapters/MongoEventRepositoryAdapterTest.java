@@ -7,21 +7,17 @@ import com.calendar.events.infrastructure.persistence.repositories.ReactiveEvent
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.bson.Document;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
-import org.springframework.data.mongodb.core.FindAndModifyOptions;
-import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
-import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import java.time.Instant;
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -35,14 +31,11 @@ class MongoEventRepositoryAdapterTest {
     @Mock
     private EventPersistenceMapper mapper;
 
-    @Mock
-    private ReactiveMongoTemplate mongoTemplate;
-
     private MongoEventRepositoryAdapter adapter;
 
     @BeforeEach
     void setUp() {
-        adapter = new MongoEventRepositoryAdapter(mongoRepository, mapper, mongoTemplate);
+        adapter = new MongoEventRepositoryAdapter(mongoRepository, mapper);
     }
 
     @Test
@@ -119,6 +112,23 @@ class MongoEventRepositoryAdapterTest {
     }
 
     @Test
+    void findOccupying_shouldLetEventsWithoutAnEndLastTheDefaultDuration() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        Instant from = Instant.parse("2026-10-16T08:00:00Z");
+        Instant to = Instant.parse("2026-10-16T20:00:00Z");
+        List<String> users = List.of("user1", "user2");
+
+        when(mongoRepository.findOccupying(users, from, to, from.minus(Event.DEFAULT_DURATION)))
+                .thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findOccupying(users, from, to))
+                .expectNext(domain)
+                .verifyComplete();
+    }
+
+    @Test
     void findByParticipantIdNot_shouldReturnMappedEvents() {
         EventEntity entity = new EventEntity();
         Event domain = Event.builder().build();
@@ -134,50 +144,43 @@ class MongoEventRepositoryAdapterTest {
     }
 
     @Test
-    void addParticipant_shouldUseAddToSetAndReturnUpdatedEvent() {
+    void addParticipant_shouldUpdateInPlaceThenReturnTheEvent() {
         EventEntity updated = new EventEntity();
         Event domain = Event.builder().id("1").build();
 
-        when(mongoTemplate.findAndModify(any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(EventEntity.class)))
-                .thenReturn(Mono.just(updated));
+        when(mongoRepository.addParticipant("1", "user123")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("1")).thenReturn(Mono.just(updated));
         when(mapper.toDomain(updated)).thenReturn(domain);
 
         StepVerifier.create(adapter.addParticipant("1", "user123"))
                 .expectNext(domain)
                 .verifyComplete();
 
-        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
-        ArgumentCaptor<FindAndModifyOptions> options = ArgumentCaptor.forClass(FindAndModifyOptions.class);
-        verify(mongoTemplate).findAndModify(any(Query.class), update.capture(),
-                options.capture(), eq(EventEntity.class));
-
-        Document set = update.getValue().getUpdateObject();
-        assertThat(set).containsKey("$addToSet");
-        assertThat(options.getValue().isReturnNew()).isTrue();
-
         // No save: a full rewrite would lose a concurrent subscription.
         verify(mongoRepository, never()).save(any());
     }
 
     @Test
-    void removeParticipant_shouldUsePull() {
+    void addParticipant_shouldReturnNothing_whenTheEventDoesNotExist() {
+        when(mongoRepository.addParticipant("missing", "user123")).thenReturn(Mono.just(0L));
+        when(mongoRepository.findById("missing")).thenReturn(Mono.empty());
+
+        StepVerifier.create(adapter.addParticipant("missing", "user123"))
+                .verifyComplete();
+    }
+
+    @Test
+    void removeParticipant_shouldUpdateInPlaceThenReturnTheEvent() {
         EventEntity updated = new EventEntity();
         Event domain = Event.builder().id("1").build();
 
-        when(mongoTemplate.findAndModify(any(Query.class), any(Update.class),
-                any(FindAndModifyOptions.class), eq(EventEntity.class)))
-                .thenReturn(Mono.just(updated));
+        when(mongoRepository.removeParticipant("1", "user123")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("1")).thenReturn(Mono.just(updated));
         when(mapper.toDomain(updated)).thenReturn(domain);
 
         StepVerifier.create(adapter.removeParticipant("1", "user123"))
                 .expectNext(domain)
                 .verifyComplete();
-
-        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
-        verify(mongoTemplate).findAndModify(any(Query.class), update.capture(),
-                any(FindAndModifyOptions.class), eq(EventEntity.class));
-        assertThat(update.getValue().getUpdateObject()).containsKey("$pull");
 
         verify(mongoRepository, never()).save(any());
     }
