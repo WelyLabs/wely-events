@@ -73,14 +73,15 @@ class EventControllerTest {
     }
 
     @Test
-    void getEventById_shouldReturnEvent() {
+    void getEventById_shouldAskOnBehalfOfTheCaller() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
         Event event = Event.builder().id("1").build();
         EventResponse response = EventResponse.builder().id("1").build();
 
-        when(eventService.getEventById("1")).thenReturn(Mono.just(event));
+        when(eventService.getEventById("1", "user1")).thenReturn(Mono.just(event));
         when(mapper.toResponse(event)).thenReturn(response);
 
-        Mono<EventResponse> result = controller.getEventById("1");
+        Mono<EventResponse> result = controller.getEventById("1", jwt);
 
         StepVerifier.create(result)
                 .expectNext(response)

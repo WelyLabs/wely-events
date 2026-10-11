@@ -29,13 +29,19 @@ public enum EventErrorCode {
     NOT_A_FRIEND(
             "EVT-BUS-003",
             "Not a friend",
-            "Free slots can only be searched with your friends.",
+            "Free slots and calendars are only available for your friends.",
             HttpStatus.FORBIDDEN),
 
     INVALID_SLOT_SEARCH(
             "EVT-BUS-004",
             "Invalid slot search",
             "Pick 1 to 20 friends, a duration of at least 15 minutes that fits the period, and a period of at most 31 days.",
+            HttpStatus.BAD_REQUEST),
+
+    INVALID_CALENDAR_REQUEST(
+            "EVT-BUS-005",
+            "Invalid calendar request",
+            "Ask for a friend's calendar, not your own, over a period of at most 62 days that ends after it starts.",
             HttpStatus.BAD_REQUEST),
 
     SOCIAL_UNAVAILABLE(

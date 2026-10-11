@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -31,9 +32,35 @@ public class Event {
     private String description;
     @Builder.Default
     private List<String> participantIds = new ArrayList<>();
+    /** Null for events stored before visibility existed; read through {@link #effectiveVisibility()}. */
+    private Visibility visibility;
 
     /** When the event stops keeping its people busy. */
     public Instant effectiveEnd() {
         return endDate != null ? endDate : startDate.plus(DEFAULT_DURATION);
+    }
+
+    public Visibility effectiveVisibility() {
+        return visibility != null ? visibility : Visibility.DEFAULT;
+    }
+
+    /** Whether the user organizes the event or takes part in it. */
+    public boolean involves(String userId) {
+        return userId.equals(organizerId) || participantIds.contains(userId);
+    }
+
+    /**
+     * Whether the user may see this event, given who the user's friends are. Those taking part
+     * always can; otherwise it depends on the visibility.
+     */
+    public boolean isVisibleTo(String userId, Set<String> friendIdsOfUser) {
+        if (involves(userId)) {
+            return true;
+        }
+        return switch (effectiveVisibility()) {
+            case PUBLIC -> true;
+            case FRIENDS -> friendIdsOfUser.contains(organizerId);
+            case PRIVATE -> false;
+        };
     }
 }

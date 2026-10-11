@@ -39,8 +39,9 @@ public class EventController {
     }
 
     @GetMapping("/{id}")
-    public Mono<EventResponse> getEventById(@PathVariable String id) {
-        return eventService.getEventById(id).map(mapper::toResponse);
+    public Mono<EventResponse> getEventById(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
+        String userId = jwt.getClaimAsString("businessId");
+        return eventService.getEventById(id, userId).map(mapper::toResponse);
     }
 
     @PostMapping

@@ -3,6 +3,9 @@ package com.calendar.events.domain.models;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,5 +25,48 @@ class EventTest {
         Event event = Event.builder().startDate(START).build();
 
         assertThat(event.effectiveEnd()).isEqualTo(START.plus(Event.DEFAULT_DURATION));
+    }
+
+    private static Event by(String organizer, Visibility visibility, String... participants) {
+        return Event.builder().organizerId(organizer).visibility(visibility)
+                .participantIds(new ArrayList<>(List.of(participants))).build();
+    }
+
+    @Test
+    void effectiveVisibility_shouldTreatAMissingVisibilityAsFriends() {
+        assertThat(by("bob", null).effectiveVisibility()).isEqualTo(Visibility.FRIENDS);
+        assertThat(by("bob", Visibility.PRIVATE).effectiveVisibility()).isEqualTo(Visibility.PRIVATE);
+    }
+
+    @Test
+    void involves_shouldCoverTheOrganizerAndTheParticipants() {
+        Event event = by("bob", Visibility.FRIENDS, "lea");
+
+        assertThat(event.involves("bob")).isTrue();
+        assertThat(event.involves("lea")).isTrue();
+        assertThat(event.involves("carol")).isFalse();
+    }
+
+    @Test
+    void isVisibleTo_shouldAlwaysShowAnEventToThoseTakingPart() {
+        assertThat(by("bob", Visibility.PRIVATE, "lea").isVisibleTo("lea", Set.of())).isTrue();
+    }
+
+    @Test
+    void isVisibleTo_shouldShowAPublicEventToAnyone() {
+        assertThat(by("bob", Visibility.PUBLIC).isVisibleTo("carol", Set.of())).isTrue();
+    }
+
+    @Test
+    void isVisibleTo_shouldShowAFriendsEventOnlyToTheOrganizersFriends() {
+        Event event = by("bob", Visibility.FRIENDS);
+
+        assertThat(event.isVisibleTo("lea", Set.of("bob"))).isTrue();
+        assertThat(event.isVisibleTo("carol", Set.of("lea"))).isFalse();
+    }
+
+    @Test
+    void isVisibleTo_shouldHideAPrivateEventFromFriends() {
+        assertThat(by("bob", Visibility.PRIVATE).isVisibleTo("lea", Set.of("bob"))).isFalse();
     }
 }

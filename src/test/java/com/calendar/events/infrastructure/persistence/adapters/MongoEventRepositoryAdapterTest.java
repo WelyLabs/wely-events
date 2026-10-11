@@ -129,14 +129,14 @@ class MongoEventRepositoryAdapterTest {
     }
 
     @Test
-    void findByParticipantIdNot_shouldReturnMappedEvents() {
+    void findFeed_shouldReturnMappedEvents() {
         EventEntity entity = new EventEntity();
         Event domain = Event.builder().build();
 
-        when(mongoRepository.findAllByParticipantIdsNotContains("user1")).thenReturn(Flux.just(entity));
+        when(mongoRepository.findFeed("user1", List.of("friend"))).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        Flux<Event> result = adapter.findByParticipantIdNot("user1");
+        Flux<Event> result = adapter.findFeed("user1", List.of("friend"));
 
         StepVerifier.create(result)
                 .expectNext(domain)

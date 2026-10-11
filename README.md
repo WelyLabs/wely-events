@@ -64,22 +64,34 @@ Deux mappers MapStruct assurent les traductions (`EventRestMapper`, `EventPersis
 
 ---
 
-## Le feed
+## Visibilité et feed
 
-Deux vues complémentaires, construites par la même collection :
+Chaque événement a une **visibilité**, choisie à la création :
+
+| Visibilité | Qui le voit, en plus de ceux qui y participent |
+|---|---|
+| `PUBLIC` | Tout le monde |
+| `FRIENDS` *(défaut)* | Les amis de l'organisateur |
+| `PRIVATE` | Personne |
+
+Un événement enregistré avant l'existence de ce champ n'en a pas : il compte comme `FRIENDS` (`Event.effectiveVisibility()`), sans migration.
 
 ```
                  ┌──────────────────────────────────┐
                  │      tous les événements         │
                  └──────────────────────────────────┘
                      │                        │
-    participantIds   │                        │  participantIds
-    CONTIENT userId  ▼                        ▼  NE CONTIENT PAS userId
+    participantIds   │                        │  pas inscrit, ET : à moi,
+    CONTIENT userId  ▼                        ▼  PUBLIC, ou FRIENDS d'un ami
         ┌────────────────────┐      ┌────────────────────┐
         │  /me/subscribed    │      │     /me/feed       │
         │  « mon calendrier »│      │  « à découvrir »   │
         └────────────────────┘      └────────────────────┘
 ```
+
+Le filtre du feed est **dans la requête Mongo** (`ReactiveEventMongoRepository.findFeed`), avec la liste d'amis lue dans `wely-social` : rien n'est chargé puis trié en mémoire. Si `wely-social` est injoignable, le feed se réduit aux événements publics et aux siens plutôt que d'échouer — il ne montre rien que l'amitié aurait été nécessaire pour voir.
+
+La même règle (`Event.isVisibleTo`) protège `GET /events/{id}` et l'inscription : un événement qu'on ne peut pas voir répond **404**, pour ne pas révéler qu'il existe, et on ne peut pas s'y inscrire en devinant son id. Se désinscrire reste toujours possible.
 
 L'abonnement est un simple `toggle` : le même endpoint inscrit ou désinscrit selon l'état courant, ce qui évite au client de connaître l'état avant d'agir.
 
@@ -92,12 +104,13 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | Méthode | Route | Description |
 |---|---|---|
 | `GET` | `/events/me/subscribed` | Événements auxquels l'utilisateur est inscrit |
-| `GET` | `/events/me/feed` | Événements auxquels il n'est pas inscrit |
-| `GET` | `/events/{id}` | Détail d'un événement |
-| `POST` | `/events` | Crée un événement (201) |
+| `GET` | `/events/me/feed` | Événements visibles auxquels il n'est pas inscrit |
+| `GET` | `/events/{id}` | Détail d'un événement, s'il est visible (404 sinon) |
+| `POST` | `/events` | Crée un événement (201). `visibility` facultatif, `FRIENDS` par défaut |
 | `POST` | `/events/{id}/subscribe` | Inscrit ou désinscrit l'utilisateur |
 | `DELETE` | `/events/{id}` | Supprime un événement (204) |
 | `POST` | `/events/me/free-slots` | Créneaux où l'utilisateur et des amis sont tous libres (voir plus bas) |
+| `GET` | `/events/users/{friendId}/calendar?from=&to=` | Calendrier d'un ami, dévoilé selon la proximité (voir plus bas) |
 
 ### OpenAPI
 
@@ -170,14 +183,29 @@ et renvoie les plages, dans cette période, où l'utilisateur **et** tous ces am
 - Les plages commencent et finissent au quart d'heure, comme la sélection du calendrier. 1 à 20 amis, au moins 15 min, période de 31 jours au plus (`EVT-BUS-004`).
 - Le calcul (`FreeSlotFinder`) est du Java pur : fusion des plages occupées, puis trous de la période. Deux index `{participantIds, startDate}` et `{organizerId, startDate}` servent la recherche.
 
+## Le calendrier d'un ami
+
+`GET /events/users/{friendId}/calendar?from=…&to=…` renvoie les événements qui occupent cet ami — ceux qu'il organise ou auxquels il participe — sur 62 jours au plus. Chaque entrée a toujours son début et sa fin ; le reste dépend de ce que l'appelant a le droit de voir (`CalendarDisclosure`) :
+
+| Événement dans le calendrier de Bob, vu par Alice | Ami | Proche | Intime |
+|---|---|---|---|
+| Qu'Alice peut voir de toute façon : elle y participe, il est public, ou partagé entre amis par quelqu'un dont elle est amie (Bob lui-même, typiquement) | complet | complet | complet |
+| Partagé entre amis par quelqu'un qu'Alice ne connaît pas | occupé | titre | complet |
+| Privé | occupé | occupé | occupé |
+
+« Complet » = titre, lieu, description et id ; « occupé » = début et fin seulement. Cacher dans le calendrier ce qu'Alice voit déjà dans son feed ne protégerait rien : la proximité ne joue que sur ce qu'elle ne pourrait pas voir autrement.
+
+La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /social-service/relationships/{friendId}`), avec le jeton de l'appelant. Ce service n'en garde aucune copie : une baisse de niveau y prend effet à la requête suivante. Pas amis : `EVT-BUS-003` (403).
+
 ## Gestion des erreurs
 
 | Code | HTTP | Signification |
 |---|---|---|
 | `EVT-BUS-001` | 404 | Événement introuvable |
 | `EVT-BUS-002` | 403 | Seul l'organisateur peut effectuer cette action |
-| `EVT-BUS-003` | 403 | Recherche de créneau avec quelqu'un qui n'est pas un ami |
+| `EVT-BUS-003` | 403 | Créneau ou calendrier demandé pour quelqu'un qui n'est pas un ami |
 | `EVT-BUS-004` | 400 | Recherche de créneau invalide (amis, durée ou période) |
+| `EVT-BUS-005` | 400 | Demande de calendrier invalide (le sien, période inversée ou de plus de 62 jours) |
 | `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
 | `EVT-VAL-001` | 400 | Validation du corps de requête, détail par champ |
 | `EVT-REQ-000` | *repris* | Chemin inconnu, méthode non autorisée |
@@ -251,7 +279,6 @@ kubectl apply -k overlays/local --server-side
 
 ## Limites connues
 
-- **`toggleSubscription` n'est pas atomique.** La séquence lecture → modification de la liste → sauvegarde expose à une perte de mise à jour si deux inscriptions se croisent. À remplacer par `$addToSet` / `$pull` côté MongoDB.
 - **Aucune pagination.** `/me/feed` et `/me/subscribed` renvoient l'intégralité du résultat.
 - **Le modèle de domaine est anémique.** `Event` est un POJO à setters sans invariant : rien n'interdit `endDate` antérieure à `startDate`, et la logique de création (`organizerId`, `subscribeByDefault`) vit dans le contrôleur au lieu d'une fabrique de domaine.
 - **`EventResponse` n'expose pas `participantIds`**, ce qui empêche le client de connaître l'état d'abonnement à la lecture.
