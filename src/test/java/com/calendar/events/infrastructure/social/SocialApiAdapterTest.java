@@ -22,10 +22,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class SocialFriendDirectoryAdapterTest {
+class SocialApiAdapterTest {
 
     private HttpServer server;
-    private SocialFriendDirectoryAdapter adapter;
+    private SocialApiAdapter adapter;
     private final AtomicReference<String> requestedUri = new AtomicReference<>();
     private final AtomicReference<String> authorization = new AtomicReference<>();
     private volatile int status = 200;
@@ -45,7 +45,7 @@ class SocialFriendDirectoryAdapterTest {
             }
         });
         server.start();
-        adapter = new SocialFriendDirectoryAdapter(new SocialClientConfig()
+        adapter = new SocialApiAdapter(new SocialClientConfig()
                 .socialWebClient("http://127.0.0.1:" + server.getAddress().getPort()));
     }
 
@@ -60,12 +60,12 @@ class SocialFriendDirectoryAdapterTest {
 
     @Test
     void findFriendIds_shouldRelayTheRequestersTokenAndReadTheIds() {
-        StepVerifier.create(adapter.findFriendIds("me")
+        StepVerifier.create(adapter.friendIdsOf("me")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("abc.def.ghi"))))
                 .expectNext(Set.of("lea", "hugo"))
                 .verifyComplete();
 
-        assertThat(requestedUri.get()).isEqualTo(SocialFriendDirectoryAdapter.FRIENDS_PATH);
+        assertThat(requestedUri.get()).isEqualTo(SocialApiAdapter.FRIENDS_PATH);
         assertThat(authorization.get()).isEqualTo("Bearer abc.def.ghi");
     }
 
@@ -73,7 +73,7 @@ class SocialFriendDirectoryAdapterTest {
     void findFriendIds_shouldReportAnOutage_whenSocialFails() {
         status = 502;
 
-        StepVerifier.create(adapter.findFriendIds("me")
+        StepVerifier.create(adapter.friendIdsOf("me")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("t"))))
                 .expectErrorMatches(e -> e instanceof EventException ex
                         && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
@@ -82,7 +82,7 @@ class SocialFriendDirectoryAdapterTest {
 
     @Test
     void findFriendIds_shouldRefuse_whenThereIsNoTokenToRelay() {
-        StepVerifier.create(adapter.findFriendIds("me"))
+        StepVerifier.create(adapter.friendIdsOf("me"))
                 .expectErrorMatches(e -> e instanceof EventException ex
                         && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
                 .verify();
@@ -94,7 +94,7 @@ class SocialFriendDirectoryAdapterTest {
     void findCloseness_shouldReadTheClosenessOfTheFriendship() {
         body = "{\"friendId\":\"bob\",\"closeness\":\"INTIMATE\",\"proposal\":null,\"proposedByFriend\":false}";
 
-        StepVerifier.create(adapter.findCloseness("me", "bob")
+        StepVerifier.create(adapter.closenessBetween("me", "bob")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("abc"))))
                 .expectNext(Closeness.INTIMATE)
                 .verifyComplete();
@@ -108,7 +108,7 @@ class SocialFriendDirectoryAdapterTest {
         status = 404;
         body = "{\"code\":\"SCL-BUS-007\"}";
 
-        StepVerifier.create(adapter.findCloseness("me", "carol")
+        StepVerifier.create(adapter.closenessBetween("me", "carol")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("t"))))
                 .verifyComplete();
     }
@@ -117,7 +117,7 @@ class SocialFriendDirectoryAdapterTest {
     void findCloseness_shouldReportAnOutage_whenSocialFails() {
         status = 500;
 
-        StepVerifier.create(adapter.findCloseness("me", "bob")
+        StepVerifier.create(adapter.closenessBetween("me", "bob")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("t"))))
                 .expectErrorMatches(e -> e instanceof EventException ex
                         && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
@@ -126,7 +126,7 @@ class SocialFriendDirectoryAdapterTest {
 
     @Test
     void findCloseness_shouldRefuse_whenThereIsNoTokenToRelay() {
-        StepVerifier.create(adapter.findCloseness("me", "bob"))
+        StepVerifier.create(adapter.closenessBetween("me", "bob"))
                 .expectErrorMatches(e -> e instanceof EventException ex
                         && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
                 .verify();

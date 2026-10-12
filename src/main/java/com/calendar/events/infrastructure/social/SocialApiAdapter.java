@@ -1,6 +1,6 @@
 package com.calendar.events.infrastructure.social;
 
-import com.calendar.events.domain.ports.FriendDirectory;
+import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Component
-public class SocialFriendDirectoryAdapter implements FriendDirectory {
+public class SocialApiAdapter implements SocialGraph {
 
     static final String FRIENDS_PATH = "/social-service/users?friendshipStatus=FRIENDS";
     static final String FRIENDSHIP_PATH = "/social-service/relationships/{friendId}";
@@ -32,12 +32,12 @@ public class SocialFriendDirectoryAdapter implements FriendDirectory {
 
     private final WebClient webClient;
 
-    public SocialFriendDirectoryAdapter(WebClient socialWebClient) {
+    public SocialApiAdapter(WebClient socialWebClient) {
         this.webClient = socialWebClient;
     }
 
     @Override
-    public Mono<Set<String>> findFriendIds(String userId) {
+    public Mono<Set<String>> friendIdsOf(String userId) {
         return bearerToken()
                 .flatMap(token -> webClient.get()
                         .uri(FRIENDS_PATH)
@@ -53,7 +53,7 @@ public class SocialFriendDirectoryAdapter implements FriendDirectory {
 
     /** wely-social answers 404 when the two are not friends: that is an empty answer, not a failure. */
     @Override
-    public Mono<Closeness> findCloseness(String userId, String friendId) {
+    public Mono<Closeness> closenessBetween(String userId, String friendId) {
         return bearerToken()
                 .flatMap(token -> webClient.get()
                         .uri(FRIENDSHIP_PATH, friendId)

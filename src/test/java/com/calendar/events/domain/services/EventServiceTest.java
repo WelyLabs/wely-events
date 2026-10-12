@@ -4,7 +4,7 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
-import com.calendar.events.domain.ports.FriendDirectory;
+import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +33,7 @@ class EventServiceTest {
     private EventRepository eventRepository;
 
     @Mock
-    private FriendDirectory friendDirectory;
+    private SocialGraph socialGraph;
 
     private EventService eventService;
 
@@ -42,7 +42,7 @@ class EventServiceTest {
 
     @BeforeEach
     void setUp() {
-        eventService = new EventService(eventRepository, friendDirectory, Clock.fixed(NOW, ZoneOffset.UTC));
+        eventService = new EventService(eventRepository, socialGraph, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -73,14 +73,14 @@ class EventServiceTest {
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectNext(event)
                 .verifyComplete();
-        verifyNoInteractions(friendDirectory);
+        verifyNoInteractions(socialGraph);
     }
 
     @Test
     void getEventById_shouldReturnAFriendsEvent_whenTheOrganizerIsAFriend() {
         Event event = by("bob", Visibility.FRIENDS);
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
-        when(friendDirectory.findFriendIds("alice")).thenReturn(Mono.just(Set.of("bob")));
+        when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of("bob")));
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectNext(event)
@@ -90,7 +90,7 @@ class EventServiceTest {
     @Test
     void getEventById_shouldAnswerNotFound_whenTheOrganizerIsNotAFriend() {
         when(eventRepository.findById("1")).thenReturn(Mono.just(by("carol", Visibility.FRIENDS)));
-        when(friendDirectory.findFriendIds("alice")).thenReturn(Mono.just(Set.of("bob")));
+        when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of("bob")));
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
@@ -104,7 +104,7 @@ class EventServiceTest {
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
                 .verify();
-        verifyNoInteractions(friendDirectory);
+        verifyNoInteractions(socialGraph);
     }
 
     @Test
@@ -215,7 +215,7 @@ class EventServiceTest {
     @Test
     void toggleSubscription_shouldRefuseToJoinAnEventTheUserCannotSee() {
         when(eventRepository.findById("1")).thenReturn(Mono.just(by("carol", Visibility.FRIENDS)));
-        when(friendDirectory.findFriendIds("user123")).thenReturn(Mono.just(Set.of()));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of()));
 
         StepVerifier.create(eventService.toggleSubscription("1", "user123"))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
@@ -277,7 +277,7 @@ class EventServiceTest {
     @Test
     void getFeedEvents_shouldPassTheUsersFriends() {
         Event event = Event.builder().id("2").build();
-        when(friendDirectory.findFriendIds("user123")).thenReturn(Mono.just(Set.of("bob")));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of("bob")));
         when(eventRepository.findFeed("user123", Set.of("bob"))).thenReturn(Flux.just(event));
 
         StepVerifier.create(eventService.getFeedEvents("user123"))
@@ -287,7 +287,7 @@ class EventServiceTest {
 
     @Test
     void getFeedEvents_shouldFallBackToNoFriends_whenTheSocialServiceIsDown() {
-        when(friendDirectory.findFriendIds("user123"))
+        when(socialGraph.friendIdsOf("user123"))
                 .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
         when(eventRepository.findFeed("user123", Set.of())).thenReturn(Flux.empty());
 
@@ -298,7 +298,7 @@ class EventServiceTest {
 
     @Test
     void getFeedEvents_shouldNotHideOtherFailures() {
-        when(friendDirectory.findFriendIds("user123")).thenReturn(Mono.error(new IllegalStateException("bug")));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.error(new IllegalStateException("bug")));
 
         StepVerifier.create(eventService.getFeedEvents("user123"))
                 .expectError(IllegalStateException.class)
@@ -308,7 +308,7 @@ class EventServiceTest {
     @Test
     void getMapEvents_shouldAskForWhatIsVisibleInTheAreaFromNowOn() {
         Event event = Event.builder().id("2").build();
-        when(friendDirectory.findFriendIds("user123")).thenReturn(Mono.just(Set.of("bob")));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of("bob")));
         when(eventRepository.findOnMap("user123", Set.of("bob"), LYON, NOW, EventService.MAP_LIMIT)).thenReturn(Flux.just(event));
 
         StepVerifier.create(eventService.getMapEvents("user123", LYON))
@@ -318,7 +318,7 @@ class EventServiceTest {
 
     @Test
     void getMapEvents_shouldFallBackToNoFriends_whenTheSocialServiceIsDown() {
-        when(friendDirectory.findFriendIds("user123"))
+        when(socialGraph.friendIdsOf("user123"))
                 .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
         when(eventRepository.findOnMap("user123", Set.of(), LYON, NOW, EventService.MAP_LIMIT)).thenReturn(Flux.empty());
 
@@ -329,7 +329,7 @@ class EventServiceTest {
 
     @Test
     void getMapEvents_shouldNotHideOtherFailures() {
-        when(friendDirectory.findFriendIds("user123")).thenReturn(Mono.error(new IllegalStateException("bug")));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.error(new IllegalStateException("bug")));
 
         StepVerifier.create(eventService.getMapEvents("user123", LYON))
                 .expectError(IllegalStateException.class)

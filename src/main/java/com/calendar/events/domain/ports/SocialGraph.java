@@ -6,10 +6,10 @@ import reactor.core.publisher.Mono;
 import java.util.Set;
 
 /** Who a user is friends with, as the social graph knows it. */
-public interface FriendDirectory {
+public interface SocialGraph {
 
-    Mono<Set<String>> findFriendIds(String userId);
+    Mono<Set<String>> friendIdsOf(String userId);
 
     /** How close the user is to this friend; empty if they are not friends. */
-    Mono<Closeness> findCloseness(String userId, String friendId);
+    Mono<Closeness> closenessBetween(String userId, String friendId);
 }
