@@ -3,7 +3,7 @@ package com.calendar.events.domain.services;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.ports.EventRepository;
-import com.calendar.events.domain.ports.FriendDirectory;
+import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ class FreeSlotServiceTest {
     private EventRepository eventRepository;
 
     @Mock
-    private FriendDirectory friendDirectory;
+    private SocialGraph socialGraph;
 
     @InjectMocks
     private FreeSlotService service;
@@ -50,7 +50,7 @@ class FreeSlotServiceTest {
 
     @Test
     void findCommonFreeRanges_shouldSearchTheRequesterAndTheFriends_andReturnTheGaps() {
-        when(friendDirectory.findFriendIds("me")).thenReturn(Mono.just(Set.of("lea", "hugo", "ines")));
+        when(socialGraph.friendIdsOf("me")).thenReturn(Mono.just(Set.of("lea", "hugo", "ines")));
         // Léa is busy 12:00-13:00; Hugo organizes an event with no end at 15:00, so 15:00-16:00.
         Event lea = Event.builder().startDate(TEN.plus(Duration.ofHours(2))).endDate(TEN.plus(Duration.ofHours(3))).build();
         Event hugo = Event.builder().startDate(TEN.plus(Duration.ofHours(5))).build();
@@ -66,7 +66,7 @@ class FreeSlotServiceTest {
 
     @Test
     void findCommonFreeRanges_shouldRefuseSomeoneWhoIsNotAFriend_withoutReadingTheirEvents() {
-        when(friendDirectory.findFriendIds("me")).thenReturn(Mono.just(Set.of("lea")));
+        when(socialGraph.friendIdsOf("me")).thenReturn(Mono.just(Set.of("lea")));
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea", "stranger"), WINDOW, HOUR))
                 .expectErrorMatches(e -> failsWith(e, EventErrorCode.NOT_A_FRIEND))
@@ -77,7 +77,7 @@ class FreeSlotServiceTest {
 
     @Test
     void findCommonFreeRanges_shouldFailClosed_whenTheFriendListIsEmpty() {
-        when(friendDirectory.findFriendIds("me")).thenReturn(Mono.empty());
+        when(socialGraph.friendIdsOf("me")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), WINDOW, HOUR))
                 .expectErrorMatches(e -> failsWith(e, EventErrorCode.NOT_A_FRIEND))
@@ -88,7 +88,7 @@ class FreeSlotServiceTest {
 
     @Test
     void findCommonFreeRanges_shouldPropagateASocialOutage() {
-        when(friendDirectory.findFriendIds("me"))
+        when(socialGraph.friendIdsOf("me"))
                 .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), WINDOW, HOUR))
@@ -115,14 +115,14 @@ class FreeSlotServiceTest {
                     .verify();
         }
 
-        verify(friendDirectory, never()).findFriendIds(any());
+        verify(socialGraph, never()).friendIdsOf(any());
         verify(eventRepository, never()).findOccupying(anyCollection(), any(), any());
     }
 
     @Test
     void findCommonFreeRanges_shouldAcceptAMonthGrid_ofSixWeeks() {
         TimeRange sixWeeks = new TimeRange(TEN, TEN.plus(Duration.ofDays(42)));
-        when(friendDirectory.findFriendIds("me")).thenReturn(Mono.just(Set.of("lea")));
+        when(socialGraph.friendIdsOf("me")).thenReturn(Mono.just(Set.of("lea")));
         when(eventRepository.findOccupying(anyCollection(), any(), any())).thenReturn(Flux.empty());
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), sixWeeks, HOUR))
