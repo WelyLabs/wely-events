@@ -10,6 +10,7 @@ import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.GeoSpatialIndexType;
 import org.springframework.data.mongodb.core.index.GeoSpatialIndexed;
+import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -45,4 +46,15 @@ public class EventEntity {
     private List<String> participantIds = new ArrayList<>();
     /** PUBLIC, FRIENDS or PRIVATE. Absent on events stored before it existed, which count as FRIENDS. */
     private String visibility;
+    /**
+     * Bumped by every change to who takes part, so wely-chat can tell a newer member list from a
+     * stale one. Absent on events stored before the group chat existed, which publish as 0.
+     */
+    private Long groupVersion;
+    /**
+     * Whether wely-chat has been sent the current member list. False or absent: the relay sends it.
+     * Set in the same update as the change, which makes this document its own outbox.
+     */
+    @Indexed
+    private Boolean groupSynced;
 }

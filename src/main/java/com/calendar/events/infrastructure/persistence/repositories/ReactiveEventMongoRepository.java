@@ -53,13 +53,27 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
                                 Instant endingAfter, Instant startedAfter, Limit limit);
 
     // $addToSet and $pull touch only the array, so concurrent subscriptions cannot overwrite each other.
-    @Query("{ '_id': ?0 }")
-    @Update("{ '$addToSet': { 'participantIds': ?1 } }")
+    // The same update marks the group for the relay: no window where the change exists unannounced.
+    // Matching on the absent participant (or present one) keeps a repeated click from bumping the version.
+    @Query("{ '_id': ?0, 'participantIds': { $ne: ?1 } }")
+    @Update("{ '$addToSet': { 'participantIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
     Mono<Long> addParticipant(String eventId, String userId);
 
-    @Query("{ '_id': ?0 }")
-    @Update("{ '$pull': { 'participantIds': ?1 } }")
+    @Query("{ '_id': ?0, 'participantIds': ?1 }")
+    @Update("{ '$pull': { 'participantIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
     Mono<Long> removeParticipant(String eventId, String userId);
+
+    /** Events whose member list wely-chat has not been sent yet, oldest first. Absent counts as not sent. */
+    @Query(value = "{ 'groupSynced': { $in: [ false, null ] } }", sort = "{ '_id': 1 }")
+    Flux<EventEntity> findGroupsToPublish(Limit limit);
+
+    /**
+     * Marks the group sent, unless it changed since it was read: the version no longer matches,
+     * nothing is updated, and the relay sends the newer list on its next pass.
+     */
+    @Query("{ '_id': ?0, 'groupVersion': ?1 }")
+    @Update("{ '$set': { 'groupSynced': true } }")
+    Mono<Long> markGroupPublished(String eventId, Long groupVersion);
 
     /**
      * Events the users take part in or organise that overlap [from, to). An event without an end
