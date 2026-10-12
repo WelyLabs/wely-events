@@ -3,7 +3,7 @@ package com.calendar.events.domain.services;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.ports.EventRepository;
-import com.calendar.events.domain.ports.FriendDirectory;
+import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import reactor.core.publisher.Flux;
@@ -29,11 +29,11 @@ public class FreeSlotService {
     static final int MAX_FRIENDS = 20;
 
     private final EventRepository eventRepository;
-    private final FriendDirectory friendDirectory;
+    private final SocialGraph socialGraph;
 
-    public FreeSlotService(EventRepository eventRepository, FriendDirectory friendDirectory) {
+    public FreeSlotService(EventRepository eventRepository, SocialGraph socialGraph) {
         this.eventRepository = eventRepository;
-        this.friendDirectory = friendDirectory;
+        this.socialGraph = socialGraph;
     }
 
     /** Ranges of at least {@code duration} inside {@code window} where nobody is busy. */
@@ -46,7 +46,7 @@ public class FreeSlotService {
         Set<String> everyone = new HashSet<>(friendIds);
         everyone.add(requesterId);
 
-        return friendDirectory.findFriendIds(requesterId)
+        return socialGraph.friendIdsOf(requesterId)
                 // Fails closed: no answer is treated as no friends, not as permission.
                 .defaultIfEmpty(Set.of())
                 .flatMap(friends -> friends.containsAll(friendIds)

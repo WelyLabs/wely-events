@@ -5,7 +5,7 @@ import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
-import com.calendar.events.domain.ports.FriendDirectory;
+import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ public class EventService {
     public static final int MAP_LIMIT = 200;
 
     private final EventRepository eventRepository;
-    private final FriendDirectory friendDirectory;
+    private final SocialGraph socialGraph;
     private final Clock clock;
 
     public Flux<Event> getAllEvents() {
@@ -40,7 +40,7 @@ public class EventService {
     /** Who takes part in an event the viewer may see; a social outage just names no friend. */
     public Mono<Participants> getParticipants(String id, String viewerId) {
         return getEventById(id, viewerId)
-                .flatMap(event -> friendDirectory.findFriendIds(viewerId)
+                .flatMap(event -> socialGraph.friendIdsOf(viewerId)
                         .defaultIfEmpty(Set.of())
                         .onErrorResume(EventService::isSocialOutage, error -> Mono.just(Set.of()))
                         .map(friendIds -> Participants.seenBy(event, viewerId, friendIds)));
@@ -98,7 +98,7 @@ public class EventService {
      * friendship would have been needed for.
      */
     public Flux<Event> getFeedEvents(String userId) {
-        return friendDirectory.findFriendIds(userId)
+        return socialGraph.friendIdsOf(userId)
                 .defaultIfEmpty(Set.of())
                 .onErrorResume(EventService::isSocialOutage, error -> Mono.just(Set.of()))
                 .flatMapMany(friendIds -> eventRepository.findFeed(userId, friendIds));
@@ -109,7 +109,7 @@ public class EventService {
      * Like the feed, a social outage narrows it to what needs no friendship.
      */
     public Flux<Event> getMapEvents(String userId, GeoBox box) {
-        return friendDirectory.findFriendIds(userId)
+        return socialGraph.friendIdsOf(userId)
                 .defaultIfEmpty(Set.of())
                 .onErrorResume(EventService::isSocialOutage, error -> Mono.just(Set.of()))
                 .flatMapMany(friendIds -> eventRepository.findOnMap(userId, friendIds, box, clock.instant(), MAP_LIMIT));
@@ -123,7 +123,7 @@ public class EventService {
         if (event.effectiveVisibility() != Visibility.FRIENDS) {
             return Mono.empty();
         }
-        return friendDirectory.findFriendIds(viewerId)
+        return socialGraph.friendIdsOf(viewerId)
                 .filter(friendIds -> event.isVisibleTo(viewerId, friendIds))
                 .map(friendIds -> event);
     }

@@ -6,7 +6,7 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
-import com.calendar.events.domain.ports.FriendDirectory;
+import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,13 +39,13 @@ class FriendCalendarServiceTest {
     @Mock
     private EventRepository eventRepository;
     @Mock
-    private FriendDirectory friendDirectory;
+    private SocialGraph socialGraph;
 
     private FriendCalendarService service;
 
     @BeforeEach
     void setUp() {
-        service = new FriendCalendarService(eventRepository, friendDirectory);
+        service = new FriendCalendarService(eventRepository, socialGraph);
     }
 
     private static Event event(String title, String organizer, Visibility visibility, int dayOffset) {
@@ -61,8 +61,8 @@ class FriendCalendarServiceTest {
 
     @Test
     void getFriendCalendar_shouldDiscloseEachEventAndSortThemByStart() {
-        when(friendDirectory.findCloseness("alice", "bob")).thenReturn(Mono.just(Closeness.FRIEND));
-        when(friendDirectory.findFriendIds("alice")).thenReturn(Mono.just(Set.of("bob")));
+        when(socialGraph.closenessBetween("alice", "bob")).thenReturn(Mono.just(Closeness.FRIEND));
+        when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of("bob")));
         when(eventRepository.findOccupying(Set.of("bob"), WEEK.start(), WEEK.end())).thenReturn(Flux.just(
                 event("stranger's party", "carol", Visibility.FRIENDS, 3),
                 event("bob's dinner", "bob", Visibility.FRIENDS, 1)));
@@ -75,8 +75,8 @@ class FriendCalendarServiceTest {
 
     @Test
     void getFriendCalendar_shouldRevealMore_toACloserFriend() {
-        when(friendDirectory.findCloseness("alice", "bob")).thenReturn(Mono.just(Closeness.CLOSE));
-        when(friendDirectory.findFriendIds("alice")).thenReturn(Mono.just(Set.of("bob")));
+        when(socialGraph.closenessBetween("alice", "bob")).thenReturn(Mono.just(Closeness.CLOSE));
+        when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of("bob")));
         when(eventRepository.findOccupying(any(), any(), any()))
                 .thenReturn(Flux.just(event("stranger's party", "carol", Visibility.FRIENDS, 3)));
 
@@ -87,8 +87,8 @@ class FriendCalendarServiceTest {
 
     @Test
     void getFriendCalendar_shouldRefuse_whenNotFriends() {
-        when(friendDirectory.findCloseness("alice", "carol")).thenReturn(Mono.empty());
-        when(friendDirectory.findFriendIds("alice")).thenReturn(Mono.just(Set.of()));
+        when(socialGraph.closenessBetween("alice", "carol")).thenReturn(Mono.empty());
+        when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of()));
 
         StepVerifier.create(service.getFriendCalendar("alice", "carol", WEEK))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.NOT_A_FRIEND))
@@ -98,9 +98,9 @@ class FriendCalendarServiceTest {
 
     @Test
     void getFriendCalendar_shouldPassOnASocialOutage() {
-        when(friendDirectory.findCloseness("alice", "bob"))
+        when(socialGraph.closenessBetween("alice", "bob"))
                 .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
-        when(friendDirectory.findFriendIds("alice")).thenReturn(Mono.just(Set.of()));
+        when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of()));
 
         StepVerifier.create(service.getFriendCalendar("alice", "bob", WEEK))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.SOCIAL_UNAVAILABLE))
@@ -112,7 +112,7 @@ class FriendCalendarServiceTest {
         StepVerifier.create(service.getFriendCalendar("alice", "alice", WEEK))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_CALENDAR_REQUEST))
                 .verify();
-        verifyNoInteractions(friendDirectory, eventRepository);
+        verifyNoInteractions(socialGraph, eventRepository);
     }
 
     @Test
@@ -122,6 +122,6 @@ class FriendCalendarServiceTest {
         StepVerifier.create(service.getFriendCalendar("alice", "bob", tooLong))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_CALENDAR_REQUEST))
                 .verify();
-        verifyNoInteractions(friendDirectory, eventRepository);
+        verifyNoInteractions(socialGraph, eventRepository);
     }
 }
