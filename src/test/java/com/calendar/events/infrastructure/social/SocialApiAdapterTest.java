@@ -22,10 +22,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class SocialFriendDirectoryAdapterTest {
+class SocialApiAdapterTest {
 
     private HttpServer server;
-    private SocialFriendDirectoryAdapter adapter;
+    private SocialApiAdapter adapter;
     private final AtomicReference<String> requestedUri = new AtomicReference<>();
     private final AtomicReference<String> authorization = new AtomicReference<>();
     private volatile int status = 200;
@@ -45,7 +45,7 @@ class SocialFriendDirectoryAdapterTest {
             }
         });
         server.start();
-        adapter = new SocialFriendDirectoryAdapter(new SocialClientConfig()
+        adapter = new SocialApiAdapter(new SocialClientConfig()
                 .socialWebClient("http://127.0.0.1:" + server.getAddress().getPort()));
     }
 
@@ -65,7 +65,7 @@ class SocialFriendDirectoryAdapterTest {
                 .expectNext(Set.of("lea", "hugo"))
                 .verifyComplete();
 
-        assertThat(requestedUri.get()).isEqualTo(SocialFriendDirectoryAdapter.FRIENDS_PATH);
+        assertThat(requestedUri.get()).isEqualTo(SocialApiAdapter.FRIENDS_PATH);
         assertThat(authorization.get()).isEqualTo("Bearer abc.def.ghi");
     }
 

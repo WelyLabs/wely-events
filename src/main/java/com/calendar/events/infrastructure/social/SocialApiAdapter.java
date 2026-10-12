@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Component
-public class SocialFriendDirectoryAdapter implements SocialGraph {
+public class SocialApiAdapter implements SocialGraph {
 
     static final String FRIENDS_PATH = "/social-service/users?friendshipStatus=FRIENDS";
     static final String FRIENDSHIP_PATH = "/social-service/relationships/{friendId}";
@@ -32,7 +32,7 @@ public class SocialFriendDirectoryAdapter implements SocialGraph {
 
     private final WebClient webClient;
 
-    public SocialFriendDirectoryAdapter(WebClient socialWebClient) {
+    public SocialApiAdapter(WebClient socialWebClient) {
         this.webClient = socialWebClient;
     }
 

@@ -8,7 +8,7 @@ class SocialClientConfigTest {
 
     @Test
     void socialWebClient_shouldBeBuiltForTheConfiguredUrl() {
-        // The URL itself is exercised end to end by SocialFriendDirectoryAdapterTest.
+        // The URL itself is exercised end to end by SocialApiAdapterTest.
         assertThat(new SocialClientConfig().socialWebClient("http://social:8083")).isNotNull();
     }
 }
