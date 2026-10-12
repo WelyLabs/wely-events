@@ -54,6 +54,13 @@ public enum EventErrorCode {
             "EVT-TEC-001",
             "Social service unavailable",
             "Friendships could not be checked; try again shortly.",
+            HttpStatus.BAD_GATEWAY),
+
+    /** Raised by the group relay in the background: no request waits on it, the next pass retries. */
+    BROKER_UNAVAILABLE(
+            "EVT-TEC-002",
+            "Message broker unavailable",
+            "The event's members could not be sent to Kafka; they will be sent again shortly.",
             HttpStatus.BAD_GATEWAY);
 
     private final String code;
