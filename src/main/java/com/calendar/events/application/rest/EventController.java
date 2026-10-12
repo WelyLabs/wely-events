@@ -5,6 +5,7 @@ import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
+import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.mappers.EventRestMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -54,6 +55,13 @@ public class EventController {
     public Mono<EventResponse> getEventById(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         return eventService.getEventById(id, userId).map(mapper::toResponse);
+    }
+
+    /** Who takes part: everyone for those involved, how many and which friends for the others. */
+    @GetMapping("/{id}/participants")
+    public Mono<ParticipantsResponse> getParticipants(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
+        String userId = jwt.getClaimAsString("businessId");
+        return eventService.getParticipants(id, userId).map(mapper::toResponse);
     }
 
     @PostMapping

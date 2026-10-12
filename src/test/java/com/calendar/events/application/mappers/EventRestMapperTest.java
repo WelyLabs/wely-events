@@ -2,17 +2,20 @@ package com.calendar.events.application.mappers;
 
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
+import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.dtos.CalendarEntryResponse;
 import com.calendar.events.application.dtos.CoordinatesDto;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoPoint;
+import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
 import java.time.Instant;
 import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -108,5 +111,12 @@ class EventRestMapperTest {
     void toDomain_shouldLeaveATypedLocationWithoutCoordinates() {
         assertNull(mapper.toDomain(EventRequest.builder().title("t").location("Lyon").build()).getCoordinates());
         assertNull(mapper.toResponse(Event.builder().location("Lyon").build()).getCoordinates());
+    }
+
+    @Test
+    void toResponse_shouldMapParticipantsAsIs() {
+        ParticipantsResponse response = mapper.toResponse(new Participants(3, List.of("a", "b", "c"), List.of("b")));
+
+        assertEquals(new ParticipantsResponse(3, List.of("a", "b", "c"), List.of("b")), response);
     }
 }

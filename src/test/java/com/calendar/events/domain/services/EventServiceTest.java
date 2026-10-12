@@ -2,6 +2,7 @@ package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.FriendDirectory;
@@ -123,6 +124,71 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("missing", "alice"))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    private static Event withParticipants(String organizer, Visibility visibility, String... participants) {
+        Event event = by(organizer, visibility);
+        event.getParticipantIds().addAll(List.of(participants));
+        return event;
+    }
+
+    @Test
+    void getParticipants_shouldListEveryoneAndNameFriends_forAParticipant() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("carol", Visibility.PRIVATE, "alice", "bob", "dave")));
+        when(friendDirectory.findFriendIds("alice")).thenReturn(Mono.just(Set.of("dave")));
+
+        StepVerifier.create(eventService.getParticipants("1", "alice"))
+                .expectNext(new Participants(3, List.of("alice", "bob", "dave"), List.of("dave")))
+                .verifyComplete();
+    }
+
+    @Test
+    void getParticipants_shouldOnlyCountAndNameFriends_forSomeoneNotInvolved() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("carol", Visibility.PUBLIC, "alice", "bob")));
+        when(friendDirectory.findFriendIds("erin")).thenReturn(Mono.just(Set.of("bob")));
+
+        StepVerifier.create(eventService.getParticipants("1", "erin"))
+                .expectNext(new Participants(2, List.of(), List.of("bob")))
+                .verifyComplete();
+    }
+
+    @Test
+    void getParticipants_shouldNameNoFriend_whenTheSocialServiceIsDown() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("carol", Visibility.PUBLIC, "alice")));
+        when(friendDirectory.findFriendIds("carol"))
+                .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
+
+        StepVerifier.create(eventService.getParticipants("1", "carol"))
+                .expectNext(new Participants(1, List.of("alice"), List.of()))
+                .verifyComplete();
+    }
+
+    @Test
+    void getParticipants_shouldNotHideOtherFailures() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("carol", Visibility.PUBLIC, "alice")));
+        when(friendDirectory.findFriendIds("carol")).thenReturn(Mono.error(new IllegalStateException("boom")));
+
+        StepVerifier.create(eventService.getParticipants("1", "carol"))
+                .expectError(IllegalStateException.class)
+                .verify();
+    }
+
+    @Test
+    void getParticipants_shouldAnswerNotFound_forAnEventTheViewerCannotSee() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("carol", Visibility.PRIVATE, "alice")));
+
+        StepVerifier.create(eventService.getParticipants("1", "erin"))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    @Test
+    void getParticipants_shouldAnswerNotFound_whenMissing() {
+        when(eventRepository.findById("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.getParticipants("1", "erin"))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
