@@ -59,7 +59,7 @@ class SocialApiAdapterTest {
     }
 
     @Test
-    void findFriendIds_shouldRelayTheRequestersTokenAndReadTheIds() {
+    void friendIdsOf_shouldRelayTheRequestersTokenAndReadTheIds() {
         StepVerifier.create(adapter.friendIdsOf("me")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("abc.def.ghi"))))
                 .expectNext(Set.of("lea", "hugo"))
@@ -70,7 +70,7 @@ class SocialApiAdapterTest {
     }
 
     @Test
-    void findFriendIds_shouldReportAnOutage_whenSocialFails() {
+    void friendIdsOf_shouldReportAnOutage_whenSocialFails() {
         status = 502;
 
         StepVerifier.create(adapter.friendIdsOf("me")
@@ -81,7 +81,7 @@ class SocialApiAdapterTest {
     }
 
     @Test
-    void findFriendIds_shouldRefuse_whenThereIsNoTokenToRelay() {
+    void friendIdsOf_shouldRefuse_whenThereIsNoTokenToRelay() {
         StepVerifier.create(adapter.friendIdsOf("me"))
                 .expectErrorMatches(e -> e instanceof EventException ex
                         && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
@@ -91,7 +91,7 @@ class SocialApiAdapterTest {
     }
 
     @Test
-    void findCloseness_shouldReadTheClosenessOfTheFriendship() {
+    void closenessBetween_shouldReadTheClosenessOfTheFriendship() {
         body = "{\"friendId\":\"bob\",\"closeness\":\"INTIMATE\",\"proposal\":null,\"proposedByFriend\":false}";
 
         StepVerifier.create(adapter.closenessBetween("me", "bob")
@@ -104,7 +104,7 @@ class SocialApiAdapterTest {
     }
 
     @Test
-    void findCloseness_shouldBeEmpty_whenSocialSaysTheyAreNotFriends() {
+    void closenessBetween_shouldBeEmpty_whenSocialSaysTheyAreNotFriends() {
         status = 404;
         body = "{\"code\":\"SCL-BUS-007\"}";
 
@@ -114,7 +114,7 @@ class SocialApiAdapterTest {
     }
 
     @Test
-    void findCloseness_shouldReportAnOutage_whenSocialFails() {
+    void closenessBetween_shouldReportAnOutage_whenSocialFails() {
         status = 500;
 
         StepVerifier.create(adapter.closenessBetween("me", "bob")
@@ -125,7 +125,7 @@ class SocialApiAdapterTest {
     }
 
     @Test
-    void findCloseness_shouldRefuse_whenThereIsNoTokenToRelay() {
+    void closenessBetween_shouldRefuse_whenThereIsNoTokenToRelay() {
         StepVerifier.create(adapter.closenessBetween("me", "bob"))
                 .expectErrorMatches(e -> e instanceof EventException ex
                         && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
