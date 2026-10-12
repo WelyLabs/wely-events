@@ -3,8 +3,10 @@ package com.calendar.events.application.mappers;
 import com.calendar.events.application.dtos.CalendarEntryResponse;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.Participants;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
+import com.calendar.events.application.dtos.ParticipantsResponse;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -19,4 +21,6 @@ public interface EventRestMapper {
     EventResponse toResponse(Event domain);
 
     CalendarEntryResponse toResponse(CalendarEntry entry);
+
+    ParticipantsResponse toResponse(Participants participants);
 }

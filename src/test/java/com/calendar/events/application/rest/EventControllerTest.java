@@ -2,9 +2,11 @@ package com.calendar.events.application.rest;
 
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
+import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.domain.models.Participants;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import com.calendar.events.domain.services.EventService;
@@ -20,6 +22,7 @@ import reactor.test.StepVerifier;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -89,6 +92,31 @@ class EventControllerTest {
         StepVerifier.create(result)
                 .expectNext(response)
                 .verifyComplete();
+    }
+
+    @Test
+    void getParticipants_shouldAskOnBehalfOfTheCaller() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        Participants participants = new Participants(2, List.of(), List.of("user2"));
+        ParticipantsResponse response = new ParticipantsResponse(2, List.of(), List.of("user2"));
+
+        when(eventService.getParticipants("1", "user1")).thenReturn(Mono.just(participants));
+        when(mapper.toResponse(participants)).thenReturn(response);
+
+        StepVerifier.create(controller.getParticipants("1", jwt))
+                .expectNext(response)
+                .verifyComplete();
+    }
+
+    @Test
+    void getParticipants_shouldPassOnNotFound() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.getParticipants("1", "user1"))
+                .thenReturn(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+
+        StepVerifier.create(controller.getParticipants("1", jwt))
+                .expectError(EventException.class)
+                .verify();
     }
 
     @Test

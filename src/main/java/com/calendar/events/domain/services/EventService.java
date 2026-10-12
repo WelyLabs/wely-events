@@ -2,6 +2,7 @@ package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
@@ -34,6 +35,15 @@ public class EventService {
         return eventRepository.findById(id)
                 .flatMap(event -> requireVisible(event, viewerId))
                 .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+    }
+
+    /** Who takes part in an event the viewer may see; a social outage just names no friend. */
+    public Mono<Participants> getParticipants(String id, String viewerId) {
+        return getEventById(id, viewerId)
+                .flatMap(event -> socialGraph.friendIdsOf(viewerId)
+                        .defaultIfEmpty(Set.of())
+                        .onErrorResume(EventService::isSocialOutage, error -> Mono.just(Set.of()))
+                        .map(friendIds -> Participants.seenBy(event, viewerId, friendIds)));
     }
 
     public Mono<Event> createEvent(Event event) {
