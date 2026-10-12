@@ -41,14 +41,14 @@ class ParticipantsTest {
     void seenBy_shouldNameTheViewersFriendsAmongThem_inStoredOrder() {
         Participants seen = Participants.seenBy(organizedBy("carol", "dave", "alice", "bob"), "erin", Set.of("alice", "dave", "zoe"));
 
-        assertThat(seen.friendIds()).containsExactly("dave", "alice");
+        assertThat(seen.friendsGoingIds()).containsExactly("dave", "alice");
     }
 
     @Test
     void seenBy_shouldNeverNameTheViewerAsAFriend() {
         Participants seen = Participants.seenBy(organizedBy("carol", "alice", "bob"), "bob", Set.of("alice", "bob"));
 
-        assertThat(seen.friendIds()).containsExactly("alice");
+        assertThat(seen.friendsGoingIds()).containsExactly("alice");
     }
 
     @Test
@@ -57,6 +57,6 @@ class ParticipantsTest {
 
         assertThat(seen.count()).isZero();
         assertThat(seen.participantIds()).isEmpty();
-        assertThat(seen.friendIds()).isEmpty();
+        assertThat(seen.friendsGoingIds()).isEmpty();
     }
 }

@@ -4,11 +4,11 @@ import java.util.List;
 import java.util.Set;
 
 /** Who takes part in an event, as one viewer may see it. */
-public record Participants(int count, List<String> participantIds, List<String> friendIds) {
+public record Participants(int count, List<String> participantIds, List<String> friendsGoingIds) {
 
     public Participants {
         participantIds = List.copyOf(participantIds);
-        friendIds = List.copyOf(friendIds);
+        friendsGoingIds = List.copyOf(friendsGoingIds);
     }
 
     /** The full list only for those involved; anyone else sees how many and which friends. */

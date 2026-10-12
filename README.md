@@ -106,7 +106,7 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `GET` | `/events/me/subscribed` | Événements auxquels l'utilisateur est inscrit |
 | `GET` | `/events/me/feed` | Événements visibles auxquels il n'est pas inscrit |
 | `GET` | `/events/{id}` | Détail d'un événement, s'il est visible (404 sinon) |
-| `GET` | `/events/{id}/participants` | Participants d'un événement visible (404 sinon) : `count`, `friendIds` (les amis de l'appelant parmi eux) et `participantIds`, la liste complète, réservée à l'organisateur et aux participants (vide pour les autres) |
+| `GET` | `/events/{id}/participants` | Participants d'un événement visible (404 sinon) : `count`, `friendsGoingIds` (les amis de l'appelant parmi eux) et `participantIds`, la liste complète, réservée à l'organisateur et aux participants (vide pour les autres) |
 | `GET` | `/events/map?south=&west=&north=&east=` | Événements à venir que l'appelant peut voir, dans la zone affichée par la carte « Explorer » : requête `$geoWithin` sur l'index `2dsphere`, 200 au plus, les plus proches dans le temps d'abord. Zone de 90° au plus de côté (400 sinon) |
 | `POST` | `/events` | Crée un événement (201). `visibility` facultatif, `FRIENDS` par défaut |
 | `POST` | `/events/{id}/subscribe` | Inscrit ou désinscrit l'utilisateur |
