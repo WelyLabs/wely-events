@@ -1,6 +1,9 @@
 package com.calendar.events.infrastructure.messaging.adapters;
 
+import com.calendar.events.exception.EventErrorCode;
+import com.calendar.events.exception.EventException;
 import com.calendar.events.infrastructure.messaging.models.EventGroupChangedDTO;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -34,18 +37,27 @@ class KafkaEventGroupPublisherTest {
         verify(streamBridge).send(KafkaEventGroupPublisher.DESTINATION, GROUP);
     }
 
-    @Test
-    void publish_shouldFail_whenKafkaRefusesTheRecord() {
-        when(streamBridge.send(KafkaEventGroupPublisher.DESTINATION, GROUP)).thenReturn(false);
-
-        StepVerifier.create(publisher.publish(GROUP)).verifyError(IllegalStateException.class);
+    private static boolean brokerUnavailable(Throwable error) {
+        return error instanceof EventException e && e.getErrorCode() == EventErrorCode.BROKER_UNAVAILABLE;
     }
 
     @Test
-    void publish_shouldFail_whenTheBridgeThrows() {
-        when(streamBridge.send(KafkaEventGroupPublisher.DESTINATION, GROUP))
-                .thenThrow(new IllegalStateException("broker down"));
+    void publish_shouldFailAsBrokerUnavailable_whenKafkaRefusesTheRecord() {
+        when(streamBridge.send(KafkaEventGroupPublisher.DESTINATION, GROUP)).thenReturn(false);
 
-        StepVerifier.create(publisher.publish(GROUP)).verifyError(IllegalStateException.class);
+        StepVerifier.create(publisher.publish(GROUP))
+                .expectErrorMatches(KafkaEventGroupPublisherTest::brokerUnavailable)
+                .verify();
+    }
+
+    @Test
+    @DisplayName("the binder's own exception does not leak out of the adapter")
+    void publish_shouldTranslateABinderFailure() {
+        when(streamBridge.send(KafkaEventGroupPublisher.DESTINATION, GROUP))
+                .thenThrow(new org.springframework.messaging.MessageDeliveryException("broker down"));
+
+        StepVerifier.create(publisher.publish(GROUP))
+                .expectErrorMatches(KafkaEventGroupPublisherTest::brokerUnavailable)
+                .verify();
     }
 }

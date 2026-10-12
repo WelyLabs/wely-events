@@ -1,11 +1,14 @@
 package com.calendar.events.infrastructure.messaging.relay;
 
+import com.calendar.events.exception.EventErrorCode;
+import com.calendar.events.exception.EventException;
 import com.calendar.events.infrastructure.messaging.adapters.KafkaEventGroupPublisher;
 import com.calendar.events.infrastructure.messaging.mappers.EventGroupMapper;
 import com.calendar.events.infrastructure.messaging.models.EventGroupChangedDTO;
 import com.calendar.events.infrastructure.persistence.adapters.MongoEventGroupOutboxAdapter;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -69,7 +72,8 @@ class EventGroupRelayTest {
         EventEntity failing = pending("e1", 1L);
         EventEntity fine = pending("e2", 1L);
         when(outbox.findPending(10)).thenReturn(Flux.just(failing, fine));
-        when(publisher.publish(mapper.toDto(failing))).thenReturn(Mono.error(new IllegalStateException("down")));
+        when(publisher.publish(mapper.toDto(failing)))
+                .thenReturn(Mono.error(new EventException(EventErrorCode.BROKER_UNAVAILABLE)));
         when(publisher.publish(mapper.toDto(fine))).thenReturn(Mono.empty());
         when(outbox.markPublished("e2", 1L)).thenReturn(Mono.just(true));
 
@@ -88,7 +92,7 @@ class EventGroupRelayTest {
     @Test
     void start_shouldKeepPolling_evenAfterAFailedPass() {
         when(outbox.findPending(anyInt()))
-                .thenReturn(Flux.error(new IllegalStateException("mongo down")))
+                .thenReturn(Flux.error(new DataAccessResourceFailureException("mongo down")))
                 .thenReturn(Flux.empty());
 
         relay.start();
