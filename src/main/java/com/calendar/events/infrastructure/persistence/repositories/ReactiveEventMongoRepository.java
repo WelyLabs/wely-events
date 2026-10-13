@@ -86,4 +86,8 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
                 { $or: [ { endDate: { $gt: ?1 } }, { endDate: null, startDate: { $gt: ?3 } } ] }
             ] }""")
     Flux<EventEntity> findOccupying(Collection<String> userIds, Instant from, Instant to, Instant startedAfter);
+
+    /** Every event the user organizes or takes part in; both fields are indexed. */
+    @Query(value = "{ $or: [ { participantIds: ?0 }, { organizerId: ?0 } ] }", sort = "{ startDate: 1 }")
+    Flux<EventEntity> findInvolving(String userId);
 }

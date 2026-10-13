@@ -393,4 +393,20 @@ class MongoEventRepositoryAdapterIntegrationTest {
         assertThat(mapTitles("camille", List.of(), 200)).containsExactly("Running", "No end, started 30 min ago", "Later");
         assertThat(mapTitles("camille", List.of(), 2)).containsExactly("Running", "No end, started 30 min ago");
     }
+
+    @Test
+    void findInvolving_shouldFindWhatTheUserOrganizesOrJoins_andNothingElse() {
+        Event organized = anEvent("Organized");
+        Event joined = anEvent("Joined");
+        anEvent("Someone else's");
+        adapter.addParticipant(joined.getId(), "guest-1").block();
+        adapter.addParticipant(organized.getId(), "guest-2").block();
+
+        StepVerifier.create(adapter.findInvolving("guest-1").map(Event::getTitle).collectList())
+                .assertNext(titles -> assertThat(titles).containsExactly("Joined"))
+                .verifyComplete();
+        StepVerifier.create(adapter.findInvolving(ORGANIZER).count())
+                .expectNext(3L)
+                .verifyComplete();
+    }
 }

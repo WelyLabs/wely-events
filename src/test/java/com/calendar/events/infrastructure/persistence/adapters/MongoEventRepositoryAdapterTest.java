@@ -200,4 +200,14 @@ class MongoEventRepositoryAdapterTest {
                 .expectNext(domain)
                 .verifyComplete();
     }
+
+    @Test
+    void findInvolving_shouldReturnMappedEvents() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        when(mongoRepository.findInvolving("user1")).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findInvolving("user1")).expectNext(domain).verifyComplete();
+    }
 }

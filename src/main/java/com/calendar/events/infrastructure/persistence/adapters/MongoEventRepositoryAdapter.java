@@ -77,4 +77,9 @@ public class MongoEventRepositoryAdapter implements EventRepository {
         return mongoRepository.findOccupying(userIds, from, to, from.minus(Event.DEFAULT_DURATION))
                 .map(mapper::toDomain);
     }
+
+    @Override
+    public Flux<Event> findInvolving(String userId) {
+        return mongoRepository.findInvolving(userId).map(mapper::toDomain);
+    }
 }
