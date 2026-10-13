@@ -210,4 +210,24 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(adapter.findInvolving("user1")).expectNext(domain).verifyComplete();
     }
+
+    @Test
+    void setImage_shouldReadTheEventBack_whenTheOrganizersUpdateMatched() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().id("1").image("events/1/cover-a.jpg").build();
+        when(mongoRepository.setImage("1", "org", "events/1/cover-a.jpg")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("1")).thenReturn(Mono.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.setImage("1", "org", "events/1/cover-a.jpg")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void setImage_shouldBeEmpty_whenNoEventOfThatOrganizerMatched() {
+        when(mongoRepository.setImage("1", "someone-else", null)).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.setImage("1", "someone-else", null)).verifyComplete();
+
+        verify(mongoRepository, never()).findById("1");
+    }
 }

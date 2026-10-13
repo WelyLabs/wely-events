@@ -20,6 +20,8 @@ public record ExpenseResponse(
         List<ShareResponse> shares,
         Map<String, Long> owedCents,
         Instant spentAt,
+        // Signed, short-lived; null without a receipt or when wely-media could not sign it.
+        String receiptUrl,
         Long version
 ) {
     public record ShareResponse(String userId, long value) {}

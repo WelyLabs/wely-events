@@ -49,6 +49,9 @@ public interface EventRepository {
      */
     Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to);
 
+    /** Sets the event's cover reference (null clears it); empty when no event by this organizer has this id. */
+    Mono<Event> setImage(String eventId, String organizerId, String image);
+
     /** Every event the user organizes or takes part in, past and future. */
     Flux<Event> findInvolving(String userId);
 }

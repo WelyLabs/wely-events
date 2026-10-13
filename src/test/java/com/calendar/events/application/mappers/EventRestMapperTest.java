@@ -9,6 +9,7 @@ import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.Participants;
+import com.calendar.events.domain.models.SignedUrls;
 import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -16,6 +17,7 @@ import org.mapstruct.factory.Mappers;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -58,7 +60,7 @@ class EventRestMapperTest {
                 .participantIds(Collections.singletonList("user1"))
                 .build();
 
-        EventResponse response = mapper.toResponse(domain);
+        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE);
 
         assertNotNull(response);
         assertEquals(domain.getId(), response.getId());
@@ -79,7 +81,7 @@ class EventRestMapperTest {
 
     @Test
     void toResponse_shouldReportAMissingVisibilityAsFriends() {
-        EventResponse response = mapper.toResponse(Event.builder().id("1").build());
+        EventResponse response = mapper.toResponse(Event.builder().id("1").build(), SignedUrls.NONE);
 
         assertEquals(Visibility.FRIENDS, response.getVisibility());
     }
@@ -104,13 +106,13 @@ class EventRestMapperTest {
     void toResponse_shouldGiveBackTheCoordinates() {
         Event domain = Event.builder().coordinates(new GeoPoint(45.764, 4.8357)).build();
 
-        assertEquals(new CoordinatesDto(45.764, 4.8357), mapper.toResponse(domain).getCoordinates());
+        assertEquals(new CoordinatesDto(45.764, 4.8357), mapper.toResponse(domain, SignedUrls.NONE).getCoordinates());
     }
 
     @Test
     void toDomain_shouldLeaveATypedLocationWithoutCoordinates() {
         assertNull(mapper.toDomain(EventRequest.builder().title("t").location("Lyon").build()).getCoordinates());
-        assertNull(mapper.toResponse(Event.builder().location("Lyon").build()).getCoordinates());
+        assertNull(mapper.toResponse(Event.builder().location("Lyon").build(), SignedUrls.NONE).getCoordinates());
     }
 
     @Test
@@ -118,5 +120,26 @@ class EventRestMapperTest {
         ParticipantsResponse response = mapper.toResponse(new Participants(3, List.of("a", "b", "c"), List.of("b")));
 
         assertEquals(new ParticipantsResponse(3, List.of("a", "b", "c"), List.of("b")), response);
+    }
+
+    @Test
+    void toDomain_shouldNeverTakeACover_fromTheRequest() {
+        assertNull(mapper.toDomain(EventRequest.builder().title("t").build()).getImage());
+    }
+
+    @Test
+    void toResponse_shouldShowAStoredCoverThroughItsSignedUrl() {
+        Event domain = Event.builder().image("events/1/cover-a.jpg").build();
+
+        assertEquals("https://media/a",
+                mapper.toResponse(domain, new SignedUrls(Map.of("events/1/cover-a.jpg", "https://media/a"))).getImage());
+        assertNull(mapper.toResponse(domain, SignedUrls.NONE).getImage());
+    }
+
+    @Test
+    void toResponse_shouldPassADemoCoverThrough() {
+        Event domain = Event.builder().image("/demo/events/picnic.jpg").build();
+
+        assertEquals("/demo/events/picnic.jpg", mapper.toResponse(domain, SignedUrls.NONE).getImage());
     }
 }

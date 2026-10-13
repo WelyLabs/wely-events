@@ -2,11 +2,13 @@ package com.calendar.events.configuration;
 
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
+import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
 import com.calendar.events.domain.services.FriendCalendarService;
+import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.ProfileSummaryService;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +23,8 @@ class EventApplicationConfigTest {
     void eventService_shouldBuildTheDomainServiceFromItsPort() {
         EventRepository repository = mock(EventRepository.class);
 
-        EventService service = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class));
+        EventService service = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
+                config.pictureService(mock(MediaStore.class)));
 
         // The domain service is built by hand, with no Spring annotation: that is what
         // makes it testable outside a context.
@@ -30,7 +33,15 @@ class EventApplicationConfigTest {
 
     @Test
     void expenseService_shouldBuildTheDomainServiceFromItsPorts() {
-        ExpenseService service = config.expenseService(mock(EventRepository.class), mock(ExpenseRepository.class));
+        ExpenseService service = config.expenseService(mock(EventRepository.class), mock(ExpenseRepository.class),
+                config.pictureService(mock(MediaStore.class)));
+
+        assertThat(service).isNotNull();
+    }
+
+    @Test
+    void pictureService_shouldBuildTheDomainServiceFromItsPort() {
+        PictureService service = config.pictureService(mock(MediaStore.class));
 
         assertThat(service).isNotNull();
     }

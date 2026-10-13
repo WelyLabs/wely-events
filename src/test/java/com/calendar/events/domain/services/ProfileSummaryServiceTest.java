@@ -173,9 +173,9 @@ class ProfileSummaryServiceTest {
                 event("dinner", "2026-09-01T18:00:00Z", "lea", "A", ME),
                 event("even", "2026-09-02T18:00:00Z", ME, "B", "lea"));
         Expense dinner = new Expense("x1", "dinner", "Resto", 3000, "EUR", "lea", "lea", ExpenseKind.EXPENSE,
-                SplitMode.EQUAL, List.of(new Share("lea", 0), new Share(ME, 0)), NOW, 0L);
+                SplitMode.EQUAL, List.of(new Share("lea", 0), new Share(ME, 0)), NOW, null, 0L);
         Expense even = new Expense("x2", "even", "Courses", 1000, "EUR", ME, ME, ExpenseKind.EXPENSE,
-                SplitMode.EXACT, List.of(new Share(ME, 1000)), NOW, 0L);
+                SplitMode.EXACT, List.of(new Share(ME, 1000)), NOW, null, 0L);
         when(expenseRepository.findByEvents(any())).thenReturn(Flux.just(dinner, even));
 
         StepVerifier.create(service.summaryOf(ME))

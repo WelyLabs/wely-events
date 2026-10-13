@@ -5,6 +5,7 @@ import com.calendar.events.application.dtos.ProfileSummaryResponse;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.ProfileSummary;
+import com.calendar.events.domain.models.SignedUrls;
 import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -12,6 +13,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,7 +31,7 @@ class ProfileSummaryRestMapperTest {
                 List.of(new ProfileSummary.Place("Chez Léa", new GeoPoint(45.77, 4.83), 3)),
                 List.of(new ProfileSummary.EventBalance("e1", "Soirée jeux", -800)));
 
-        ProfileSummaryResponse response = mapper.toResponse(summary);
+        ProfileSummaryResponse response = mapper.toResponse(summary, SignedUrls.NONE);
 
         assertThat(response.outingsThisYear()).isEqualTo(23);
         assertThat(response.upcoming().getFirst().getTitle()).isEqualTo("Soirée jeux");
@@ -40,5 +42,19 @@ class ProfileSummaryRestMapperTest {
                 new ProfileSummaryResponse.PlaceResponse("Chez Léa", new CoordinatesDto(45.77, 4.83), 3));
         assertThat(response.balances()).containsExactly(
                 new ProfileSummaryResponse.EventBalanceResponse("e1", "Soirée jeux", -800));
+    }
+
+    @Test
+    void toResponse_shouldSignTheCoversOfUpcomingEventsAndMemories() {
+        ReflectionTestUtils.setField(mapper, "eventRestMapper", Mappers.getMapper(EventRestMapper.class));
+        Event next = Event.builder().id("e1").image("events/e1/cover-a.jpg").build();
+        Event memory = Event.builder().id("e2").image("/demo/events/picnic.jpg").build();
+        ProfileSummary summary = new ProfileSummary(0, 0, 0, 0, List.of(next), List.of(memory), 1, List.of(), List.of(), List.of());
+
+        ProfileSummaryResponse response = mapper.toResponse(summary,
+                new SignedUrls(Map.of("events/e1/cover-a.jpg", "https://media/a")));
+
+        assertThat(response.upcoming().getFirst().getImage()).isEqualTo("https://media/a");
+        assertThat(response.memories().getFirst().getImage()).isEqualTo("/demo/events/picnic.jpg");
     }
 }

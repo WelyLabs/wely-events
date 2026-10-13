@@ -18,7 +18,7 @@ class ExpenseTest {
 
     private static Expense expense(long amountCents, SplitMode split, List<Share> shares) {
         return new Expense(null, "ev-1", "Courses", amountCents, null, "alice", "alice",
-                ExpenseKind.EXPENSE, split, shares, AT, null);
+                ExpenseKind.EXPENSE, split, shares, AT, null, null);
     }
 
     private static void assertInvalid(Runnable build) {
@@ -100,15 +100,15 @@ class ExpenseTest {
     @Test
     void constructor_shouldRefuseABlankOrLongTitle() {
         assertInvalid(() -> new Expense(null, "ev-1", "  ", 100, null, "alice", "alice",
-                ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null));
+                ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null, null));
         assertInvalid(() -> new Expense(null, "ev-1", "x".repeat(Expense.MAX_TITLE_LENGTH + 1), 100, null, "alice",
-                "alice", ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null));
+                "alice", ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null, null));
     }
 
     @Test
     void constructor_shouldDefaultTheCurrencyAndTrimTheTitle() {
         Expense expense = new Expense(null, "ev-1", "  Essence ", 100, null, "alice", "alice",
-                ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null);
+                ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null, null);
 
         assertThat(expense.currency()).isEqualTo("EUR");
         assertThat(expense.title()).isEqualTo("Essence");
@@ -133,5 +133,18 @@ class ExpenseTest {
         Expense expense = expense(100, SplitMode.EQUAL, List.of(new Share("bob", 0), new Share("carol", 0)));
 
         assertThat(expense.people()).containsExactlyInAnyOrder("alice", "bob", "carol");
+    }
+
+    @Test
+    void newReceiptKey_shouldBeUniqueUnderTheEventsPrefix() {
+        String first = Expense.newReceiptKey("ev-1", "x1");
+
+        assertThat(first).matches("events/ev-1/receipts/x1-[0-9a-f-]{36}\\.jpg");
+        assertThat(Expense.newReceiptKey("ev-1", "x1")).isNotEqualTo(first);
+    }
+
+    @Test
+    void settlement_shouldHaveNoReceipt() {
+        assertThat(Expense.settlement("ev-1", "bob", "alice", 500, "bob", AT).receiptKey()).isNull();
     }
 }

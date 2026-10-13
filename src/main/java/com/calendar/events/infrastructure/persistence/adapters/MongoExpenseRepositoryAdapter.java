@@ -55,6 +55,13 @@ public class MongoExpenseRepositoryAdapter implements ExpenseRepository {
     }
 
     @Override
+    public Mono<Expense> setReceipt(String eventId, String expenseId, String receiptKey) {
+        return mongoRepository.setReceiptKey(expenseId, eventId, receiptKey)
+                .filter(matched -> matched > 0)
+                .flatMap(matched -> findByIdInEvent(eventId, expenseId));
+    }
+
+    @Override
     public Flux<Expense> findByEvents(Collection<String> eventIds) {
         return mongoRepository.findAllByEventIdIn(eventIds).map(mapper::toDomain);
     }

@@ -61,7 +61,7 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
 
     private Expense stored(String eventId, String title, Instant spentAt) {
         return adapter.save(new Expense(null, eventId, title, 1000, "EUR", "alice", "alice", ExpenseKind.EXPENSE,
-                SplitMode.EQUAL, List.of(new Share("alice", 0), new Share("bob", 0)), spentAt, null)).block();
+                SplitMode.EQUAL, List.of(new Share("alice", 0), new Share("bob", 0)), spentAt, null, null)).block();
     }
 
     @Test
@@ -90,9 +90,9 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
     void save_shouldRefuseAStaleVersion() {
         Expense original = stored("ev-1", "Courses", Instant.parse("2026-10-13T10:00:00Z"));
         Expense firstEdit = new Expense(original.id(), "ev-1", "Courses bio", 1200, "EUR", "alice", "alice",
-                ExpenseKind.EXPENSE, SplitMode.EQUAL, original.shares(), original.spentAt(), original.version());
+                ExpenseKind.EXPENSE, SplitMode.EQUAL, original.shares(), original.spentAt(), null, original.version());
         Expense secondEdit = new Expense(original.id(), "ev-1", "Courses du soir", 1500, "EUR", "alice", "alice",
-                ExpenseKind.EXPENSE, SplitMode.EQUAL, original.shares(), original.spentAt(), original.version());
+                ExpenseKind.EXPENSE, SplitMode.EQUAL, original.shares(), original.spentAt(), null, original.version());
 
         StepVerifier.create(adapter.save(firstEdit)).expectNextCount(1).verifyComplete();
         StepVerifier.create(adapter.save(secondEdit))
@@ -110,5 +110,43 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.findByEvent("ev-1")).verifyComplete();
         StepVerifier.create(adapter.findByEvent("ev-2")).expectNextCount(1).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("a receipt is set only on that event's expense, and bumps the version")
+    void setReceipt_shouldFilterOnTheEventAndBumpTheVersion() {
+        Expense original = stored("ev-1", "Courses", Instant.parse("2026-10-13T10:00:00Z"));
+
+        StepVerifier.create(adapter.setReceipt("ev-other", original.id(), "events/ev-1/receipts/r.jpg")).verifyComplete();
+        StepVerifier.create(adapter.setReceipt("ev-1", original.id(), "events/ev-1/receipts/r.jpg"))
+                .assertNext(updated -> {
+                    assertThat(updated.receiptKey()).isEqualTo("events/ev-1/receipts/r.jpg");
+                    assertThat(updated.version()).isEqualTo(original.version() + 1);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("an edit opened before the receipt changed is refused rather than writing the old key back")
+    void setReceipt_shouldMakeAnOlderEditConflict() {
+        Expense original = stored("ev-1", "Courses", Instant.parse("2026-10-13T10:00:00Z"));
+        adapter.setReceipt("ev-1", original.id(), "events/ev-1/receipts/r.jpg").block();
+        Expense staleEdit = new Expense(original.id(), "ev-1", "Courses bio", 1200, "EUR", "alice", "alice",
+                ExpenseKind.EXPENSE, SplitMode.EQUAL, original.shares(), original.spentAt(), null, original.version());
+
+        StepVerifier.create(adapter.save(staleEdit))
+                .expectErrorMatches(error -> error instanceof EventException exception
+                        && exception.getErrorCode() == EventErrorCode.EXPENSE_CONFLICT)
+                .verify();
+    }
+
+    @Test
+    void setReceipt_shouldClearTheKey_whenGivenNull() {
+        Expense original = stored("ev-1", "Courses", Instant.parse("2026-10-13T10:00:00Z"));
+        adapter.setReceipt("ev-1", original.id(), "events/ev-1/receipts/r.jpg").block();
+
+        StepVerifier.create(adapter.setReceipt("ev-1", original.id(), null))
+                .assertNext(updated -> assertThat(updated.receiptKey()).isNull())
+                .verifyComplete();
     }
 }
