@@ -5,6 +5,7 @@ import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
@@ -24,6 +25,7 @@ public class EventService {
 
     private final EventRepository eventRepository;
     private final SocialGraph socialGraph;
+    private final ExpenseRepository expenseRepository;
     private final Clock clock;
 
     public Flux<Event> getAllEvents() {
@@ -57,7 +59,9 @@ public class EventService {
      * Deletes an event on behalf of {@code requesterId}.
      *
      * <p>Only the organizer may delete an event. The ownership check happens here
-     * rather than in the controller so the rule holds for every caller.
+     * rather than in the controller so the rule holds for every caller. Its expenses go with it:
+     * the event first, so a failure in between leaves stray expenses nobody can reach rather than
+     * an event that lost its accounts.
      */
     public Mono<Void> deleteEvent(String id, String requesterId) {
         return eventRepository.findById(id)
@@ -66,7 +70,7 @@ public class EventService {
                     if (!Objects.equals(event.getOrganizerId(), requesterId)) {
                         return Mono.error(new EventException(EventErrorCode.EVENT_ACCESS_DENIED));
                     }
-                    return eventRepository.deleteById(id);
+                    return eventRepository.deleteById(id).then(Mono.defer(() -> expenseRepository.deleteByEvent(id)));
                 });
     }
 

@@ -5,6 +5,7 @@ import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
@@ -36,6 +37,9 @@ class EventServiceTest {
     @Mock
     private SocialGraph socialGraph;
 
+    @Mock
+    private ExpenseRepository expenseRepository;
+
     private EventService eventService;
 
     private static final Instant NOW = Instant.parse("2026-10-11T16:00:00Z");
@@ -43,7 +47,7 @@ class EventServiceTest {
 
     @BeforeEach
     void setUp() {
-        eventService = new EventService(eventRepository, socialGraph, Clock.fixed(NOW, ZoneOffset.UTC));
+        eventService = new EventService(eventRepository, socialGraph, expenseRepository, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -230,10 +234,34 @@ class EventServiceTest {
         Event event = Event.builder().id("1").organizerId("organizer").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer"))
                 .verifyComplete();
         verify(eventRepository, times(1)).deleteById("1");
+    }
+
+    @Test
+    void deleteEvent_shouldTakeItsExpensesWithIt() {
+        Event event = Event.builder().id("1").organizerId("organizer").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+
+        verify(expenseRepository).deleteByEvent("1");
+    }
+
+    @Test
+    void deleteEvent_shouldKeepTheExpenses_whenTheEventCannotBeDeleted() {
+        Event event = Event.builder().id("1").organizerId("organizer").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.deleteById("1")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyError(IllegalStateException.class);
+
+        verify(expenseRepository, never()).deleteByEvent(any());
     }
 
     @Test

@@ -113,6 +113,12 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `DELETE` | `/events/{id}` | Supprime un événement (204) |
 | `POST` | `/events/me/free-slots` | Créneaux où l'utilisateur et des amis sont tous libres (voir plus bas) |
 | `GET` | `/events/users/{friendId}/calendar?from=&to=` | Calendrier d'un ami, dévoilé selon la proximité (voir plus bas) |
+| `GET` | `/events/{id}/expenses` | Dépenses partagées de l'événement, les plus récentes d'abord (membres seulement, 404 sinon) |
+| `POST` | `/events/{id}/expenses` | Ajoute une dépense (201) |
+| `PUT` | `/events/{id}/expenses/{expenseId}` | Modifie une dépense : son auteur ou l'organisateur (403 sinon), `version` lue pour refuser une modification concurrente (409) |
+| `DELETE` | `/events/{id}/expenses/{expenseId}` | Supprime une dépense (204), mêmes droits |
+| `GET` | `/events/{id}/expenses/ledger` | Soldes de chacun et remboursements proposés |
+| `POST` | `/events/{id}/expenses/settlements` | Enregistre un remboursement (201), demandé par l'un des deux concernés |
 
 ### OpenAPI
 
@@ -189,6 +195,27 @@ et renvoie les plages, dans cette période, où l'utilisateur **et** tous ces am
 - Les plages commencent et finissent au quart d'heure, comme la sélection du calendrier. 1 à 20 amis, au moins 15 min, période de 62 jours au plus — six semaines, la grille du mois (`EVT-BUS-004`).
 - Le calcul (`FreeSlotFinder`) est du Java pur : fusion des plages occupées, puis trous de la période. Deux index `{participantIds, startDate}` et `{organizerId, startDate}` servent la recherche.
 
+## Dépenses partagées
+
+Un « Tricount » attaché à chaque événement : ses membres (organisateur et participants) notent qui a payé quoi, pour qui, et voient qui doit combien à qui.
+
+- **Montants en centimes**, dans un `long` : un `double` ne représente pas 0,10 exactement, et une répartition doit tomber juste au centime. Devise unique `EUR` pour l'instant, stockée pour ne pas avoir à migrer le jour où il y en aura une deuxième.
+- **Trois répartitions**, calculées par le modèle `Expense` (Java pur) :
+
+  | Mode | Exemple | Arrondi |
+  |---|---|---|
+  | `EQUAL` | 10,00 € pour 3 → 3,34 / 3,33 / 3,33 | Les centimes restants vont un par un, dans l'ordre des identifiants : toujours la même réponse |
+  | `SHARES` | 9,00 € pour un couple (2 parts) et Bob (1) → 6,00 / 3,00 | Méthode du plus fort reste |
+  | `EXACT` | 12,50 € → 10,00 / 2,50 | Refusé si la somme ne fait pas le montant (`EVT-BUS-008`) |
+
+  Quel que soit le mode, la somme des parts vaut le montant. Toute dépense qui ne tombe pas juste est refusée à la construction : elle ne peut exister nulle part.
+- **Soldes et remboursements** (`Ledger`) : chacun a payé moins ce qu'il doit. Les remboursements proposés apparient le plus gros débiteur et le plus gros créancier jusqu'à épuisement — au plus n−1 virements, et toujours les mêmes pour les mêmes dépenses.
+- **Un remboursement est une dépense** de type `SETTLEMENT` : payée par le débiteur, entièrement pour le créancier. Les soldes se mettent à jour par le même calcul, sans cas particulier, et le total de l'événement ne le compte pas.
+- **Droits.** Hors membres, l'événement répond 404, comme partout. Payeur et bénéficiaires doivent être membres (`EVT-BUS-008`). Seul l'auteur d'une dépense ou l'organisateur la modifie ou la supprime (`EVT-BUS-009`) ; un remboursement ne se modifie pas, il se supprime.
+- **Chaque requête nomme l'événement** (`findByIdAndEventId`) : l'identifiant d'une dépense d'un autre événement ne trouve rien, même pour un membre.
+- **Concurrence.** `@Version` sur le document : une modification faite sur une version déjà dépassée est refusée (`EVT-BUS-010`, 409) au lieu d'écraser celle d'un autre.
+- **Cascade.** Supprimer l'événement supprime ses dépenses.
+
 ## Le calendrier d'un ami
 
 `GET /events/users/{friendId}/calendar?from=…&to=…` renvoie les événements qui occupent cet ami — ceux qu'il organise ou auxquels il participe — sur 62 jours au plus. Chaque entrée a toujours son début et sa fin ; le reste dépend de ce que l'appelant a le droit de voir (`CalendarDisclosure`) :
@@ -212,6 +239,11 @@ La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /soci
 | `EVT-BUS-003` | 403 | Créneau ou calendrier demandé pour quelqu'un qui n'est pas un ami |
 | `EVT-BUS-004` | 400 | Recherche de créneau invalide (amis, durée ou période) |
 | `EVT-BUS-005` | 400 | Demande de calendrier invalide (le sien, période inversée ou de plus de 62 jours) |
+| `EVT-BUS-006` | 400 | Zone de carte invalide |
+| `EVT-BUS-007` | 404 | Dépense introuvable dans cet événement |
+| `EVT-BUS-008` | 400 | Dépense invalide : montant, membres, ou répartition qui ne tombe pas juste |
+| `EVT-BUS-009` | 403 | Ni l'auteur de la dépense ni l'organisateur |
+| `EVT-BUS-010` | 409 | Dépense modifiée entre-temps par quelqu'un d'autre |
 | `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
 | `EVT-VAL-001` | 400 | Validation du corps de requête, détail par champ |
 | `EVT-REQ-000` | *repris* | Chemin inconnu, méthode non autorisée |

@@ -50,6 +50,30 @@ public enum EventErrorCode {
             "Ask for an area within the globe, south before north and west before east, at most 90 degrees wide.",
             HttpStatus.BAD_REQUEST),
 
+    EXPENSE_NOT_FOUND(
+            "EVT-BUS-007",
+            "Expense not found",
+            "No expense of this event matches the given identifier.",
+            HttpStatus.NOT_FOUND),
+
+    EXPENSE_INVALID(
+            "EVT-BUS-008",
+            "Invalid expense",
+            "An expense needs a title, an amount up to 1,000,000.00, a payer and people who are members of the event, and a split that adds up to the amount.",
+            HttpStatus.BAD_REQUEST),
+
+    EXPENSE_ACCESS_DENIED(
+            "EVT-BUS-009",
+            "Not the expense's author",
+            "Only whoever recorded an expense, or the organizer, may change or delete it; a settlement only involves the two people it moves money between.",
+            HttpStatus.FORBIDDEN),
+
+    EXPENSE_CONFLICT(
+            "EVT-BUS-010",
+            "Expense changed meanwhile",
+            "Someone changed this expense since it was read; reload it and try again.",
+            HttpStatus.CONFLICT),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",
