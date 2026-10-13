@@ -9,6 +9,7 @@ import com.calendar.events.domain.models.ExpenseDraft;
 import com.calendar.events.domain.models.ExpenseKind;
 import com.calendar.events.domain.models.Ledger;
 import com.calendar.events.domain.models.Share;
+import com.calendar.events.domain.models.SignedUrls;
 import com.calendar.events.domain.models.SplitMode;
 import com.calendar.events.domain.models.Transfer;
 import org.junit.jupiter.api.Test;
@@ -39,9 +40,9 @@ class ExpenseRestMapperTest {
     void toResponse_shouldIncludeWhatEachPersonOwes() {
         Expense expense = new Expense("x1", "ev-1", "Courses", 1000, "EUR", "alice", "alice", ExpenseKind.EXPENSE,
                 SplitMode.EQUAL, List.of(new Share("alice", 0), new Share("bob", 0), new Share("carol", 0)),
-                Instant.parse("2026-10-13T10:00:00Z"), 1L);
+                Instant.parse("2026-10-13T10:00:00Z"), null, 1L);
 
-        ExpenseResponse response = mapper.toResponse(expense);
+        ExpenseResponse response = mapper.toResponse(expense, SignedUrls.NONE);
 
         assertThat(response.id()).isEqualTo("x1");
         assertThat(response.owedCents()).containsEntry("alice", 334L).containsEntry("bob", 333L).containsEntry("carol", 333L);
@@ -60,5 +61,16 @@ class ExpenseRestMapperTest {
         assertThat(response.balances()).containsExactly(
                 new LedgerResponse.BalanceResponse("alice", 1000), new LedgerResponse.BalanceResponse("bob", -1000));
         assertThat(response.transfers()).containsExactly(new LedgerResponse.TransferResponse("bob", "alice", 1000));
+    }
+
+    @Test
+    void toResponse_shouldShowTheReceiptThroughItsSignedUrl_andNeverItsKey() {
+        Expense expense = new Expense("x1", "ev-1", "Courses", 1000, "EUR", "alice", "alice", ExpenseKind.EXPENSE,
+                SplitMode.EQUAL, List.of(new Share("alice", 0)), Instant.parse("2026-10-13T10:00:00Z"),
+                "events/ev-1/receipts/x1-a.jpg", 1L);
+
+        assertThat(mapper.toResponse(expense, new SignedUrls(Map.of("events/ev-1/receipts/x1-a.jpg", "https://media/r")))
+                .receiptUrl()).isEqualTo("https://media/r");
+        assertThat(mapper.toResponse(expense, SignedUrls.NONE).receiptUrl()).isNull();
     }
 }

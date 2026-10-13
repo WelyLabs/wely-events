@@ -79,6 +79,13 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
+    public Mono<Event> setImage(String eventId, String organizerId, String image) {
+        return mongoRepository.setImage(eventId, organizerId, image)
+                .filter(matched -> matched > 0)
+                .flatMap(matched -> findById(eventId));
+    }
+
+    @Override
     public Flux<Event> findInvolving(String userId) {
         return mongoRepository.findInvolving(userId).map(mapper::toDomain);
     }

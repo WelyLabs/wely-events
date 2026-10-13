@@ -87,6 +87,11 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
             ] }""")
     Flux<EventEntity> findOccupying(Collection<String> userIds, Instant from, Instant to, Instant startedAfter);
 
+    // Filtered on the organizer too: a cover is only ever changed by whoever organizes the event.
+    @Query("{ '_id': ?0, 'organizerId': ?1 }")
+    @Update("{ '$set': { 'image': ?2 } }")
+    Mono<Long> setImage(String eventId, String organizerId, String image);
+
     /** Every event the user organizes or takes part in; both fields are indexed. */
     @Query(value = "{ $or: [ { participantIds: ?0 }, { organizerId: ?0 } ] }", sort = "{ startDate: 1 }")
     Flux<EventEntity> findInvolving(String userId);

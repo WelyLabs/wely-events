@@ -27,7 +27,6 @@ public class EventRequest {
     /** Optional: set when the location was picked on the map. */
     @Valid
     private CoordinatesDto coordinates;
-    private String image;
     private String description;
     private boolean subscribeByDefault;
     /** Optional: FRIENDS when left out. */

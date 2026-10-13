@@ -3,6 +3,7 @@ package com.calendar.events.exception;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -31,6 +32,21 @@ class GlobalErrorHandlerTest {
         @GetMapping("/generic-error")
         Mono<Void> genericError() {
             return Mono.error(new IllegalStateException("mongodb://admin:hunter2@host/events"));
+        }
+
+        @GetMapping("/too-large")
+        Mono<Void> tooLarge() {
+            return Mono.error(new EventException(EventErrorCode.MEDIA_TOO_LARGE));
+        }
+
+        @GetMapping("/over-codec-limit")
+        Mono<Void> overCodecLimit() {
+            return Mono.error(new DataBufferLimitException("Part exceeded the limit"));
+        }
+
+        @GetMapping("/media-down")
+        Mono<Void> mediaDown() {
+            return Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE));
         }
 
         @GetMapping("/gone")
@@ -122,4 +138,34 @@ class GlobalErrorHandlerTest {
                 .jsonPath("$.code").isEqualTo("EVT-REQ-000");
     }
 
+
+    @Test
+    @DisplayName("a picture too large answers 413")
+    void handleEventException_shouldAnswerContentTooLargeForAPictureTooLarge() {
+        client.get().uri("/too-large")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.CONTENT_TOO_LARGE)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("EVT-BUS-012");
+    }
+
+    @Test
+    @DisplayName("an upload past the codec's own limit answers 413 too, not 500")
+    void handleDataBufferLimitException_shouldAnswerContentTooLarge() {
+        client.get().uri("/over-codec-limit")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.CONTENT_TOO_LARGE)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("EVT-BUS-012");
+    }
+
+    @Test
+    @DisplayName("wely-media down answers 502")
+    void handleEventException_shouldAnswerBadGatewayWhenMediaIsDown() {
+        client.get().uri("/media-down")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.BAD_GATEWAY)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("EVT-TEC-003");
+    }
 }

@@ -409,4 +409,30 @@ class MongoEventRepositoryAdapterIntegrationTest {
                 .expectNext(3L)
                 .verifyComplete();
     }
+
+    @Test
+    @DisplayName("only the organizer's update reaches the cover")
+    void setImage_shouldFilterOnTheOrganizer() {
+        Event saved = anEvent("Standup");
+
+        StepVerifier.create(adapter.setImage(saved.getId(), "someone-else", "events/x/cover-1.jpg")).verifyComplete();
+        StepVerifier.create(adapter.setImage(saved.getId(), ORGANIZER, "events/x/cover-1.jpg"))
+                .assertNext(updated -> assertThat(updated.getImage()).isEqualTo("events/x/cover-1.jpg"))
+                .verifyComplete();
+    }
+
+    @Test
+    void setImage_shouldClearTheCover_whenGivenNull() {
+        Event saved = anEvent("Standup");
+        adapter.setImage(saved.getId(), ORGANIZER, "events/x/cover-1.jpg").block();
+
+        StepVerifier.create(adapter.setImage(saved.getId(), ORGANIZER, null))
+                .assertNext(updated -> assertThat(updated.getImage()).isNull())
+                .verifyComplete();
+    }
+
+    @Test
+    void setImage_shouldBeEmpty_forAnUnknownEvent() {
+        StepVerifier.create(adapter.setImage("64b7f9f2e4b0a1c2d3e4f5a6", ORGANIZER, "events/x/cover-1.jpg")).verifyComplete();
+    }
 }

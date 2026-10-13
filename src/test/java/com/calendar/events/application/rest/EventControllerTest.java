@@ -7,6 +7,9 @@ import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.Participants;
+import com.calendar.events.domain.models.SignedUrls;
+import com.calendar.events.domain.ports.MediaStore;
+import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import com.calendar.events.domain.services.EventService;
@@ -15,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mapstruct.factory.Mappers;
 import org.springframework.security.oauth2.jwt.Jwt;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -23,8 +27,14 @@ import reactor.test.StepVerifier;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,13 +47,16 @@ class EventControllerTest {
     private EventRestMapper mapper;
 
     @Mock
+    private MediaStore mediaStore;
+
+    @Mock
     private Jwt jwt;
 
     private EventController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new EventController(eventService, mapper);
+        controller = new EventController(eventService, new PictureService(mediaStore), mapper);
     }
 
     @Test
@@ -53,7 +66,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("1").build();
 
         when(eventService.getSubscribedEvents("user1")).thenReturn(Flux.just(event));
-        when(mapper.toResponse(event)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
 
         Flux<EventResponse> result = controller.getMySubscribedEvents(jwt);
 
@@ -69,7 +82,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("2").build();
 
         when(eventService.getFeedEvents("user1")).thenReturn(Flux.just(event));
-        when(mapper.toResponse(event)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
 
         Flux<EventResponse> result = controller.getMyFeedEvents(jwt);
 
@@ -85,7 +98,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("1").build();
 
         when(eventService.getEventById("1", "user1")).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
 
         Mono<EventResponse> result = controller.getEventById("1", jwt);
 
@@ -128,7 +141,7 @@ class EventControllerTest {
 
         when(mapper.toDomain(request)).thenReturn(event);
         when(eventService.createEvent(any(Event.class))).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
 
         Mono<EventResponse> result = controller.createEvent(request, jwt);
 
@@ -155,7 +168,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("1").build();
 
         when(eventService.toggleSubscription("1", "user1")).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
 
         Mono<EventResponse> result = controller.toggleSubscription("1", jwt);
 
@@ -170,7 +183,7 @@ class EventControllerTest {
         Event event = Event.builder().id("1").build();
         EventResponse response = EventResponse.builder().id("1").build();
         when(eventService.getMapEvents("user1", new GeoBox(45.70, 4.77, 45.81, 4.92))).thenReturn(Flux.just(event));
-        when(mapper.toResponse(event)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.getMapEvents(45.70, 4.77, 45.81, 4.92, jwt))
                 .expectNext(response)
@@ -185,5 +198,107 @@ class EventControllerTest {
                 .expectErrorMatches(error -> error instanceof EventException e
                         && e.getErrorCode() == EventErrorCode.INVALID_MAP_AREA)
                 .verify();
+    }
+
+    /** The real mapping, to see which image each event ends up with. */
+    private EventController withRealMapping() {
+        return new EventController(eventService, new PictureService(mediaStore), Mappers.getMapper(EventRestMapper.class));
+    }
+
+    private static Event coveredBy(String id, String image) {
+        return Event.builder().id(id).image(image).build();
+    }
+
+    @Test
+    void getMyFeedEvents_shouldSignEveryStoredCoverInOneCall() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.getFeedEvents("user1")).thenReturn(Flux.just(coveredBy("1", "events/1/cover-a.jpg"),
+                coveredBy("2", "/demo/events/picnic.jpg"), coveredBy("3", null), coveredBy("4", "events/4/cover-b.jpg")));
+        when(mediaStore.urls(List.of("events/1/cover-a.jpg", "events/4/cover-b.jpg"))).thenReturn(Mono.just(Map.of(
+                "events/1/cover-a.jpg", "https://media/a", "events/4/cover-b.jpg", "https://media/b")));
+
+        StepVerifier.create(withRealMapping().getMyFeedEvents(jwt).map(response -> String.valueOf(response.getImage())))
+                .expectNext("https://media/a", "/demo/events/picnic.jpg", "null", "https://media/b")
+                .verifyComplete();
+        verify(mediaStore, times(1)).urls(any());
+    }
+
+    @Test
+    void getMyFeedEvents_shouldDropStoredCovers_ratherThanFail_whenWelyMediaIsDown() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.getFeedEvents("user1")).thenReturn(Flux.just(coveredBy("1", "events/1/cover-a.jpg"),
+                coveredBy("2", "/demo/events/picnic.jpg")));
+        when(mediaStore.urls(any())).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+
+        StepVerifier.create(withRealMapping().getMyFeedEvents(jwt).map(response -> String.valueOf(response.getImage())))
+                .expectNext("null", "/demo/events/picnic.jpg")
+                .verifyComplete();
+    }
+
+    @Test
+    void getEventById_shouldSignItsStoredCover() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.getEventById("1", "user1")).thenReturn(Mono.just(coveredBy("1", "events/1/cover-a.jpg")));
+        when(mediaStore.urls(List.of("events/1/cover-a.jpg"))).thenReturn(Mono.just(Map.of("events/1/cover-a.jpg", "https://media/a")));
+
+        StepVerifier.create(withRealMapping().getEventById("1", jwt))
+                .expectNextMatches(response -> "https://media/a".equals(response.getImage()))
+                .verifyComplete();
+    }
+
+    @Test
+    void setCover_shouldStoreTheFileAsTheCaller_andAnswerTheSignedEvent() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        Event covered = coveredBy("1", "events/1/cover-a.jpg");
+        SignedUrls urls = new SignedUrls(Map.of("events/1/cover-a.jpg", "https://media/a"));
+        EventResponse response = EventResponse.builder().id("1").image("https://media/a").build();
+        when(eventService.setCover(eq("1"), eq("user1"), any())).thenReturn(Mono.just(covered));
+        when(mediaStore.urls(List.of("events/1/cover-a.jpg"))).thenReturn(Mono.just(urls.byKey()));
+        when(mapper.toResponse(covered, urls)).thenReturn(response);
+
+        StepVerifier.create(controller.setCover("1", UploadsTest.form(UploadsTest.file(4096)), jwt))
+                .expectNext(response)
+                .verifyComplete();
+        verify(eventService).setCover(eq("1"), eq("user1"), argThat(bytes -> bytes.length == 4096));
+    }
+
+    @Test
+    void setCover_shouldRefuseAFileOver10Megabytes_beforeTheService() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+
+        StepVerifier.create(controller.setCover("1", UploadsTest.form(UploadsTest.file(Uploads.MAX_BYTES + 1)), jwt))
+                .expectErrorMatches(error -> UploadsTest.failsWith(error, EventErrorCode.MEDIA_TOO_LARGE))
+                .verify();
+        verify(eventService, never()).setCover(any(), any(), any());
+    }
+
+    @Test
+    void setCover_shouldRefuseAFormWithoutFile_asAnInvalidCover() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+
+        StepVerifier.create(controller.setCover("1", UploadsTest.form(null), jwt))
+                .expectErrorMatches(error -> UploadsTest.failsWith(error, EventErrorCode.COVER_INVALID))
+                .verify();
+    }
+
+    @Test
+    void setCover_shouldPassOnARefusal() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.setCover(eq("1"), eq("user1"), any()))
+                .thenReturn(Mono.error(new EventException(EventErrorCode.EVENT_ACCESS_DENIED)));
+
+        StepVerifier.create(controller.setCover("1", UploadsTest.form(UploadsTest.file(10)), jwt))
+                .expectErrorMatches(error -> UploadsTest.failsWith(error, EventErrorCode.EVENT_ACCESS_DENIED))
+                .verify();
+    }
+
+    @Test
+    void removeCover_shouldRemoveAsTheCaller() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.removeCover("1", "user1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(controller.removeCover("1", jwt)).verifyComplete();
+
+        verify(eventService).removeCover("1", "user1");
     }
 }

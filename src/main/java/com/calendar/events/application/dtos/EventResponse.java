@@ -23,6 +23,7 @@ public class EventResponse {
     private Instant endDate;
     private String location;
     private CoordinatesDto coordinates;
+    /** A signed URL for an uploaded cover, a path the web app serves for demo covers, or null. */
     private String image;
     private String description;
     private Visibility visibility;

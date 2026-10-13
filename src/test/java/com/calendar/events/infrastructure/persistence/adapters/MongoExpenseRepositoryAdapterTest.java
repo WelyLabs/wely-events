@@ -19,6 +19,7 @@ import reactor.test.StepVerifier;
 import java.util.List;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -99,5 +100,23 @@ class MongoExpenseRepositoryAdapterTest {
         when(mapper.toDomain(entity)).thenReturn(expense);
 
         StepVerifier.create(adapter.findByEvents(List.of("ev-1", "ev-2"))).expectNext(expense).verifyComplete();
+    }
+
+    @Test
+    void setReceipt_shouldReadTheExpenseBack_whenTheUpdateMatched() {
+        when(mongoRepository.setReceiptKey("x1", "ev-1", "events/ev-1/receipts/r.jpg")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findByIdAndEventId("x1", "ev-1")).thenReturn(Mono.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(expense);
+
+        StepVerifier.create(adapter.setReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg")).expectNext(expense).verifyComplete();
+    }
+
+    @Test
+    void setReceipt_shouldBeEmpty_whenNoExpenseOfTheEventMatched() {
+        when(mongoRepository.setReceiptKey("x1", "ev-1", null)).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.setReceipt("ev-1", "x1", null)).verifyComplete();
+
+        verify(mongoRepository, never()).findByIdAndEventId("x1", "ev-1");
     }
 }

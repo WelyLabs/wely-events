@@ -21,6 +21,9 @@ public interface ExpenseRepository {
 
     Mono<Void> deleteByEvent(String eventId);
 
+    /** Sets the receipt key (null clears it) and bumps the version; empty when the event has no such expense. */
+    Mono<Expense> setReceipt(String eventId, String expenseId, String receiptKey);
+
     /** The expenses of several events at once, in no particular order. */
     Flux<Expense> findByEvents(Collection<String> eventIds);
 }

@@ -5,6 +5,7 @@ import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.models.ExpenseDraft;
 import com.calendar.events.domain.models.ExpenseKind;
 import com.calendar.events.domain.models.Ledger;
+import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.exception.EventErrorCode;
@@ -27,11 +28,14 @@ public class ExpenseService {
 
     private final EventRepository eventRepository;
     private final ExpenseRepository expenseRepository;
+    private final PictureService pictureService;
     private final Clock clock;
 
-    public ExpenseService(EventRepository eventRepository, ExpenseRepository expenseRepository, Clock clock) {
+    public ExpenseService(EventRepository eventRepository, ExpenseRepository expenseRepository,
+                          PictureService pictureService, Clock clock) {
         this.eventRepository = eventRepository;
         this.expenseRepository = expenseRepository;
+        this.pictureService = pictureService;
         this.clock = clock;
     }
 
@@ -43,7 +47,7 @@ public class ExpenseService {
         return requireMember(eventId, requesterId)
                 .map(event -> requireMembers(event, new Expense(null, eventId, draft.title(), draft.amountCents(),
                         Expense.CURRENCY, draft.paidBy(), requesterId, ExpenseKind.EXPENSE, draft.split(),
-                        draft.shares(), spentAt(draft), null)))
+                        draft.shares(), spentAt(draft), null, null)))
                 .flatMap(expenseRepository::save);
     }
 
@@ -53,7 +57,7 @@ public class ExpenseService {
                 .flatMap(event -> requireEditable(event, eventId, expenseId, requesterId)
                         .map(current -> requireMembers(event, new Expense(current.id(), eventId, draft.title(),
                                 draft.amountCents(), current.currency(), draft.paidBy(), current.createdBy(),
-                                current.kind(), draft.split(), draft.shares(), spentAt(draft),
+                                current.kind(), draft.split(), draft.shares(), spentAt(draft), current.receiptKey(),
                                 draft.version() != null ? draft.version() : current.version()))))
                 .flatMap(expenseRepository::save);
     }
@@ -61,7 +65,34 @@ public class ExpenseService {
     public Mono<Void> delete(String eventId, String expenseId, String requesterId) {
         return requireMember(eventId, requesterId)
                 .flatMap(event -> requireAuthor(event, eventId, expenseId, requesterId))
-                .flatMap(expense -> expenseRepository.delete(eventId, expense.id()));
+                .flatMap(expense -> expenseRepository.delete(eventId, expense.id())
+                        .then(Mono.defer(() -> pictureService.discard(expense.receiptKey()))));
+    }
+
+    /**
+     * Attaches a photo of the receipt, by the same people and on the same expenses as an edit.
+     * Stored first; if the expense cannot take the key, the object is removed again. The previous
+     * receipt goes last, best effort.
+     */
+    public Mono<Expense> attachReceipt(String eventId, String expenseId, String requesterId, byte[] content) {
+        return requireMember(eventId, requesterId)
+                .flatMap(event -> requireEditable(event, eventId, expenseId, requesterId))
+                .flatMap(current -> pictureService.store(Expense.newReceiptKey(eventId, current.id()), content,
+                                MediaProfile.RECEIPT)
+                        .flatMap(stored -> expenseRepository.setReceipt(eventId, current.id(), stored.key())
+                                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EXPENSE_NOT_FOUND)))
+                                .onErrorResume(error -> pictureService.discard(stored.key()).then(Mono.error(error))))
+                        .flatMap(updated -> pictureService.discard(current.receiptKey()).thenReturn(updated)));
+    }
+
+    /** Detaches the receipt, with the same rights as attaching it; the object goes after, best effort. */
+    public Mono<Void> removeReceipt(String eventId, String expenseId, String requesterId) {
+        return requireMember(eventId, requesterId)
+                .flatMap(event -> requireEditable(event, eventId, expenseId, requesterId))
+                .filter(current -> current.receiptKey() != null)
+                .flatMap(current -> expenseRepository.setReceipt(eventId, current.id(), null)
+                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EXPENSE_NOT_FOUND)))
+                        .flatMap(cleared -> pictureService.discard(current.receiptKey())));
     }
 
     public Mono<Ledger> ledger(String eventId, String viewerId) {

@@ -36,6 +36,8 @@ public class ExpenseEntity {
     private String split;
     private List<ShareEntity> shares;
     private Instant spentAt;
+    /** wely-media key of the receipt's photo; absent without one. */
+    private String receiptKey;
     /** Optimistic locking: a save carrying an older version is refused instead of overwriting. */
     @Version
     private Long version;

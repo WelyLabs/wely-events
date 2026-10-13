@@ -1,17 +1,25 @@
 package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.Expense;
+import com.calendar.events.domain.models.ExpenseKind;
 import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.models.Participants;
+import com.calendar.events.domain.models.Share;
+import com.calendar.events.domain.models.SplitMode;
+import com.calendar.events.domain.models.StoredMedia;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
+import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Flux;
@@ -25,7 +33,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,6 +52,9 @@ class EventServiceTest {
     @Mock
     private ExpenseRepository expenseRepository;
 
+    @Mock
+    private MediaStore mediaStore;
+
     private EventService eventService;
 
     private static final Instant NOW = Instant.parse("2026-10-11T16:00:00Z");
@@ -47,7 +62,8 @@ class EventServiceTest {
 
     @BeforeEach
     void setUp() {
-        eventService = new EventService(eventRepository, socialGraph, expenseRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+        eventService = new EventService(eventRepository, socialGraph, expenseRepository, new PictureService(mediaStore),
+                Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test
@@ -217,6 +233,16 @@ class EventServiceTest {
     }
 
     @Test
+    void createEvent_shouldIgnoreAnyCover_whichIsOnlyEverUploaded() {
+        Event event = Event.builder().title("New Event").image("https://tracker.example/pixel.gif").build();
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        eventService.createEvent(event).block();
+
+        assertThat(event.getImage()).isNull();
+    }
+
+    @Test
     void createEvent_shouldReturnSavedEvent() {
         Event event = Event.builder().title("New Event").build();
         Event savedEvent = Event.builder().id("1").title("New Event").build();
@@ -234,6 +260,7 @@ class EventServiceTest {
         Event event = Event.builder().id("1").organizerId("organizer").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer"))
@@ -246,6 +273,7 @@ class EventServiceTest {
         Event event = Event.builder().id("1").organizerId("organizer").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
@@ -428,5 +456,198 @@ class EventServiceTest {
         StepVerifier.create(eventService.getMapEvents("user123", LYON))
                 .expectError(IllegalStateException.class)
                 .verify();
+    }
+
+    private static Expense expenseWithReceipt(String id, String receiptKey) {
+        return new Expense(id, "1", "Courses", 1000, "EUR", "organizer", "organizer", ExpenseKind.EXPENSE,
+                SplitMode.EQUAL, List.of(new Share("organizer", 0)), NOW, receiptKey, 0L);
+    }
+
+    @Test
+    void deleteEvent_shouldDiscardTheCoverAndEveryReceipt() {
+        Event event = Event.builder().id("1").organizerId("organizer").image("events/1/cover-a.jpg").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.just(expenseWithReceipt("x1", "events/1/receipts/x1-a.jpg"),
+                expenseWithReceipt("x2", null)));
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+        when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+
+        verify(mediaStore).delete("events/1/cover-a.jpg");
+        verify(mediaStore).delete("events/1/receipts/x1-a.jpg");
+        verify(mediaStore, times(2)).delete(anyString());
+    }
+
+    @Test
+    void deleteEvent_shouldSucceed_whenWelyMediaCannotDiscard() {
+        Event event = Event.builder().id("1").organizerId("organizer").image("events/1/cover-a.jpg").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+        when(mediaStore.delete(anyString())).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+    }
+
+    @Test
+    void deleteEvent_shouldLeaveADemoCoverAlone() {
+        Event event = Event.builder().id("1").organizerId("organizer").image("/demo/events/picnic.jpg").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+
+        verify(mediaStore, never()).delete(anyString());
+    }
+
+    private void storesUnderTheKeyGiven() {
+        when(mediaStore.store(anyString(), any(), eq(MediaProfile.COVER)))
+                .thenAnswer(call -> Mono.just(new StoredMedia(call.getArgument(0), 1600, 900)));
+    }
+
+    @Test
+    void setCover_shouldStoreThenSetTheKey_andDiscardThePreviousCover() {
+        Event event = Event.builder().id("1").organizerId("organizer").image("events/1/cover-old.jpg").build();
+        Event updated = Event.builder().id("1").organizerId("organizer").image("events/1/cover-new.jpg").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        storesUnderTheKeyGiven();
+        when(eventRepository.setImage(eq("1"), eq("organizer"), anyString())).thenReturn(Mono.just(updated));
+        when(mediaStore.delete("events/1/cover-old.jpg")).thenReturn(Mono.empty());
+        ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
+
+        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1})).expectNext(updated).verifyComplete();
+
+        verify(eventRepository).setImage(eq("1"), eq("organizer"), key.capture());
+        assertThat(key.getValue()).matches("events/1/cover-[0-9a-f-]{36}\\.jpg");
+        verify(mediaStore).delete("events/1/cover-old.jpg");
+    }
+
+    @Test
+    void setCover_shouldNotDiscardADemoCover() {
+        Event event = Event.builder().id("1").organizerId("organizer").image("/demo/events/picnic.jpg").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        storesUnderTheKeyGiven();
+        when(eventRepository.setImage(eq("1"), eq("organizer"), anyString())).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1})).expectNextCount(1).verifyComplete();
+
+        verify(mediaStore, never()).delete(anyString());
+    }
+
+    @Test
+    void setCover_shouldRefuseAParticipant() {
+        Event event = Event.builder().id("1").organizerId("organizer").participantIds(new ArrayList<>(List.of("alice"))).build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.setCover("1", "alice", new byte[]{1}))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .verify();
+        verify(mediaStore, never()).store(any(), any(), any());
+    }
+
+    @Test
+    void setCover_shouldAnswerNotFound_toSomeoneWhoCannotSeeTheEvent() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
+
+        StepVerifier.create(eventService.setCover("1", "mallory", new byte[]{1}))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+        verify(mediaStore, never()).store(any(), any(), any());
+    }
+
+    @Test
+    void setCover_shouldPassOnARefusedImage_withoutTouchingTheEvent() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
+        when(mediaStore.store(anyString(), any(), eq(MediaProfile.COVER)))
+                .thenReturn(Mono.error(new EventException(EventErrorCode.COVER_INVALID)));
+
+        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1}))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.COVER_INVALID))
+                .verify();
+        verify(eventRepository, never()).setImage(any(), any(), any());
+    }
+
+    @Test
+    void setCover_shouldRemoveTheNewObject_whenTheEventIsGoneMeanwhile() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
+        storesUnderTheKeyGiven();
+        when(eventRepository.setImage(eq("1"), eq("organizer"), anyString())).thenReturn(Mono.empty());
+        when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1}))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+        verify(mediaStore).delete(startsWith("events/1/cover-"));
+    }
+
+    @Test
+    void setCover_shouldRemoveTheNewObject_whenTheUpdateFails() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
+        storesUnderTheKeyGiven();
+        when(eventRepository.setImage(eq("1"), eq("organizer"), anyString()))
+                .thenReturn(Mono.error(new IllegalStateException("mongo down")));
+        when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1})).verifyError(IllegalStateException.class);
+        verify(mediaStore).delete(startsWith("events/1/cover-"));
+    }
+
+    @Test
+    void removeCover_shouldClearTheField_thenDiscardTheObject() {
+        Event event = Event.builder().id("1").organizerId("organizer").image("events/1/cover-a.jpg").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.setImage("1", "organizer", null)).thenReturn(Mono.just(by("organizer", Visibility.FRIENDS)));
+        when(mediaStore.delete("events/1/cover-a.jpg")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.removeCover("1", "organizer")).verifyComplete();
+
+        verify(mediaStore).delete("events/1/cover-a.jpg");
+    }
+
+    @Test
+    void removeCover_shouldSucceed_whenWelyMediaCannotDiscard() {
+        Event event = Event.builder().id("1").organizerId("organizer").image("events/1/cover-a.jpg").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.setImage("1", "organizer", null)).thenReturn(Mono.just(by("organizer", Visibility.FRIENDS)));
+        when(mediaStore.delete("events/1/cover-a.jpg")).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+
+        StepVerifier.create(eventService.removeCover("1", "organizer")).verifyComplete();
+    }
+
+    @Test
+    void removeCover_shouldRefuseAParticipant() {
+        Event event = Event.builder().id("1").organizerId("organizer").image("events/1/cover-a.jpg")
+                .participantIds(new ArrayList<>(List.of("alice"))).build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.removeCover("1", "alice"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .verify();
+        verify(eventRepository, never()).setImage(any(), any(), any());
+    }
+
+    @Test
+    void removeCover_shouldAnswerNotFound_whenMissing() {
+        when(eventRepository.findById("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.removeCover("1", "organizer"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    @Test
+    void removeCover_shouldAnswerNotFound_whenTheEventIsGoneMeanwhile() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
+        when(eventRepository.setImage("1", "organizer", null)).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.removeCover("1", "organizer"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+        verify(mediaStore, never()).delete(anyString());
     }
 }

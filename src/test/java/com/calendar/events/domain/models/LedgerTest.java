@@ -17,7 +17,7 @@ class LedgerTest {
 
     private static Expense equalSplit(String paidBy, long amountCents, String... people) {
         return new Expense(null, "ev-1", "Dépense", amountCents, null, paidBy, paidBy, ExpenseKind.EXPENSE,
-                SplitMode.EQUAL, Arrays.stream(people).map(id -> new Share(id, 0)).toList(), AT, null);
+                SplitMode.EQUAL, Arrays.stream(people).map(id -> new Share(id, 0)).toList(), AT, null, null);
     }
 
     @Test

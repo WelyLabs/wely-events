@@ -1,7 +1,9 @@
 package com.calendar.events.infrastructure.persistence.repositories;
 
 import com.calendar.events.infrastructure.persistence.entities.ExpenseEntity;
+import org.springframework.data.mongodb.repository.Query;
 import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
+import org.springframework.data.mongodb.repository.Update;
 import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -21,4 +23,10 @@ public interface ReactiveExpenseMongoRepository extends ReactiveMongoRepository<
     Mono<Long> deleteAllByEventId(String eventId);
 
     Flux<ExpenseEntity> findAllByEventIdIn(Collection<String> eventIds);
+
+    // Bumps the version: an edit form opened before the receipt changed gets EXPENSE_CONFLICT
+    // instead of a full save that would write the old receipt key back.
+    @Query("{ '_id': ?0, 'eventId': ?1 }")
+    @Update("{ '$set': { 'receiptKey': ?2 }, '$inc': { 'version': 1 } }")
+    Mono<Long> setReceiptKey(String id, String eventId, String receiptKey);
 }

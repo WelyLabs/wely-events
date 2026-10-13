@@ -111,13 +111,17 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `GET` | `/events/map?south=&west=&north=&east=` | Événements à venir que l'appelant peut voir, dans la zone affichée par la carte « Explorer » : requête `$geoWithin` sur l'index `2dsphere`, 200 au plus, les plus proches dans le temps d'abord. Zone de 90° au plus de côté (400 sinon) |
 | `POST` | `/events` | Crée un événement (201). `visibility` facultatif, `FRIENDS` par défaut |
 | `POST` | `/events/{id}/subscribe` | Inscrit ou désinscrit l'utilisateur |
-| `DELETE` | `/events/{id}` | Supprime un événement (204) |
+| `DELETE` | `/events/{id}` | Supprime un événement (204), avec ses dépenses, sa couverture et ses justificatifs |
+| `POST` | `/events/{id}/cover` | Multipart, partie `file` : remplace la couverture (organisateur seulement, 403 sinon, 404 si l'événement n'est pas visible). Renvoie l'`EventResponse`, couverture signée |
+| `DELETE` | `/events/{id}/cover` | Retire la couverture (204), organisateur seulement |
 | `POST` | `/events/me/free-slots` | Créneaux où l'utilisateur et des amis sont tous libres (voir plus bas) |
 | `GET` | `/events/users/{friendId}/calendar?from=&to=` | Calendrier d'un ami, dévoilé selon la proximité (voir plus bas) |
 | `GET` | `/events/{id}/expenses` | Dépenses partagées de l'événement, les plus récentes d'abord (membres seulement, 404 sinon) |
 | `POST` | `/events/{id}/expenses` | Ajoute une dépense (201) |
 | `PUT` | `/events/{id}/expenses/{expenseId}` | Modifie une dépense : son auteur ou l'organisateur (403 sinon), `version` lue pour refuser une modification concurrente (409) |
-| `DELETE` | `/events/{id}/expenses/{expenseId}` | Supprime une dépense (204), mêmes droits |
+| `DELETE` | `/events/{id}/expenses/{expenseId}` | Supprime une dépense (204), mêmes droits, et son justificatif |
+| `PUT` | `/events/{id}/expenses/{expenseId}/receipt` | Multipart, partie `file` : photo du justificatif, mêmes droits qu'une modification ; refusé sur un remboursement (400). Renvoie l'`ExpenseResponse`, `receiptUrl` signée |
+| `DELETE` | `/events/{id}/expenses/{expenseId}/receipt` | Retire le justificatif (204), mêmes droits |
 | `GET` | `/events/{id}/expenses/ledger` | Soldes de chacun et remboursements proposés |
 | `POST` | `/events/{id}/expenses/settlements` | Enregistre un remboursement (201), demandé par l'un des deux concernés |
 
@@ -147,11 +151,12 @@ public class EventRequest {
                                                 private Instant endDate;
     @NotBlank(message = "Location is required") private String location;
     @Valid                                      private CoordinatesDto coordinates; // facultatif
-                                                private String image;
                                                 private String description;
     private boolean subscribeByDefault;   // inscrit l'organisateur à la création
 }
 ```
+
+Pas de champ `image` : une couverture ne se désigne pas par URL, elle se téléverse (voir « Photos »). Sinon n'importe qui pourrait faire charger une URL de son choix aux navigateurs des autres.
 
 Les dates sont des `Instant` — stockage en UTC, conversion en fuseau local à l'affichage.
 
@@ -168,11 +173,29 @@ public class Event {
     private Instant endDate;
     private String location;
     private GeoPoint coordinates;   // null si le lieu a été tapé
-    private String image;
+    private String image;           // clé wely-media (events/…), chemin servi par le web (/demo/…) ou null
     private String description;
     private List<String> participantIds;
 }
 ```
+
+---
+
+## Photos : couvertures et justificatifs
+
+Les fichiers passent par **`wely-media`**, service interne qui prépare l'image (redimensionnée, réencodée en JPEG, métadonnées retirées), la range dans un bucket privé et signe des URL de courte durée. Ce service n'en voit que les clés.
+
+| Usage | Profil | Clé | Qui |
+|---|---|---|---|
+| Couverture d'événement | `COVER` (1600 px de large au plus) | `events/{id}/cover-{uuid}.jpg` | L'organisateur |
+| Justificatif de dépense | `RECEIPT` (2000 px de côté au plus, pour rester lisible) | `events/{eventId}/receipts/{expenseId}-{uuid}.jpg` | L'auteur de la dépense ou l'organisateur |
+
+- **10 Mo au plus** par fichier, refusés avant l'appel à `wely-media` (`EVT-BUS-012`, 413).
+- **Stocker d'abord, pointer ensuite.** Le fichier est rangé, puis le document le référence par une requête filtrée sur l'événement *et* l'organisateur (couverture) ou l'événement *et* la dépense (justificatif). Si cette écriture échoue, le fichier est supprimé ; l'ancien l'est ensuite, au mieux.
+- **Une signature par réponse.** Chaque réponse qui porte des événements (feed, inscrits, carte, détail, création, inscription, résumé de profil) ou des dépenses signe toutes ses clés en **un seul appel** (par paquets de 200). Si `wely-media` ne répond pas, la réponse part quand même, sans URL pour les fichiers stockés : une image manquante plutôt qu'une page en erreur.
+- **`EventResponse.image`** vaut donc une URL signée (couverture téléversée), un chemin `/demo/…` que l'application web sert elle-même (événements de démonstration), ou `null`. **`ExpenseResponse.receiptUrl`** vaut une URL signée ou `null`.
+- **Le justificatif fait monter la `version`** de la dépense (`$inc`). Une modification ouverte avant l'ajout du justificatif reçoit donc `EVT-BUS-010` au lieu de réécrire l'ancienne clé par-dessus la nouvelle ; la réponse de l'envoi porte la nouvelle version.
+- **Suppressions au mieux.** Supprimer un événement, une dépense ou remplacer une image retire les fichiers concernés sans jamais faire échouer l'opération : au pire, un fichier orphelin reste dans le bucket.
 
 ---
 
@@ -215,7 +238,8 @@ Un « Tricount » attaché à chaque événement : ses membres (organisateur et 
 - **Droits.** Hors membres, l'événement répond 404, comme partout. Payeur et bénéficiaires doivent être membres (`EVT-BUS-008`). Seul l'auteur d'une dépense ou l'organisateur la modifie ou la supprime (`EVT-BUS-009`) ; un remboursement ne se modifie pas, il se supprime.
 - **Chaque requête nomme l'événement** (`findByIdAndEventId`) : l'identifiant d'une dépense d'un autre événement ne trouve rien, même pour un membre.
 - **Concurrence.** `@Version` sur le document : une modification faite sur une version déjà dépassée est refusée (`EVT-BUS-010`, 409) au lieu d'écraser celle d'un autre.
-- **Cascade.** Supprimer l'événement supprime ses dépenses.
+- **Justificatif.** Une photo du ticket peut être jointe à une dépense (voir « Photos ») ; `ExpenseRequest` ne la porte pas, une modification la conserve.
+- **Cascade.** Supprimer l'événement supprime ses dépenses et leurs justificatifs.
 
 ## Le calendrier d'un ami
 
@@ -245,7 +269,12 @@ La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /soci
 | `EVT-BUS-008` | 400 | Dépense invalide : montant, membres, ou répartition qui ne tombe pas juste |
 | `EVT-BUS-009` | 403 | Ni l'auteur de la dépense ni l'organisateur |
 | `EVT-BUS-010` | 409 | Dépense modifiée entre-temps par quelqu'un d'autre |
+| `EVT-BUS-011` | 400 | Couverture absente ou illisible (JPEG, PNG, GIF ou BMP) |
+| `EVT-BUS-012` | 413 | Image de plus de 10 Mo (couverture ou justificatif) |
+| `EVT-BUS-013` | 400 | Justificatif absent ou illisible |
 | `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
+| `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
+| `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |
 | `EVT-VAL-001` | 400 | Validation du corps de requête, détail par champ |
 | `EVT-REQ-000` | *repris* | Chemin inconnu, méthode non autorisée |
 | `EVT-TEC-000` | 500 | Erreur inattendue |
@@ -285,6 +314,8 @@ client peut tester et un `timestamp` :
 | `KEYCLOAK_ISSUER_URI` | Issuer public — validation de l'émetteur |
 | `KEYCLOAK_INTERNAL_JWK_SET_URI` | JWKS interne — récupération des clés |
 | `SOCIAL_API_URL` | URL interne de `wely-social`, interrogé pour la liste d'amis |
+| `MEDIA_API_URL` | URL interne de `wely-media` (`http://localhost:8085` en profil `dev`) |
+| `MEDIA_API_SECRET` | Secret partagé envoyé dans `X-Internal-Secret`. Vide par défaut : le service démarre, mais les envois répondent `EVT-TEC-003` et les images sortent sans URL |
 
 ---
 

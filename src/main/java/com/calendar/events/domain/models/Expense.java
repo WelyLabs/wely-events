@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Money someone paid for an event, and who it was for.
@@ -18,10 +19,13 @@ import java.util.Set;
  * <p>Amounts are whole cents in a {@code long}: a {@code double} cannot hold 0.10 exactly, and a
  * split must add up to the expense to the cent. Every check lives here, so no expense that does not
  * add up can exist, whoever builds it.
+ *
+ * <p>{@code receiptKey} is the wely-media key of a photo of the receipt, null without one; only the
+ * receipt endpoints set it.
  */
 public record Expense(String id, String eventId, String title, long amountCents, String currency,
                       String paidBy, String createdBy, ExpenseKind kind, SplitMode split,
-                      List<Share> shares, Instant spentAt, Long version) {
+                      List<Share> shares, Instant spentAt, String receiptKey, Long version) {
 
     /** The only currency for now; stored so a second one does not need a migration. */
     public static final String CURRENCY = "EUR";
@@ -54,7 +58,12 @@ public record Expense(String id, String eventId, String title, long amountCents,
             throw new EventException(EventErrorCode.EXPENSE_INVALID);
         }
         return new Expense(null, eventId, SETTLEMENT_TITLE, amountCents, CURRENCY, fromUserId, recordedBy,
-                ExpenseKind.SETTLEMENT, SplitMode.EXACT, List.of(new Share(toUserId, amountCents)), at, null);
+                ExpenseKind.SETTLEMENT, SplitMode.EXACT, List.of(new Share(toUserId, amountCents)), at, null, null);
+    }
+
+    /** A fresh key for this expense's receipt, under its event's prefix in wely-media. */
+    public static String newReceiptKey(String eventId, String expenseId) {
+        return EventCover.STORED_PREFIX + eventId + "/receipts/" + expenseId + "-" + UUID.randomUUID() + ".jpg";
     }
 
     /** Everyone this expense names: who paid and who it was for. */

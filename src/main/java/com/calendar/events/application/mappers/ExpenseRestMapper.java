@@ -6,6 +6,8 @@ import com.calendar.events.application.dtos.LedgerResponse;
 import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.models.ExpenseDraft;
 import com.calendar.events.domain.models.Ledger;
+import com.calendar.events.domain.models.SignedUrls;
+import org.mapstruct.Context;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 
@@ -18,7 +20,8 @@ public interface ExpenseRestMapper {
     ExpenseDraft toDraft(ExpenseRequest request);
 
     @Mapping(target = "owedCents", expression = "java(expense.owedBy())")
-    ExpenseResponse toResponse(Expense expense);
+    @Mapping(target = "receiptUrl", expression = "java(urls.urlOf(expense.receiptKey()))")
+    ExpenseResponse toResponse(Expense expense, @Context SignedUrls urls);
 
     @Mapping(target = "currency", constant = Expense.CURRENCY)
     LedgerResponse toResponse(Ledger ledger);
