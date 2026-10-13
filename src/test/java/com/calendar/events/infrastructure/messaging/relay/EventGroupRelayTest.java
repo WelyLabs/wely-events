@@ -48,7 +48,7 @@ class EventGroupRelayTest {
 
     private EventEntity pending(String id, Long version) {
         EventEntity event = EventEntity.builder().id(id).groupVersion(version).build();
-        when(mapper.toDto(event)).thenReturn(new EventGroupChangedDTO(id, "title " + id, List.of(), version == null ? 0 : version));
+        when(mapper.toDto(event)).thenReturn(new EventGroupChangedDTO(id, "title " + id, "org", List.of(), version == null ? 0 : version));
         return event;
     }
 
