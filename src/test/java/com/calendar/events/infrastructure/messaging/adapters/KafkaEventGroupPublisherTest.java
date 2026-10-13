@@ -20,7 +20,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class KafkaEventGroupPublisherTest {
 
-    private static final EventGroupChangedDTO GROUP = new EventGroupChangedDTO("e1", "Quiz", List.of("a"), 2);
+    private static final EventGroupChangedDTO GROUP = new EventGroupChangedDTO("e1", "Quiz", "a", List.of("a"), 2);
 
     @Mock
     private StreamBridge streamBridge;

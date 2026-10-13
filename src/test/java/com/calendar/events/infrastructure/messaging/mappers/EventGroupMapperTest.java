@@ -28,7 +28,7 @@ class EventGroupMapperTest {
     void toDto_shouldCarryTheOrganizerFirstThenParticipants() {
         EventGroupChangedDTO dto = mapper.toDto(event("org", List.of("a", "b"), 3L));
 
-        assertThat(dto).isEqualTo(new EventGroupChangedDTO("e1", "Board games", List.of("org", "a", "b"), 3));
+        assertThat(dto).isEqualTo(new EventGroupChangedDTO("e1", "Board games", "org", List.of("org", "a", "b"), 3));
     }
 
     @Test
