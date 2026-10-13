@@ -7,13 +7,18 @@ import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
 import com.calendar.events.domain.services.FriendCalendarService;
+import com.calendar.events.domain.services.ProfileSummaryService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
+import java.time.ZoneId;
 
 @Configuration
 public class EventApplicationConfig {
+
+    /** Wely's users are in France: "this year" and "this month" on a profile start at midnight there. */
+    static final ZoneId USERS_ZONE = ZoneId.of("Europe/Paris");
 
     @Bean
     public EventService eventService(EventRepository eventRepository, SocialGraph socialGraph,
@@ -34,5 +39,10 @@ public class EventApplicationConfig {
     @Bean
     public FreeSlotService freeSlotService(EventRepository eventRepository, SocialGraph socialGraph) {
         return new FreeSlotService(eventRepository, socialGraph);
+    }
+
+    @Bean
+    public ProfileSummaryService profileSummaryService(EventRepository eventRepository, ExpenseRepository expenseRepository) {
+        return new ProfileSummaryService(eventRepository, expenseRepository, Clock.systemUTC(), USERS_ZONE);
     }
 }

@@ -4,6 +4,8 @@ import com.calendar.events.domain.models.Expense;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Collection;
+
 /** An event's expenses. Every lookup names the event too, so an id from another event finds nothing. */
 public interface ExpenseRepository {
 
@@ -18,4 +20,7 @@ public interface ExpenseRepository {
     Mono<Void> delete(String eventId, String expenseId);
 
     Mono<Void> deleteByEvent(String eventId);
+
+    /** The expenses of several events at once, in no particular order. */
+    Flux<Expense> findByEvents(Collection<String> eventIds);
 }

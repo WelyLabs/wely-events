@@ -16,6 +16,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.util.List;
+
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -89,5 +91,13 @@ class MongoExpenseRepositoryAdapterTest {
         when(mongoRepository.deleteAllByEventId("ev-1")).thenReturn(Mono.just(3L));
 
         StepVerifier.create(adapter.deleteByEvent("ev-1")).verifyComplete();
+    }
+
+    @Test
+    void findByEvents_shouldReadTheExpensesOfEveryEventAsked() {
+        when(mongoRepository.findAllByEventIdIn(List.of("ev-1", "ev-2"))).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(expense);
+
+        StepVerifier.create(adapter.findByEvents(List.of("ev-1", "ev-2"))).expectNext(expense).verifyComplete();
     }
 }

@@ -48,4 +48,7 @@ public interface EventRepository {
      * {@link Event#DEFAULT_DURATION}.
      */
     Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to);
+
+    /** Every event the user organizes or takes part in, past and future. */
+    Flux<Event> findInvolving(String userId);
 }

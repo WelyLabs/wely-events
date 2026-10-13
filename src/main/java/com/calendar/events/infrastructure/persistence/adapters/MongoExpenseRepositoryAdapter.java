@@ -11,6 +11,8 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Collection;
+
 @Component
 public class MongoExpenseRepositoryAdapter implements ExpenseRepository {
 
@@ -50,5 +52,10 @@ public class MongoExpenseRepositoryAdapter implements ExpenseRepository {
     @Override
     public Mono<Void> deleteByEvent(String eventId) {
         return mongoRepository.deleteAllByEventId(eventId).then();
+    }
+
+    @Override
+    public Flux<Expense> findByEvents(Collection<String> eventIds) {
+        return mongoRepository.findAllByEventIdIn(eventIds).map(mapper::toDomain);
     }
 }

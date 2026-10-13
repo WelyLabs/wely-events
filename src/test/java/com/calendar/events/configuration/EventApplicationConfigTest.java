@@ -7,6 +7,7 @@ import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
 import com.calendar.events.domain.services.FriendCalendarService;
+import com.calendar.events.domain.services.ProfileSummaryService;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,6 +33,15 @@ class EventApplicationConfigTest {
         ExpenseService service = config.expenseService(mock(EventRepository.class), mock(ExpenseRepository.class));
 
         assertThat(service).isNotNull();
+    }
+
+    @Test
+    void profileSummaryService_shouldBuildTheDomainServiceFromItsPorts() {
+        ProfileSummaryService service = config.profileSummaryService(mock(EventRepository.class), mock(ExpenseRepository.class));
+
+        assertThat(service).isNotNull();
+        // A profile's "this year" starts at midnight in France, not in UTC.
+        assertThat(EventApplicationConfig.USERS_ZONE).hasToString("Europe/Paris");
     }
 
     @Test
