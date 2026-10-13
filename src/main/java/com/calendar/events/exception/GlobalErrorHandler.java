@@ -1,6 +1,7 @@
 package com.calendar.events.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -42,6 +43,12 @@ public class GlobalErrorHandler {
 
         return problem(error.getHttpStatus(), error.getCode(), error.getTitle(), error.getDetail(),
                 exchange);
+    }
+
+    /** A multipart upload past the codec's limit, before any controller could cap it itself. */
+    @ExceptionHandler(DataBufferLimitException.class)
+    public ProblemDetail handleDataBufferLimitException(DataBufferLimitException ex, ServerWebExchange exchange) {
+        return handleEventException(new EventException(EventErrorCode.MEDIA_TOO_LARGE), exchange);
     }
 
     /** Bean Validation rejections, with the offending fields listed. */

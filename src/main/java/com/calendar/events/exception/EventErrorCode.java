@@ -74,6 +74,25 @@ public enum EventErrorCode {
             "Someone changed this expense since it was read; reload it and try again.",
             HttpStatus.CONFLICT),
 
+    COVER_INVALID(
+            "EVT-BUS-011",
+            "Invalid cover",
+            "The cover must be a JPEG, PNG, GIF or BMP image, sent as the multipart part 'file'.",
+            HttpStatus.BAD_REQUEST),
+
+    /** Shared by covers and receipts: the limit is the same. */
+    MEDIA_TOO_LARGE(
+            "EVT-BUS-012",
+            "Picture too large",
+            "A picture may weigh at most 10 MB.",
+            HttpStatus.CONTENT_TOO_LARGE),
+
+    RECEIPT_INVALID(
+            "EVT-BUS-013",
+            "Invalid receipt",
+            "The receipt must be a JPEG, PNG, GIF or BMP image, sent as the multipart part 'file'.",
+            HttpStatus.BAD_REQUEST),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",
@@ -85,6 +104,12 @@ public enum EventErrorCode {
             "EVT-TEC-002",
             "Message broker unavailable",
             "The event's members could not be sent to Kafka; they will be sent again shortly.",
+            HttpStatus.BAD_GATEWAY),
+
+    MEDIA_UNAVAILABLE(
+            "EVT-TEC-003",
+            "Media service unavailable",
+            "The picture could not be stored; try again shortly.",
             HttpStatus.BAD_GATEWAY);
 
     private final String code;
