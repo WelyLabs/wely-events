@@ -606,4 +606,81 @@ class MongoEventRepositoryAdapterIntegrationTest {
         assertThat(adapter.findOpenPollsInvolving("lea").map(Event::getTitle).collectList().block())
                 .containsExactlyInAnyOrder("Organized", "Joined", "Voted on");
     }
+
+    private static final Instant OVERVIEW_NOW = Instant.parse("2026-10-14T12:00:00Z");
+
+    private List<String> titles(Flux<Event> events) {
+        return events.map(Event::getTitle).collectList().block();
+    }
+
+    @Test
+    @DisplayName("events both are on, as organizer or participant; never those only one of them is on")
+    void findUpcomingInvolvingBoth_shouldMatchBothUsersInEitherRole() {
+        saveAt("lea organizes, hugo joins", "lea", List.of("hugo"), "2026-10-20T10:00:00Z", "2026-10-20T11:00:00Z");
+        saveAt("hugo organizes, lea joins", "hugo", List.of("lea"), "2026-10-21T10:00:00Z", "2026-10-21T11:00:00Z");
+        saveAt("both join", "zoe", List.of("lea", "hugo"), "2026-10-22T10:00:00Z", "2026-10-22T11:00:00Z");
+        saveAt("lea only", "lea", List.of("zoe"), "2026-10-23T10:00:00Z", "2026-10-23T11:00:00Z");
+        saveAt("hugo only", "zoe", List.of("hugo"), "2026-10-24T10:00:00Z", "2026-10-24T11:00:00Z");
+
+        assertThat(titles(adapter.findUpcomingInvolvingBoth("lea", "hugo", OVERVIEW_NOW, 10)))
+                .containsExactly("lea organizes, hugo joins", "hugo organizes, lea joins", "both join");
+    }
+
+    @Test
+    @DisplayName("what is still on is upcoming, soonest first and capped; an event without an end lasts an hour")
+    void findUpcomingInvolvingBoth_shouldKeepEventsNotOverYet_soonestFirst_upToTheLimit() {
+        saveAt("later", "lea", List.of("hugo"), "2026-10-30T10:00:00Z", "2026-10-30T11:00:00Z");
+        saveAt("running", "lea", List.of("hugo"), "2026-10-14T11:00:00Z", "2026-10-14T13:00:00Z");
+        saveAt("no end, started 30 min ago", "lea", List.of("hugo"), "2026-10-14T11:30:00Z", null);
+        saveAt("no end, started 2 hours ago", "lea", List.of("hugo"), "2026-10-14T10:00:00Z", null);
+        saveAt("over", "lea", List.of("hugo"), "2026-10-13T10:00:00Z", "2026-10-13T11:00:00Z");
+        saveAt("tomorrow", "hugo", List.of("lea"), "2026-10-15T10:00:00Z", "2026-10-15T11:00:00Z");
+
+        assertThat(titles(adapter.findUpcomingInvolvingBoth("lea", "hugo", OVERVIEW_NOW, 10)))
+                .containsExactly("running", "no end, started 30 min ago", "tomorrow", "later");
+        assertThat(titles(adapter.findUpcomingInvolvingBoth("hugo", "lea", OVERVIEW_NOW, 2)))
+                .containsExactly("running", "no end, started 30 min ago");
+    }
+
+    @Test
+    @DisplayName("memories are what both were on and is over, most recent first and capped")
+    void findPastInvolvingBoth_shouldKeepEventsOver_mostRecentFirst_upToTheLimit() {
+        saveAt("last month", "lea", List.of("hugo"), "2026-09-14T10:00:00Z", "2026-09-14T11:00:00Z");
+        saveAt("yesterday", "hugo", List.of("lea"), "2026-10-13T10:00:00Z", "2026-10-13T11:00:00Z");
+        saveAt("no end, started 2 hours ago", "zoe", List.of("lea", "hugo"), "2026-10-14T10:00:00Z", null);
+        saveAt("no end, started 30 min ago", "lea", List.of("hugo"), "2026-10-14T11:30:00Z", null);
+        saveAt("running", "lea", List.of("hugo"), "2026-10-14T11:00:00Z", "2026-10-14T13:00:00Z");
+        saveAt("lea alone", "lea", List.of(), "2026-10-12T10:00:00Z", "2026-10-12T11:00:00Z");
+
+        assertThat(titles(adapter.findPastInvolvingBoth("lea", "hugo", OVERVIEW_NOW, 10)))
+                .containsExactly("no end, started 2 hours ago", "yesterday", "last month");
+        assertThat(titles(adapter.findPastInvolvingBoth("lea", "hugo", OVERVIEW_NOW, 2)))
+                .containsExactly("no end, started 2 hours ago", "yesterday");
+    }
+
+    @Test
+    @DisplayName("outings together count every past event both were on, beyond the memories shown")
+    void countPastInvolvingBoth_shouldCountEveryPastEventBothWereOn() {
+        for (int day = 1; day <= 8; day++) {
+            String start = "2026-09-%02dT10:00:00Z".formatted(day);
+            saveAt("outing " + day, day % 2 == 0 ? "lea" : "hugo", List.of(day % 2 == 0 ? "hugo" : "lea"), start, null);
+        }
+        saveAt("upcoming together", "lea", List.of("hugo"), "2026-10-20T10:00:00Z", null);
+        saveAt("lea alone", "lea", List.of("zoe"), "2026-09-10T10:00:00Z", null);
+
+        StepVerifier.create(adapter.countPastInvolvingBoth("lea", "hugo", OVERVIEW_NOW)).expectNext(8L).verifyComplete();
+        StepVerifier.create(adapter.countPastInvolvingBoth("lea", "nobody", OVERVIEW_NOW)).expectNext(0L).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("a friend's upcoming events are those they organize or join and that are not over, soonest first")
+    void findUpcomingInvolving_shouldKeepTheUsersEventsNotOverYet_soonestFirst() {
+        saveAt("hugo joins, later", "zoe", List.of("hugo"), "2026-10-25T10:00:00Z", "2026-10-25T11:00:00Z");
+        saveAt("hugo organizes, tomorrow", "hugo", List.of(), "2026-10-15T10:00:00Z", null);
+        saveAt("hugo, over", "hugo", List.of(), "2026-10-13T10:00:00Z", "2026-10-13T11:00:00Z");
+        saveAt("someone else's", "zoe", List.of("lea"), "2026-10-16T10:00:00Z", null);
+
+        assertThat(titles(adapter.findUpcomingInvolving("hugo", OVERVIEW_NOW)))
+                .containsExactly("hugo organizes, tomorrow", "hugo joins, later");
+    }
 }

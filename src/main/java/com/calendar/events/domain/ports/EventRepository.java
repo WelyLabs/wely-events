@@ -59,6 +59,21 @@ public interface EventRepository {
     Flux<Event> findInvolving(String userId);
 
     /**
+     * Events not over yet at {@code now} that the user organizes or takes part in, soonest first.
+     * An event without an end lasts {@link Event#DEFAULT_DURATION}.
+     */
+    Flux<Event> findUpcomingInvolving(String userId, Instant now);
+
+    /** Events not over yet at {@code now} that both users are on, soonest first, at most {@code limit}. */
+    Flux<Event> findUpcomingInvolvingBoth(String userId, String otherId, Instant now, int limit);
+
+    /** Events over before {@code now} that both users were on, most recent first, at most {@code limit}. */
+    Flux<Event> findPastInvolvingBoth(String userId, String otherId, Instant now, int limit);
+
+    /** How many events over before {@code now} both users were on. */
+    Mono<Long> countPastInvolvingBoth(String userId, String otherId, Instant now);
+
+    /**
      * Replaces the voter's whole ballot in one atomic write, leaving the others untouched; an empty
      * map withdraws it. Empty when the event has no open poll.
      */

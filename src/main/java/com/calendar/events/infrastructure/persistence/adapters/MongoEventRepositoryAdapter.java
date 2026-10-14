@@ -98,6 +98,31 @@ public class MongoEventRepositoryAdapter implements EventRepository {
         return mongoRepository.findInvolving(userId).map(mapper::toDomain);
     }
 
+    @Override
+    public Flux<Event> findUpcomingInvolving(String userId, Instant now) {
+        return mongoRepository.findUpcomingInvolving(userId, now, now.minus(Event.DEFAULT_DURATION))
+                .map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Event> findUpcomingInvolvingBoth(String userId, String otherId, Instant now, int limit) {
+        return mongoRepository.findUpcomingInvolvingBoth(userId, otherId, now, now.minus(Event.DEFAULT_DURATION),
+                        Limit.of(limit))
+                .map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Event> findPastInvolvingBoth(String userId, String otherId, Instant now, int limit) {
+        return mongoRepository.findPastInvolvingBoth(userId, otherId, now, now.minus(Event.DEFAULT_DURATION),
+                        Limit.of(limit))
+                .map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Long> countPastInvolvingBoth(String userId, String otherId, Instant now) {
+        return mongoRepository.countPastInvolvingBoth(userId, otherId, now, now.minus(Event.DEFAULT_DURATION));
+    }
+
     /**
      * Mongo counts modified documents, not matched ones: casting the same ballot again modifies
      * nothing. A poll never reopens, so finding it still open after the write means it matched.
