@@ -13,6 +13,7 @@ import com.calendar.events.domain.services.FriendOverviewService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.PollService;
 import com.calendar.events.domain.services.ProfileSummaryService;
+import com.calendar.events.domain.services.ScheduleService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -39,6 +40,11 @@ public class EventApplicationConfig {
     @Bean
     public PollService pollService(EventRepository eventRepository, EventService eventService, PollUpdates pollUpdates) {
         return new PollService(eventRepository, eventService, pollUpdates);
+    }
+
+    @Bean
+    public ScheduleService scheduleService(EventRepository eventRepository, EventService eventService) {
+        return new ScheduleService(eventRepository, eventService, Clock.systemUTC(), USERS_ZONE);
     }
 
     @Bean

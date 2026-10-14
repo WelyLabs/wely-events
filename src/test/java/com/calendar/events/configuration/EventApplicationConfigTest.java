@@ -13,6 +13,7 @@ import com.calendar.events.domain.services.FriendOverviewService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.PollService;
 import com.calendar.events.domain.services.ProfileSummaryService;
+import com.calendar.events.domain.services.ScheduleService;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,6 +39,17 @@ class EventApplicationConfigTest {
     void expenseService_shouldBuildTheDomainServiceFromItsPorts() {
         ExpenseService service = config.expenseService(mock(EventRepository.class), mock(ExpenseRepository.class),
                 config.pictureService(mock(MediaStore.class)));
+
+        assertThat(service).isNotNull();
+    }
+
+    @Test
+    void scheduleService_shouldBuildTheDomainServiceFromItsPortAndTheEventService() {
+        EventRepository repository = mock(EventRepository.class);
+        EventService eventService = config.eventService(repository, mock(SocialGraph.class),
+                mock(ExpenseRepository.class), config.pictureService(mock(MediaStore.class)));
+
+        ScheduleService service = config.scheduleService(repository, eventService);
 
         assertThat(service).isNotNull();
     }

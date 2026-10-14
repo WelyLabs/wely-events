@@ -6,6 +6,7 @@ import com.calendar.events.domain.models.Poll;
 import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
+import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import com.calendar.events.infrastructure.persistence.mappers.EventPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveEventMongoRepository;
@@ -280,6 +281,8 @@ class MongoEventRepositoryAdapterTest {
     }
 
     private static final PollSlot FRIDAY = new PollSlot("fri", Instant.parse("2026-10-17T17:00:00Z"), Instant.parse("2026-10-17T19:00:00Z"));
+    private static final Instant THURSDAY_START = Instant.parse("2026-10-16T17:00:00Z");
+    private static final Instant THURSDAY_END = Instant.parse("2026-10-16T19:00:00Z");
 
     private static Event withPoll(PollStatus status) {
         return Event.builder().id("1").poll(new Poll(status, List.of(FRIDAY), null, null)).build();
@@ -356,6 +359,39 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.fixPollDate("1", "org", FRIDAY.start(), FRIDAY.end(), "fri", List.of())).thenReturn(Mono.just(0L));
 
         StepVerifier.create(adapter.fixPollDate("1", "org", FRIDAY, List.of())).verifyComplete();
+        verify(mongoRepository, never()).findById("1");
+    }
+
+    @Test
+    void reschedule_shouldMatchTheReadStart_keepTheReadEnd_andFlagTheAnnouncement() {
+        Event read = Event.builder().id("1").organizerId("org").startDate(THURSDAY_START).endDate(THURSDAY_END).build();
+        Event after = Event.builder().id("1").startDate(FRIDAY.start()).endDate(FRIDAY.end()).build();
+        when(mongoRepository.reschedule("1", "org", THURSDAY_START, FRIDAY.start(), FRIDAY.end(), THURSDAY_END, false))
+                .thenReturn(Mono.just(1L));
+        readBack(after);
+
+        StepVerifier.create(adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), true))
+                .expectNext(after).verifyComplete();
+    }
+
+    @Test
+    void reschedule_shouldClearTheAnnouncement_whenNobodyIsToBeTold() {
+        Event read = Event.builder().id("1").organizerId("org").startDate(THURSDAY_START).build();
+        when(mongoRepository.reschedule("1", "org", THURSDAY_START, FRIDAY.start(), FRIDAY.end(), null, null))
+                .thenReturn(Mono.just(1L));
+        readBack(read);
+
+        StepVerifier.create(adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), false))
+                .expectNext(read).verifyComplete();
+    }
+
+    @Test
+    void reschedule_shouldBeEmpty_whenTheDateChangedMeanwhile() {
+        Event read = Event.builder().id("1").organizerId("org").startDate(THURSDAY_START).endDate(THURSDAY_END).build();
+        when(mongoRepository.reschedule("1", "org", THURSDAY_START, FRIDAY.start(), FRIDAY.end(), THURSDAY_END, false))
+                .thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), true)).verifyComplete();
         verify(mongoRepository, never()).findById("1");
     }
 

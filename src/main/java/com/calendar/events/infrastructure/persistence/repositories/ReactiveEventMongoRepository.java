@@ -154,9 +154,10 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     @Query("{ '_id': ?0, 'organizerId': ?1, 'poll.status': 'OPEN' }")
     @Update("""
             { '$set': { 'startDate': ?2, 'endDate': ?3, 'poll.status': 'CLOSED', 'poll.fixedSlotId': ?4,
-                        'dateFixSynced': false, 'groupSynced': false },
+                        'dateFixSynced': false, 'groupSynced': false,
+                        'rescheduledFromStart': null, 'rescheduledFromEnd': null },
               '$addToSet': { 'participantIds': { '$each': ?5 } },
-              '$inc': { 'groupVersion': 1 } }""")
+              '$inc': { 'groupVersion': 1, 'dateFixVersion': 1 } }""")
     Mono<Long> fixPollDate(String eventId, String organizerId, Instant start, Instant end, String slotId,
                            Collection<String> yesVoterIds);
 
@@ -167,12 +168,28 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
             sort = "{ startDate: 1 }")
     Flux<EventEntity> findOpenPollsInvolving(String userId);
 
-    /** Fixed dates wely-chat has not been told about yet, oldest first. */
+    /**
+     * Compare-and-set on the start that was read: two moves at once cannot both land, and an open
+     * poll is never moved. The same update keeps the previous dates and sets the date relay's flag:
+     * false to announce the move, null when nobody else takes part and there is no one to tell.
+     */
+    @Query("{ '_id': ?0, 'organizerId': ?1, 'startDate': ?2, 'poll.status': { $ne: 'OPEN' } }")
+    @Update("""
+            { '$set': { 'startDate': ?3, 'endDate': ?4, 'rescheduledFromStart': ?2, 'rescheduledFromEnd': ?5,
+                        'dateFixSynced': ?6 },
+              '$inc': { 'dateFixVersion': 1 } }""")
+    Mono<Long> reschedule(String eventId, String organizerId, Instant expectedStart, Instant start, Instant end,
+                          Instant previousEnd, Boolean dateFixSynced);
+
+    /** Fixed or moved dates wely-chat has not been told about yet, oldest first. */
     @Query(value = "{ 'dateFixSynced': false }", sort = "{ '_id': 1 }")
     Flux<EventEntity> findDateFixesToPublish(Limit limit);
 
-    // A poll closes once, so there is a single announcement per event: the flag alone is enough.
-    @Query("{ '_id': ?0, 'dateFixSynced': false }")
+    /**
+     * Marks the date announced, unless it moved again since it was read: the version no longer
+     * matches, nothing is updated, and the relay announces the newer date on its next pass.
+     */
+    @Query("{ '_id': ?0, 'dateFixSynced': false, 'dateFixVersion': ?1 }")
     @Update("{ '$set': { 'dateFixSynced': true } }")
-    Mono<Long> markDateFixPublished(String eventId);
+    Mono<Long> markDateFixPublished(String eventId, Long dateFixVersion);
 }

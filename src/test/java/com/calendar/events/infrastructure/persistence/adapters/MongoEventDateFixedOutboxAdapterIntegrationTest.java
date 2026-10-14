@@ -4,6 +4,7 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.Poll;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
+import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,7 +13,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -25,8 +28,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * The date-fixed outbox against a real MongoDB: only a fixed date is pending, never a plain event
- * nor an open poll, and marking it sent works once.
+ * The date-fixed outbox against a real MongoDB: only a fixed or moved date is pending, never a
+ * plain event nor an open poll, and marking it sent works once, for the version that was read.
  *
  * <p>Opt-in: CI sets {@code CI=true}, locally pass {@code -Dintegration.tests=true}.
  */
@@ -90,16 +93,62 @@ class MongoEventDateFixedOutboxAdapterIntegrationTest {
         events.fixPollDate(id, "org", FRIDAY, List.of()).block();
 
         assertThat(pending()).containsExactly(id);
-        assertThat(outbox.markPublished(id).block()).isTrue();
+        assertThat(outbox.markPublished(id, version(id)).block()).isTrue();
         assertThat(pending()).isEmpty();
+    }
+
+    @Test
+    void findPending_shouldIncludeAMove_withTheDatesBeforeIt() {
+        String id = anEvent(null);
+        Event read = events.findById(id).block();
+        events.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), true).block();
+
+        EventEntity move = outbox.findPending(10).blockFirst();
+        assertThat(move.getId()).isEqualTo(id);
+        assertThat(move.getStartDate()).isEqualTo(FRIDAY.start());
+        assertThat(move.getRescheduledFromStart()).isEqualTo(THURSDAY.start());
+        assertThat(move.getRescheduledFromEnd()).isNull();
+    }
+
+    @Test
+    void findPending_shouldIgnoreAMove_withNoOneToTell() {
+        String id = anEvent(null);
+        events.reschedule(events.findById(id).block(), new TimeRange(FRIDAY.start(), FRIDAY.end()), false).block();
+
+        assertThat(pending()).isEmpty();
+    }
+
+    @Test
+    void markPublished_shouldLeaveAMovePending_whenItMovedAgainAfterBeingRead() {
+        String id = anEvent(null);
+        events.reschedule(events.findById(id).block(), new TimeRange(FRIDAY.start(), FRIDAY.end()), true).block();
+        Long announced = version(id);
+        events.reschedule(events.findById(id).block(), new TimeRange(THURSDAY.start(), THURSDAY.end()), true).block();
+
+        assertThat(outbox.markPublished(id, announced).block()).isFalse();
+        assertThat(pending()).containsExactly(id);
+    }
+
+    @Test
+    void markPublished_shouldMarkADateFixStoredBeforeVersions() {
+        String id = anEvent(null);
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(id)),
+                new Update().set("dateFixSynced", false), "events").block();
+
+        assertThat(outbox.markPublished(id, null).block()).isTrue();
+        assertThat(pending()).isEmpty();
+    }
+
+    private Long version(String id) {
+        return mongoTemplate.findById(id, EventEntity.class, "events").block().getDateFixVersion();
     }
 
     @Test
     void markPublished_shouldWorkOnce() {
         String id = anEvent(new Poll(PollStatus.OPEN, List.of(THURSDAY, FRIDAY), null, null));
         events.fixPollDate(id, "org", FRIDAY, List.of()).block();
-        outbox.markPublished(id).block();
+        outbox.markPublished(id, version(id)).block();
 
-        assertThat(outbox.markPublished(id).block()).isFalse();
+        assertThat(outbox.markPublished(id, version(id)).block()).isFalse();
     }
 }

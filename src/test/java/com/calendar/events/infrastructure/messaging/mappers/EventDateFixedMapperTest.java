@@ -20,7 +20,20 @@ class EventDateFixedMapperTest {
                 .build();
 
         assertThat(mapper.toDto(event)).isEqualTo(new EventDateFixedDTO("e1", "Dinner",
-                Instant.parse("2026-10-16T17:00:00Z"), Instant.parse("2026-10-16T19:00:00Z"), "org"));
+                Instant.parse("2026-10-16T17:00:00Z"), Instant.parse("2026-10-16T19:00:00Z"), "org", null, null));
+    }
+
+    @Test
+    void toDto_shouldCarryThePreviousDates_ofAMove() {
+        EventEntity event = EventEntity.builder().id("e1").title("Bowling").organizerId("org")
+                .startDate(Instant.parse("2026-10-16T18:00:00Z")).endDate(Instant.parse("2026-10-16T20:00:00Z"))
+                .rescheduledFromStart(Instant.parse("2026-10-16T17:00:00Z"))
+                .rescheduledFromEnd(Instant.parse("2026-10-16T19:00:00Z"))
+                .build();
+
+        assertThat(mapper.toDto(event)).isEqualTo(new EventDateFixedDTO("e1", "Bowling",
+                Instant.parse("2026-10-16T18:00:00Z"), Instant.parse("2026-10-16T20:00:00Z"), "org",
+                Instant.parse("2026-10-16T17:00:00Z"), Instant.parse("2026-10-16T19:00:00Z")));
     }
 
     @Test

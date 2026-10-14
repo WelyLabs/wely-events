@@ -4,6 +4,7 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
+import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.infrastructure.persistence.mappers.EventPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveEventMongoRepository;
@@ -145,6 +146,14 @@ public class MongoEventRepositoryAdapter implements EventRepository {
                         List.copyOf(yesVoterIds))
                 .filter(modified -> modified > 0)
                 .flatMap(modified -> findById(eventId));
+    }
+
+    @Override
+    public Mono<Event> reschedule(Event read, TimeRange range, boolean announce) {
+        return mongoRepository.reschedule(read.getId(), read.getOrganizerId(), read.getStartDate(), range.start(),
+                        range.end(), read.getEndDate(), announce ? Boolean.FALSE : null)
+                .filter(modified -> modified > 0)
+                .flatMap(modified -> findById(read.getId()));
     }
 
     @Override

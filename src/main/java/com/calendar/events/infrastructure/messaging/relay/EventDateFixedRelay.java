@@ -15,10 +15,11 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 
 /**
- * Background loop that tells wely-chat about every date fixed by a poll, on the same outbox
- * pattern as {@link EventGroupRelay}: the fix flags the event document in its own atomic update,
- * each pass sends what is flagged, then clears the flag. A poll closes once, so an event is
- * announced once; a crash between send and mark sends it again, which the consumer must absorb.
+ * Background loop that tells wely-chat about every date fixed by a poll or moved by the organizer,
+ * on the same outbox pattern as {@link EventGroupRelay}: the fix or move flags the event document
+ * in its own atomic update, each pass sends what is flagged, then clears the flag unless the date
+ * moved again meanwhile, which the next pass sends. A crash between send and mark sends it again,
+ * which the consumer must absorb.
  */
 @Slf4j
 @Component
@@ -90,7 +91,7 @@ public class EventDateFixedRelay implements SmartLifecycle {
     /** A failure costs this event a retry next pass, not the rest of the batch. The mark is deferred. */
     private Mono<EventEntity> send(EventEntity event) {
         return publisher.publish(mapper.toDto(event))
-                .then(Mono.defer(() -> outbox.markPublished(event.getId())))
+                .then(Mono.defer(() -> outbox.markPublished(event.getId(), event.getDateFixVersion())))
                 .thenReturn(event)
                 .onErrorResume(error -> {
                     log.warn("Could not send the fixed date of event {}: {}", event.getId(), error.toString());
