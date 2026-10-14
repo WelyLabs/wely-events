@@ -2,6 +2,8 @@ package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.domain.models.PollAnswer;
+import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.infrastructure.persistence.mappers.EventPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveEventMongoRepository;
@@ -12,9 +14,15 @@ import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 @Component
 public class MongoEventRepositoryAdapter implements EventRepository {
+
+    /** A voter id becomes a field name: a dot or a dollar would change which field is written. */
+    private static final Pattern FIELD_SAFE_ID = Pattern.compile("[A-Za-z0-9_-]+");
 
     private final ReactiveEventMongoRepository mongoRepository;
     private final EventPersistenceMapper mapper;
@@ -88,5 +96,37 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     @Override
     public Flux<Event> findInvolving(String userId) {
         return mongoRepository.findInvolving(userId).map(mapper::toDomain);
+    }
+
+    /**
+     * Mongo counts modified documents, not matched ones: casting the same ballot again modifies
+     * nothing. A poll never reopens, so finding it still open after the write means it matched.
+     */
+    @Override
+    public Mono<Event> castBallot(String eventId, String voterId, Map<String, PollAnswer> answers) {
+        if (!FIELD_SAFE_ID.matcher(voterId).matches()) {
+            return Mono.error(new IllegalArgumentException("Voter id is not usable as a field name"));
+        }
+        Mono<Long> write = answers.isEmpty()
+                ? mongoRepository.withdrawBallot(eventId, voterId)
+                : mongoRepository.castBallot(eventId, voterId, mapper.toStoredAnswers(answers));
+        return write.flatMap(modified -> findById(eventId)
+                .filter(event -> modified > 0 || event.isPolling()));
+    }
+
+    @Override
+    public Mono<Event> fixPollDate(String eventId, String organizerId, PollSlot slot, Collection<String> yesVoterIds) {
+        return mongoRepository.fixPollDate(eventId, organizerId, slot.start(), slot.end(), slot.id(),
+                        List.copyOf(yesVoterIds))
+                .filter(modified -> modified > 0)
+                .flatMap(modified -> findById(eventId));
+    }
+
+    @Override
+    public Flux<Event> findOpenPollsInvolving(String userId) {
+        if (!FIELD_SAFE_ID.matcher(userId).matches()) {
+            return Flux.error(new IllegalArgumentException("User id is not usable as a field name"));
+        }
+        return mongoRepository.findOpenPollsInvolving(userId).map(mapper::toDomain);
     }
 }

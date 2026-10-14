@@ -3,12 +3,14 @@ package com.calendar.events.configuration;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
+import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
 import com.calendar.events.domain.services.FriendCalendarService;
 import com.calendar.events.domain.services.PictureService;
+import com.calendar.events.domain.services.PollService;
 import com.calendar.events.domain.services.ProfileSummaryService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,6 +33,11 @@ public class EventApplicationConfig {
     public EventService eventService(EventRepository eventRepository, SocialGraph socialGraph,
                                      ExpenseRepository expenseRepository, PictureService pictureService) {
         return new EventService(eventRepository, socialGraph, expenseRepository, pictureService, Clock.systemUTC());
+    }
+
+    @Bean
+    public PollService pollService(EventRepository eventRepository, EventService eventService, PollUpdates pollUpdates) {
+        return new PollService(eventRepository, eventService, pollUpdates);
     }
 
     @Bean

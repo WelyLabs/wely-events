@@ -93,6 +93,24 @@ public enum EventErrorCode {
             "The receipt must be a JPEG, PNG, GIF or BMP image, sent as the multipart part 'file'.",
             HttpStatus.BAD_REQUEST),
 
+    POLL_INVALID(
+            "EVT-BUS-014",
+            "Invalid date poll",
+            "Propose 2 to 5 distinct slots, none in the past, each ending after it starts.",
+            HttpStatus.BAD_REQUEST),
+
+    POLL_CLOSED(
+            "EVT-BUS-015",
+            "Date poll closed",
+            "This event has no date poll open: its date is already fixed.",
+            HttpStatus.CONFLICT),
+
+    POLL_SLOT_UNKNOWN(
+            "EVT-BUS-016",
+            "Unknown slot",
+            "Answer only for slots this event's poll proposes.",
+            HttpStatus.BAD_REQUEST),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",

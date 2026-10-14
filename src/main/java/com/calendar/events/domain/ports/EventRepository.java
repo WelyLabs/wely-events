@@ -2,11 +2,14 @@ package com.calendar.events.domain.ports;
 
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.domain.models.PollAnswer;
+import com.calendar.events.domain.models.PollSlot;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Map;
 
 public interface EventRepository {
     Flux<Event> findAll();
@@ -45,7 +48,7 @@ public interface EventRepository {
     /**
      * Events that keep one of these users busy between {@code from} and {@code to}: those they
      * take part in or organize, overlapping the window. An event without an end lasts
-     * {@link Event#DEFAULT_DURATION}.
+     * {@link Event#DEFAULT_DURATION}. An event whose date poll is open keeps nobody busy.
      */
     Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to);
 
@@ -54,4 +57,20 @@ public interface EventRepository {
 
     /** Every event the user organizes or takes part in, past and future. */
     Flux<Event> findInvolving(String userId);
+
+    /**
+     * Replaces the voter's whole ballot in one atomic write, leaving the others untouched; an empty
+     * map withdraws it. Empty when the event has no open poll.
+     */
+    Mono<Event> castBallot(String eventId, String voterId, Map<String, PollAnswer> answers);
+
+    /**
+     * Closes the open poll on {@code slot} in one compare-and-set: dates moved to the slot, the yes
+     * voters added to the participants, the group and the date announcement flagged for their
+     * relays. Empty when no open poll by this organizer matched, e.g. it was fixed meanwhile.
+     */
+    Mono<Event> fixPollDate(String eventId, String organizerId, PollSlot slot, Collection<String> yesVoterIds);
+
+    /** Events with an open poll that the user organizes, takes part in or voted on. */
+    Flux<Event> findOpenPollsInvolving(String userId);
 }

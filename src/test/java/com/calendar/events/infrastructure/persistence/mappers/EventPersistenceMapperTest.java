@@ -1,5 +1,9 @@
 package com.calendar.events.infrastructure.persistence.mappers;
 
+import com.calendar.events.domain.models.Poll;
+import com.calendar.events.domain.models.PollAnswer;
+import com.calendar.events.domain.models.PollSlot;
+import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.Visibility;
@@ -10,6 +14,8 @@ import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 
 import java.time.Instant;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -92,5 +98,26 @@ class EventPersistenceMapperTest {
     void toGeoJson_shouldKeepAMissingPointNull() {
         assertNull(mapper.toGeoJson(null));
         assertNull(mapper.toGeoPoint(null));
+    }
+
+    @Test
+    void toEntity_shouldStoreThePollWithItsBallots_andReadItBack() {
+        PollSlot slot = new PollSlot("thu", Instant.parse("2026-10-16T17:00:00Z"), Instant.parse("2026-10-16T19:00:00Z"));
+        Poll poll = new Poll(PollStatus.OPEN, List.of(slot), Map.of("lea", Map.of("thu", PollAnswer.MAYBE)), null);
+        Event domain = Event.builder().id("1").poll(poll).build();
+
+        EventEntity entity = mapper.toEntity(domain);
+
+        assertEquals("OPEN", entity.getPoll().getStatus());
+        assertEquals("thu", entity.getPoll().getSlots().getFirst().getId());
+        assertEquals(Map.of("lea", Map.of("thu", "MAYBE")), entity.getPoll().getBallots());
+        assertNull(entity.getDateFixSynced());
+        assertEquals(poll, mapper.toDomain(entity).getPoll());
+    }
+
+    @Test
+    void toDomain_shouldLeaveThePollNull_forAnEventWithoutOne() {
+        assertNull(mapper.toDomain(new EventEntity()).getPoll());
+        assertNull(mapper.toEntity(Event.builder().build()).getPoll());
     }
 }

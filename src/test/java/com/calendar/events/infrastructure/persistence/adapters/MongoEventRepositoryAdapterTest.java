@@ -2,6 +2,10 @@ package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.domain.models.Poll;
+import com.calendar.events.domain.models.PollAnswer;
+import com.calendar.events.domain.models.PollSlot;
+import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import com.calendar.events.infrastructure.persistence.mappers.EventPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveEventMongoRepository;
@@ -18,6 +22,7 @@ import reactor.test.StepVerifier;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -229,5 +234,100 @@ class MongoEventRepositoryAdapterTest {
         StepVerifier.create(adapter.setImage("1", "someone-else", null)).verifyComplete();
 
         verify(mongoRepository, never()).findById("1");
+    }
+
+    private static final PollSlot FRIDAY = new PollSlot("fri", Instant.parse("2026-10-17T17:00:00Z"), Instant.parse("2026-10-17T19:00:00Z"));
+
+    private static Event withPoll(PollStatus status) {
+        return Event.builder().id("1").poll(new Poll(status, List.of(FRIDAY), null, null)).build();
+    }
+
+    private void readBack(Event domain) {
+        EventEntity entity = new EventEntity();
+        when(mongoRepository.findById("1")).thenReturn(Mono.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+    }
+
+    @Test
+    void castBallot_shouldStoreTheAnswersAsText_andReadTheEventBack() {
+        Event after = withPoll(PollStatus.OPEN);
+        when(mapper.toStoredAnswers(Map.of("fri", PollAnswer.YES))).thenReturn(Map.of("fri", "YES"));
+        when(mongoRepository.castBallot("1", "lea", Map.of("fri", "YES"))).thenReturn(Mono.just(1L));
+        readBack(after);
+
+        StepVerifier.create(adapter.castBallot("1", "lea", Map.of("fri", PollAnswer.YES))).expectNext(after).verifyComplete();
+    }
+
+    @Test
+    void castBallot_shouldWithdrawTheBallot_whenTheAnswersAreEmpty() {
+        Event after = withPoll(PollStatus.OPEN);
+        when(mongoRepository.withdrawBallot("1", "lea")).thenReturn(Mono.just(0L));
+        readBack(after);
+
+        StepVerifier.create(adapter.castBallot("1", "lea", Map.of())).expectNext(after).verifyComplete();
+        verify(mongoRepository, never()).castBallot(any(), any(), any());
+    }
+
+    @Test
+    void castBallot_shouldCountAnUnchangedBallot_whileThePollIsStillOpen() {
+        // Mongo reports modified documents: the same ballot twice modifies nothing, yet matched.
+        Event after = withPoll(PollStatus.OPEN);
+        when(mapper.toStoredAnswers(Map.of("fri", PollAnswer.YES))).thenReturn(Map.of("fri", "YES"));
+        when(mongoRepository.castBallot("1", "lea", Map.of("fri", "YES"))).thenReturn(Mono.just(0L));
+        readBack(after);
+
+        StepVerifier.create(adapter.castBallot("1", "lea", Map.of("fri", PollAnswer.YES))).expectNext(after).verifyComplete();
+    }
+
+    @Test
+    void castBallot_shouldBeEmpty_whenNothingChangedAndThePollIsClosed() {
+        when(mapper.toStoredAnswers(Map.of("fri", PollAnswer.YES))).thenReturn(Map.of("fri", "YES"));
+        when(mongoRepository.castBallot("1", "lea", Map.of("fri", "YES"))).thenReturn(Mono.just(0L));
+        readBack(withPoll(PollStatus.CLOSED));
+
+        StepVerifier.create(adapter.castBallot("1", "lea", Map.of("fri", PollAnswer.YES))).verifyComplete();
+    }
+
+    @Test
+    void castBallot_shouldRefuseAVoterIdThatWouldChangeTheFieldPath() {
+        StepVerifier.create(adapter.castBallot("1", "a.b", Map.of()))
+                .expectError(IllegalArgumentException.class)
+                .verify();
+        StepVerifier.create(adapter.castBallot("1", "$where", Map.of()))
+                .expectError(IllegalArgumentException.class)
+                .verify();
+    }
+
+    @Test
+    void fixPollDate_shouldPassTheSlotAndYesVoters_andReadTheEventBack() {
+        Event after = withPoll(PollStatus.CLOSED);
+        when(mongoRepository.fixPollDate("1", "org", FRIDAY.start(), FRIDAY.end(), "fri", List.of("lea")))
+                .thenReturn(Mono.just(1L));
+        readBack(after);
+
+        StepVerifier.create(adapter.fixPollDate("1", "org", FRIDAY, List.of("lea"))).expectNext(after).verifyComplete();
+    }
+
+    @Test
+    void fixPollDate_shouldBeEmpty_whenNoOpenPollMatched() {
+        when(mongoRepository.fixPollDate("1", "org", FRIDAY.start(), FRIDAY.end(), "fri", List.of())).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.fixPollDate("1", "org", FRIDAY, List.of())).verifyComplete();
+        verify(mongoRepository, never()).findById("1");
+    }
+
+    @Test
+    void findOpenPollsInvolving_shouldReturnMappedEvents() {
+        EventEntity entity = new EventEntity();
+        Event domain = withPoll(PollStatus.OPEN);
+        when(mongoRepository.findOpenPollsInvolving("lea")).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findOpenPollsInvolving("lea")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findOpenPollsInvolving_shouldRefuseAUserIdThatWouldChangeTheFieldPath() {
+        StepVerifier.create(adapter.findOpenPollsInvolving("a.b")).expectError(IllegalArgumentException.class).verify();
     }
 }

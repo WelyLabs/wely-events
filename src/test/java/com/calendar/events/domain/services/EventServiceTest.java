@@ -6,6 +6,9 @@ import com.calendar.events.domain.models.ExpenseKind;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.models.Participants;
+import com.calendar.events.domain.models.Poll;
+import com.calendar.events.domain.models.PollSlot;
+import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.Share;
 import com.calendar.events.domain.models.SplitMode;
 import com.calendar.events.domain.models.StoredMedia;
@@ -253,6 +256,59 @@ class EventServiceTest {
         StepVerifier.create(result)
                 .expectNext(savedEvent)
                 .verifyComplete();
+    }
+
+    private static PollSlot candidate(String start, String end) {
+        return new PollSlot(null, Instant.parse(start), Instant.parse(end));
+    }
+
+    @Test
+    void createEvent_shouldOpenAPollAndSitOnTheEarliestSlot_whenGivenCandidateSlots() {
+        Event event = Event.builder().title("Dinner").startDate(NOW).build();
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.createEvent(event, List.of(
+                        candidate("2026-10-17T18:00:00Z", "2026-10-17T21:00:00Z"),
+                        candidate("2026-10-16T18:00:00Z", "2026-10-16T21:00:00Z"))))
+                .expectNext(event)
+                .verifyComplete();
+
+        assertThat(event.isPolling()).isTrue();
+        assertThat(event.getPoll().slots()).hasSize(2);
+        assertThat(event.getStartDate()).isEqualTo(Instant.parse("2026-10-16T18:00:00Z"));
+        assertThat(event.getEndDate()).isEqualTo(Instant.parse("2026-10-16T21:00:00Z"));
+    }
+
+    @Test
+    void createEvent_shouldRejectInvalidCandidates_withoutSaving() {
+        Event event = Event.builder().title("Dinner").build();
+
+        StepVerifier.create(eventService.createEvent(event, List.of(
+                        candidate("2026-10-17T18:00:00Z", "2026-10-17T21:00:00Z"))))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_INVALID))
+                .verify();
+        verify(eventRepository, never()).save(any());
+    }
+
+    @Test
+    void createEvent_shouldRejectACandidateInThePast() {
+        Event event = Event.builder().title("Dinner").build();
+
+        StepVerifier.create(eventService.createEvent(event, List.of(
+                        candidate("2026-10-10T18:00:00Z", "2026-10-10T21:00:00Z"),
+                        candidate("2026-10-17T18:00:00Z", "2026-10-17T21:00:00Z"))))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_INVALID))
+                .verify();
+    }
+
+    @Test
+    void createEvent_shouldIgnoreAnyPollSent_whenGivenNoCandidates() {
+        Event event = Event.builder().title("Dinner").poll(new Poll(PollStatus.CLOSED, List.of(), null, "x")).build();
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        eventService.createEvent(event, null).block();
+
+        assertThat(event.getPoll()).isNull();
     }
 
     @Test
