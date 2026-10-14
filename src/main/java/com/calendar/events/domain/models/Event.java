@@ -36,10 +36,17 @@ public class Event {
     private List<String> participantIds = new ArrayList<>();
     /** Null for events stored before visibility existed; read through {@link #effectiveVisibility()}. */
     private Visibility visibility;
+    /** Null unless the organizer proposed several dates instead of one. */
+    private Poll poll;
 
     /** When the event stops keeping its people busy. */
     public Instant effectiveEnd() {
         return endDate != null ? endDate : startDate.plus(DEFAULT_DURATION);
+    }
+
+    /** Whether the date is still being voted on: then startDate/endDate are only the earliest proposal. */
+    public boolean isPolling() {
+        return poll != null && poll.isOpen();
     }
 
     public Visibility effectiveVisibility() {

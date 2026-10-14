@@ -27,4 +27,6 @@ public class EventResponse {
     private String image;
     private String description;
     private Visibility visibility;
+    /** Null unless the event's date was put to a poll. */
+    private PollResponse poll;
 }

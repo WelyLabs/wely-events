@@ -2,7 +2,8 @@ package com.calendar.events.application.dtos;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.validation.constraints.AssertTrue;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -11,6 +12,7 @@ import lombok.NoArgsConstructor;
 import com.calendar.events.domain.models.Visibility;
 
 import java.time.Instant;
+import java.util.List;
 
 @Data
 @Builder
@@ -19,7 +21,7 @@ import java.time.Instant;
 public class EventRequest {
     @NotBlank(message = "Title is required")
     private String title;
-    @NotNull(message = "Date is required")
+    /** Required unless candidate slots are given: the event then sits on the earliest. */
     private Instant startDate;
     private Instant endDate;
     @NotBlank(message = "Location is required")
@@ -31,4 +33,15 @@ public class EventRequest {
     private boolean subscribeByDefault;
     /** Optional: FRIENDS when left out. */
     private Visibility visibility;
+    /**
+     * Optional: 2 to 5 dates to vote on instead of a fixed one. The event then sits on the
+     * earliest, and startDate/endDate are overridden.
+     */
+    private List<SlotRequest> candidateSlots;
+
+    @JsonIgnore
+    @AssertTrue(message = "Date is required")
+    public boolean isDateGiven() {
+        return startDate != null || candidateSlots != null;
+    }
 }

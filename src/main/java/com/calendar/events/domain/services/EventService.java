@@ -6,6 +6,8 @@ import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.models.Participants;
+import com.calendar.events.domain.models.Poll;
+import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -56,11 +58,28 @@ public class EventService {
 
     /** A new event has no cover: one is only ever uploaded, never pointed at by URL. */
     public Mono<Event> createEvent(Event event) {
-        event.setImage(null);
-        if (event.getVisibility() == null) {
-            event.setVisibility(Visibility.DEFAULT);
-        }
-        return eventRepository.save(event);
+        return createEvent(event, null);
+    }
+
+    /**
+     * As {@link #createEvent(Event)}; with candidate slots (null for none), the event opens a date
+     * poll on them and sits on the earliest until the organizer fixes one.
+     */
+    public Mono<Event> createEvent(Event event, List<PollSlot> candidateSlots) {
+        return Mono.fromCallable(() -> {
+            event.setImage(null);
+            if (event.getVisibility() == null) {
+                event.setVisibility(Visibility.DEFAULT);
+            }
+            event.setPoll(null);
+            if (candidateSlots != null) {
+                Poll poll = Poll.open(candidateSlots, clock.instant());
+                event.setPoll(poll);
+                event.setStartDate(poll.earliest().start());
+                event.setEndDate(poll.earliest().end());
+            }
+            return event;
+        }).flatMap(eventRepository::save);
     }
 
     /**
@@ -161,7 +180,7 @@ public class EventService {
     }
 
     /** Not visible answers as missing, as everywhere; visible but someone else's is refused. */
-    private Mono<Event> requireOrganizer(String id, String requesterId) {
+    Mono<Event> requireOrganizer(String id, String requesterId) {
         return getEventById(id, requesterId)
                 .flatMap(event -> Objects.equals(event.getOrganizerId(), requesterId)
                         ? Mono.just(event)

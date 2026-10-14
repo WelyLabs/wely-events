@@ -109,7 +109,11 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `GET` | `/events/{id}` | Détail d'un événement, s'il est visible (404 sinon) |
 | `GET` | `/events/{id}/participants` | Participants d'un événement visible (404 sinon) : `count`, `friendsGoingIds` (les amis de l'appelant parmi eux) et `participantIds`, la liste complète, réservée à l'organisateur et aux participants (vide pour les autres) |
 | `GET` | `/events/map?south=&west=&north=&east=` | Événements à venir que l'appelant peut voir, dans la zone affichée par la carte « Explorer » : requête `$geoWithin` sur l'index `2dsphere`, 200 au plus, les plus proches dans le temps d'abord. Zone de 90° au plus de côté (400 sinon) |
-| `POST` | `/events` | Crée un événement (201). `visibility` facultatif, `FRIENDS` par défaut |
+| `POST` | `/events` | Crée un événement (201). `visibility` facultatif, `FRIENDS` par défaut. Avec `candidateSlots` (2 à 5 `{start, end}`), ouvre un sondage de date (voir plus bas) |
+| `GET` | `/events/me/polls` | Sondages ouverts que l'appelant organise, rejoint ou a votés |
+| `PUT` | `/events/{id}/poll/ballot` | Remplace le bulletin de l'appelant, `{"answers": {"<slotId>": "YES"\|"MAYBE"\|"NO"}}` ; vide, il le retire. Renvoie le `PollResponse` |
+| `POST` | `/events/{id}/poll/fix` | `{"slotId"}` : fixe la date, organisateur seulement. Inscrit les votants « Oui » de ce créneau |
+| `GET` | `/events/{id}/poll/stream` | `text/event-stream` : l'état du sondage puis chaque vote, événements `poll` ; se termine une fois la date fixée |
 | `POST` | `/events/{id}/subscribe` | Inscrit ou désinscrit l'utilisateur |
 | `DELETE` | `/events/{id}` | Supprime un événement (204), avec ses dépenses, sa couverture et ses justificatifs |
 | `POST` | `/events/{id}/cover` | Multipart, partie `file` : remplace la couverture (organisateur seulement, 403 sinon, 404 si l'événement n'est pas visible). Renvoie l'`EventResponse`, couverture signée |
@@ -219,6 +223,16 @@ et renvoie les plages, dans cette période, où l'utilisateur **et** tous ces am
 - Les plages commencent et finissent au quart d'heure, comme la sélection du calendrier. 1 à 20 amis, au moins 15 min, période de 62 jours au plus — six semaines, la grille du mois (`EVT-BUS-004`).
 - Le calcul (`FreeSlotFinder`) est du Java pur : fusion des plages occupées, puis trous de la période. Deux index `{participantIds, startDate}` et `{organizerId, startDate}` servent la recherche.
 
+## Sondage de date
+
+Au lieu d'imposer une date, l'organisateur propose de 2 à 5 créneaux ; ceux qui voient l'événement (même règle que pour s'inscrire) votent Oui / Peut-être / Non pour chacun, puis l'organisateur fixe la date.
+
+- **Le sondage est embarqué dans le document de l'événement**, bulletins indexés par `businessId` : un vote est un seul `$set poll.ballots.<userId>`, deux votants ne s'écrasent jamais.
+- **Fixer la date est une comparaison-échange** sur `poll.status: 'OPEN'` : une seule mise à jour déplace les dates, ferme le sondage, inscrit les votants « Oui » et marque le groupe de chat et l'annonce pour leurs relais. Une seconde fixation ne trouve rien (409).
+- **Tant que le sondage est ouvert**, l'événement occupe le créneau le plus tôt, ce qui garde le tri, le fil et la carte inchangés ; en revanche il **ne rend personne indisponible** dans la recherche de créneaux libres ni dans le calendrier d'un ami.
+- **Le direct passe par SSE** (`Flux<ServerSentEvent>`), avec un commentaire toutes les 20 s pour que les proxys ne coupent pas une connexion calme, et `X-Accel-Buffering: no`. Les mises à jour circulent dans un sink en mémoire par événement : une seule réplique de wely-events est supposée.
+- **La date fixée part sur Kafka** (`EVENT_DATE_FIXED`, JSON `{eventId, title, start, end, organizerId}`, dates ISO-8601) par le même outbox que les groupes : le document est marqué `dateFixSynced: false` dans la mise à jour qui fixe la date, et `EventDateFixedRelay` l'envoie. wely-chat l'annonce dans le groupe.
+
 ## Dépenses partagées
 
 Un « Tricount » attaché à chaque événement : ses membres (organisateur et participants) notent qui a payé quoi, pour qui, et voient qui doit combien à qui.
@@ -272,6 +286,9 @@ La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /soci
 | `EVT-BUS-011` | 400 | Couverture absente ou illisible (JPEG, PNG, GIF ou BMP) |
 | `EVT-BUS-012` | 413 | Image de plus de 10 Mo (couverture ou justificatif) |
 | `EVT-BUS-013` | 400 | Justificatif absent ou illisible |
+| `EVT-BUS-014` | 400 | Sondage invalide : 2 à 5 créneaux distincts, à venir, qui finissent après avoir commencé |
+| `EVT-BUS-015` | 409 | Pas de sondage ouvert : la date est déjà fixée |
+| `EVT-BUS-016` | 400 | Réponse pour un créneau que le sondage ne propose pas |
 | `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
 | `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
 | `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |
@@ -315,6 +332,7 @@ client peut tester et un `timestamp` :
 | `KEYCLOAK_INTERNAL_JWK_SET_URI` | JWKS interne — récupération des clés |
 | `SOCIAL_API_URL` | URL interne de `wely-social`, interrogé pour la liste d'amis |
 | `MEDIA_API_URL` | URL interne de `wely-media` (`http://localhost:8085` en profil `dev`) |
+| `EVENT_DATE_FIXED_TOPIC` | Topic des dates fixées, `EVENT_DATE_FIXED` par défaut |
 | `MEDIA_API_SECRET` | Secret partagé envoyé dans `X-Internal-Secret`. Vide par défaut : le service démarre, mais les envois répondent `EVT-TEC-003` et les images sortent sans URL |
 
 ---

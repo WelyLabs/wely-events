@@ -3,7 +3,12 @@ package com.calendar.events.infrastructure.persistence.adapters;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.GeoPoint;
+import com.calendar.events.domain.models.Poll;
+import com.calendar.events.domain.models.PollAnswer;
+import com.calendar.events.domain.models.PollSlot;
+import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.Visibility;
+import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,7 +17,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -23,6 +30,7 @@ import reactor.test.StepVerifier;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -434,5 +442,168 @@ class MongoEventRepositoryAdapterIntegrationTest {
     @Test
     void setImage_shouldBeEmpty_forAnUnknownEvent() {
         StepVerifier.create(adapter.setImage("64b7f9f2e4b0a1c2d3e4f5a6", ORGANIZER, "events/x/cover-1.jpg")).verifyComplete();
+    }
+
+    private static final PollSlot THURSDAY = new PollSlot("thu", Instant.parse("2026-10-16T17:00:00Z"), Instant.parse("2026-10-16T19:00:00Z"));
+    private static final PollSlot FRIDAY = new PollSlot("fri", Instant.parse("2026-10-17T17:00:00Z"), Instant.parse("2026-10-17T19:00:00Z"));
+
+    private Event aPoll(String title, String organizer, List<String> participants) {
+        return adapter.save(Event.builder()
+                .title(title)
+                .organizerId(organizer)
+                .startDate(THURSDAY.start())
+                .endDate(THURSDAY.end())
+                .location("Somewhere")
+                .participantIds(new ArrayList<>(participants))
+                .visibility(Visibility.PUBLIC)
+                .poll(new Poll(PollStatus.OPEN, List.of(THURSDAY, FRIDAY), null, null))
+                .build()).block();
+    }
+
+    private EventEntity stored(String id) {
+        return mongoTemplate.findById(id, EventEntity.class).block();
+    }
+
+    @Test
+    void save_shouldRoundTripThePoll() {
+        Event saved = aPoll("Dinner", ORGANIZER, List.of());
+
+        StepVerifier.create(adapter.findById(saved.getId()))
+                .assertNext(found -> {
+                    assertThat(found.isPolling()).isTrue();
+                    assertThat(found.getPoll().slots()).containsExactly(THURSDAY, FRIDAY);
+                    assertThat(found.getPoll().ballots()).isEmpty();
+                })
+                .verifyComplete();
+        assertThat(stored(saved.getId()).getDateFixSynced()).isNull();
+    }
+
+    @Test
+    void castBallot_shouldReplaceTheVotersWholeBallot() {
+        String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
+        adapter.castBallot(id, "lea", Map.of("thu", PollAnswer.YES, "fri", PollAnswer.NO)).block();
+
+        StepVerifier.create(adapter.castBallot(id, "lea", Map.of("fri", PollAnswer.MAYBE)))
+                .assertNext(updated -> assertThat(updated.getPoll().ballots())
+                        .containsExactly(Map.entry("lea", Map.of("fri", PollAnswer.MAYBE))))
+                .verifyComplete();
+    }
+
+    @Test
+    void castBallot_shouldNotLetTwoVotersOverwriteEachOther() {
+        String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
+
+        StepVerifier.create(Flux.range(1, 20)
+                        .flatMap(i -> adapter.castBallot(id, "voter-" + i, Map.of("thu", PollAnswer.YES)), 10))
+                .expectNextCount(20)
+                .verifyComplete();
+
+        StepVerifier.create(adapter.findById(id))
+                .assertNext(found -> {
+                    assertThat(found.getPoll().ballots()).hasSize(20);
+                    assertThat(found.getPoll().yesVotersOf("thu")).hasSize(20);
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void castBallot_shouldAnswerTheEvent_whenTheSameBallotIsCastTwice() {
+        String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
+        adapter.castBallot(id, "lea", Map.of("thu", PollAnswer.YES)).block();
+
+        StepVerifier.create(adapter.castBallot(id, "lea", Map.of("thu", PollAnswer.YES)))
+                .assertNext(updated -> assertThat(updated.getPoll().yesVotersOf("thu")).containsExactly("lea"))
+                .verifyComplete();
+    }
+
+    @Test
+    void castBallot_shouldWithdrawTheBallot_whenGivenNoAnswer() {
+        String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
+        adapter.castBallot(id, "lea", Map.of("thu", PollAnswer.YES)).block();
+        adapter.castBallot(id, "hugo", Map.of("thu", PollAnswer.NO)).block();
+
+        StepVerifier.create(adapter.castBallot(id, "lea", Map.of()))
+                .assertNext(updated -> assertThat(updated.getPoll().ballots()).containsOnlyKeys("hugo"))
+                .verifyComplete();
+    }
+
+    @Test
+    void castBallot_shouldBeEmpty_onceTheDateIsFixed_orWithoutPoll() {
+        String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
+        adapter.fixPollDate(id, ORGANIZER, THURSDAY, List.of()).block();
+        String withoutPoll = anEvent("Standup").getId();
+
+        StepVerifier.create(adapter.castBallot(id, "lea", Map.of("thu", PollAnswer.YES))).verifyComplete();
+        StepVerifier.create(adapter.castBallot(withoutPoll, "lea", Map.of("thu", PollAnswer.YES))).verifyComplete();
+        assertThat(adapter.findById(id).block().getPoll().ballots()).isEmpty();
+    }
+
+    @Test
+    void fixPollDate_shouldMoveTheDates_subscribeTheYesVoters_andFlagBothRelays() {
+        String id = aPoll("Dinner", ORGANIZER, List.of("hugo")).getId();
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(id)),
+                new Update().set("groupSynced", true).set("groupVersion", 3L),
+                EventEntity.class).block();
+
+        StepVerifier.create(adapter.fixPollDate(id, ORGANIZER, FRIDAY, List.of("lea", "hugo")))
+                .assertNext(fixed -> {
+                    assertThat(fixed.isPolling()).isFalse();
+                    assertThat(fixed.getPoll().status()).isEqualTo(PollStatus.CLOSED);
+                    assertThat(fixed.getPoll().fixedSlotId()).isEqualTo("fri");
+                    assertThat(fixed.getStartDate()).isEqualTo(FRIDAY.start());
+                    assertThat(fixed.getEndDate()).isEqualTo(FRIDAY.end());
+                    assertThat(fixed.getParticipantIds()).containsExactly("hugo", "lea");
+                })
+                .verifyComplete();
+        EventEntity stored = stored(id);
+        assertThat(stored.getGroupVersion()).isEqualTo(4L);
+        assertThat(stored.getGroupSynced()).isFalse();
+        assertThat(stored.getDateFixSynced()).isFalse();
+    }
+
+    @Test
+    void fixPollDate_shouldMatchOnlyOnce() {
+        String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
+        adapter.fixPollDate(id, ORGANIZER, THURSDAY, List.of()).block();
+
+        StepVerifier.create(adapter.fixPollDate(id, ORGANIZER, FRIDAY, List.of("lea"))).verifyComplete();
+        Event found = adapter.findById(id).block();
+        assertThat(found.getPoll().fixedSlotId()).isEqualTo("thu");
+        assertThat(found.getParticipantIds()).isEmpty();
+        assertThat(stored(id).getGroupVersion()).isEqualTo(1L);
+    }
+
+    @Test
+    void fixPollDate_shouldBeEmpty_forSomeoneOtherThanTheOrganizer() {
+        String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
+
+        StepVerifier.create(adapter.fixPollDate(id, "lea", FRIDAY, List.of())).verifyComplete();
+        assertThat(adapter.findById(id).block().isPolling()).isTrue();
+    }
+
+    @Test
+    void findOccupying_shouldIgnoreOpenPolls_butCountFixedOnes() {
+        String open = aPoll("Still voting", "lea", List.of()).getId();
+        String fixed = aPoll("Fixed", "lea", List.of()).getId();
+        adapter.fixPollDate(fixed, "lea", THURSDAY, List.of()).block();
+
+        assertThat(occupyingTitles(List.of("lea"), "2026-10-16T00:00:00Z", "2026-10-18T00:00:00Z"))
+                .containsExactly("Fixed");
+        assertThat(open).isNotNull();
+    }
+
+    @Test
+    void findOpenPollsInvolving_shouldFindWhatTheUserOrganizesJoinsOrVotedOn_andNothingElse() {
+        aPoll("Organized", "lea", List.of());
+        aPoll("Joined", "hugo", List.of("lea"));
+        String voted = aPoll("Voted on", "hugo", List.of()).getId();
+        adapter.castBallot(voted, "lea", Map.of("fri", PollAnswer.NO)).block();
+        aPoll("Someone else's", "hugo", List.of("zoe"));
+        String fixed = aPoll("Fixed already", "lea", List.of()).getId();
+        adapter.fixPollDate(fixed, "lea", THURSDAY, List.of()).block();
+        visible("No poll", "lea", Visibility.PUBLIC, List.of());
+
+        assertThat(adapter.findOpenPollsInvolving("lea").map(Event::getTitle).collectList().block())
+                .containsExactlyInAnyOrder("Organized", "Joined", "Voted on");
     }
 }

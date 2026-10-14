@@ -3,12 +3,14 @@ package com.calendar.events.configuration;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
+import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
 import com.calendar.events.domain.services.FriendCalendarService;
 import com.calendar.events.domain.services.PictureService;
+import com.calendar.events.domain.services.PollService;
 import com.calendar.events.domain.services.ProfileSummaryService;
 import org.junit.jupiter.api.Test;
 
@@ -65,6 +67,17 @@ class EventApplicationConfigTest {
     @Test
     void friendCalendarService_shouldBuildTheDomainServiceFromItsPorts() {
         FriendCalendarService service = config.friendCalendarService(mock(EventRepository.class), mock(SocialGraph.class));
+
+        assertThat(service).isNotNull();
+    }
+
+    @Test
+    void pollService_shouldBuildTheDomainServiceFromItsPorts() {
+        EventRepository repository = mock(EventRepository.class);
+        EventService eventService = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
+                config.pictureService(mock(MediaStore.class)));
+
+        PollService service = config.pollService(repository, eventService, mock(PollUpdates.class));
 
         assertThat(service).isNotNull();
     }

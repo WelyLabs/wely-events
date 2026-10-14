@@ -57,4 +57,12 @@ public class EventEntity {
      */
     @Indexed
     private Boolean groupSynced;
+    /** Null unless the organizer proposed several dates. */
+    private PollEntity poll;
+    /**
+     * Whether wely-chat has been told the date fixed by the poll. False: the date relay sends it.
+     * Null when there is nothing to tell. Set false in the same update that fixes the date.
+     */
+    @Indexed
+    private Boolean dateFixSynced;
 }

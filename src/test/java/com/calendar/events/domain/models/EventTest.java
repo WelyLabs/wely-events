@@ -69,4 +69,11 @@ class EventTest {
     void isVisibleTo_shouldHideAPrivateEventFromFriends() {
         assertThat(by("bob", Visibility.PRIVATE).isVisibleTo("lea", Set.of("bob"))).isFalse();
     }
+
+    @Test
+    void isPolling_shouldHoldOnlyWhileThePollIsOpen() {
+        assertThat(Event.builder().build().isPolling()).isFalse();
+        assertThat(Event.builder().poll(new Poll(PollStatus.OPEN, List.of(), null, null)).build().isPolling()).isTrue();
+        assertThat(Event.builder().poll(new Poll(PollStatus.CLOSED, List.of(), null, "s1")).build().isPolling()).isFalse();
+    }
 }

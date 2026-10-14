@@ -1,5 +1,12 @@
 package com.calendar.events.application.mappers;
 
+import com.calendar.events.application.dtos.PollResponse;
+import com.calendar.events.application.dtos.PollSlotResponse;
+import com.calendar.events.application.dtos.SlotRequest;
+import com.calendar.events.domain.models.Poll;
+import com.calendar.events.domain.models.PollAnswer;
+import com.calendar.events.domain.models.PollSlot;
+import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.dtos.ParticipantsResponse;
@@ -141,5 +148,49 @@ class EventRestMapperTest {
         Event domain = Event.builder().image("/demo/events/picnic.jpg").build();
 
         assertEquals("/demo/events/picnic.jpg", mapper.toResponse(domain, SignedUrls.NONE).getImage());
+    }
+
+    @Test
+    void toCandidateSlots_shouldLeaveTheIdsToThePoll() {
+        Instant start = Instant.parse("2026-10-16T17:00:00Z");
+        Instant end = Instant.parse("2026-10-16T19:00:00Z");
+
+        List<PollSlot> slots = mapper.toCandidateSlots(List.of(new SlotRequest(start, end)));
+
+        assertEquals(List.of(new PollSlot(null, start, end)), slots);
+        assertNull(mapper.toCandidateSlots(null));
+    }
+
+    @Test
+    void toResponse_shouldIncludeThePollTally() {
+        PollSlot slot = new PollSlot("thu", Instant.parse("2026-10-16T17:00:00Z"), Instant.parse("2026-10-16T19:00:00Z"));
+        Poll poll = new Poll(PollStatus.OPEN, List.of(slot),
+                Map.of("lea", Map.of("thu", PollAnswer.YES), "hugo", Map.of("thu", PollAnswer.MAYBE)), null);
+        Event domain = Event.builder().id("1").startDate(slot.start()).poll(poll).build();
+
+        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE);
+
+        assertEquals(PollStatus.OPEN, response.getPoll().status());
+        assertNull(response.getPoll().fixedSlotId());
+        assertEquals(List.of(new PollSlotResponse("thu", slot.start(), slot.end(), List.of("lea"), List.of("hugo"), List.of())),
+                response.getPoll().slots());
+    }
+
+    @Test
+    void toResponse_shouldLeaveThePollNull_forAnEventWithAFixedDate() {
+        Event domain = Event.builder().id("1").startDate(Instant.now()).build();
+
+        assertNull(mapper.toResponse(domain, SignedUrls.NONE).getPoll());
+    }
+
+    @Test
+    void toResponse_shouldMapAClosedPoll() {
+        Poll poll = new Poll(PollStatus.CLOSED, List.of(), Map.of(), "thu");
+
+        PollResponse response = mapper.toResponse(poll);
+
+        assertEquals(PollStatus.CLOSED, response.status());
+        assertEquals("thu", response.fixedSlotId());
+        assertEquals(List.of(), response.slots());
     }
 }

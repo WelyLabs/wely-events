@@ -83,7 +83,7 @@ public class EventController {
             event.getParticipantIds().add(userId);
         }
 
-        return respond(eventService.createEvent(event));
+        return respond(eventService.createEvent(event, mapper.toCandidateSlots(request.getCandidateSlots())));
     }
 
     @DeleteMapping("/{id}")

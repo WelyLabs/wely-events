@@ -3,10 +3,12 @@ package com.calendar.events.application.rest;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.dtos.ParticipantsResponse;
+import com.calendar.events.application.dtos.SlotRequest;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.Participants;
+import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.SignedUrls;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.PictureService;
@@ -140,12 +142,34 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("1").title("Title").build();
 
         when(mapper.toDomain(request)).thenReturn(event);
-        when(eventService.createEvent(any(Event.class))).thenReturn(Mono.just(event));
+        when(eventService.createEvent(any(Event.class), any())).thenReturn(Mono.just(event));
         when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
 
         Mono<EventResponse> result = controller.createEvent(request, jwt);
 
         StepVerifier.create(result)
+                .expectNext(response)
+                .verifyComplete();
+    }
+
+    @Test
+    void createEvent_shouldHandTheCandidateSlotsToTheService() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        List<SlotRequest> slots = List.of(
+                new SlotRequest(Instant.parse("2026-10-16T18:00:00Z"), Instant.parse("2026-10-16T21:00:00Z")),
+                new SlotRequest(Instant.parse("2026-10-17T18:00:00Z"), Instant.parse("2026-10-17T21:00:00Z")));
+        EventRequest request = EventRequest.builder().title("Title").candidateSlots(slots).build();
+        Event event = Event.builder().title("Title").participantIds(new ArrayList<>()).build();
+        List<PollSlot> candidates = List.of(new PollSlot(null, slots.get(0).start(), slots.get(0).end()),
+                new PollSlot(null, slots.get(1).start(), slots.get(1).end()));
+        EventResponse response = EventResponse.builder().id("1").build();
+
+        when(mapper.toDomain(request)).thenReturn(event);
+        when(mapper.toCandidateSlots(slots)).thenReturn(candidates);
+        when(eventService.createEvent(event, candidates)).thenReturn(Mono.just(event));
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+
+        StepVerifier.create(controller.createEvent(request, jwt))
                 .expectNext(response)
                 .verifyComplete();
     }
