@@ -9,6 +9,7 @@ import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
 import com.calendar.events.domain.services.FriendCalendarService;
+import com.calendar.events.domain.services.FriendOverviewService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.PollService;
 import com.calendar.events.domain.services.ProfileSummaryService;
@@ -49,6 +50,11 @@ public class EventApplicationConfig {
     @Bean
     public FriendCalendarService friendCalendarService(EventRepository eventRepository, SocialGraph socialGraph) {
         return new FriendCalendarService(eventRepository, socialGraph);
+    }
+
+    @Bean
+    public FriendOverviewService friendOverviewService(EventRepository eventRepository, SocialGraph socialGraph) {
+        return new FriendOverviewService(eventRepository, socialGraph, Clock.systemUTC());
     }
 
     @Bean

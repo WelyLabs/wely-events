@@ -216,6 +216,49 @@ class MongoEventRepositoryAdapterTest {
         StepVerifier.create(adapter.findInvolving("user1")).expectNext(domain).verifyComplete();
     }
 
+    private static final Instant NOW = Instant.parse("2026-10-14T12:00:00Z");
+    // An event without an end is over an hour after it starts.
+    private static final Instant AN_HOUR_AGO = Instant.parse("2026-10-14T11:00:00Z");
+
+    @Test
+    void findUpcomingInvolving_shouldLetEventsWithoutAnEndLastTheDefaultDuration() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        when(mongoRepository.findUpcomingInvolving("bob", NOW, AN_HOUR_AGO)).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findUpcomingInvolving("bob", NOW)).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findUpcomingInvolvingBoth_shouldPassTheLimit_andLetEventsWithoutAnEndLastTheDefaultDuration() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        when(mongoRepository.findUpcomingInvolvingBoth("alice", "bob", NOW, AN_HOUR_AGO, Limit.of(5)))
+                .thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findUpcomingInvolvingBoth("alice", "bob", NOW, 5)).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findPastInvolvingBoth_shouldPassTheLimit_andLetEventsWithoutAnEndLastTheDefaultDuration() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        when(mongoRepository.findPastInvolvingBoth("alice", "bob", NOW, AN_HOUR_AGO, Limit.of(6)))
+                .thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findPastInvolvingBoth("alice", "bob", NOW, 6)).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void countPastInvolvingBoth_shouldLetEventsWithoutAnEndLastTheDefaultDuration() {
+        when(mongoRepository.countPastInvolvingBoth("alice", "bob", NOW, AN_HOUR_AGO)).thenReturn(Mono.just(4L));
+
+        StepVerifier.create(adapter.countPastInvolvingBoth("alice", "bob", NOW)).expectNext(4L).verifyComplete();
+    }
+
     @Test
     void setImage_shouldReadTheEventBack_whenTheOrganizersUpdateMatched() {
         EventEntity entity = new EventEntity();

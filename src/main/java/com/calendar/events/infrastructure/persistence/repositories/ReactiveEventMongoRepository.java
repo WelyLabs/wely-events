@@ -99,6 +99,45 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     @Query(value = "{ $or: [ { participantIds: ?0 }, { organizerId: ?0 } ] }", sort = "{ startDate: 1 }")
     Flux<EventEntity> findInvolving(String userId);
 
+    /**
+     * Not over yet: ends at or after {@code now}, or has no end and started at or after
+     * {@code startedFrom}, i.e. now minus the default duration. Organized or joined by the user.
+     */
+    @Query(value = """
+            { $and: [
+                { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
+                { $or: [ { endDate: { $gte: ?1 } }, { endDate: null, startDate: { $gte: ?2 } } ] }
+            ] }""", sort = "{ startDate: 1 }")
+    Flux<EventEntity> findUpcomingInvolving(String userId, Instant now, Instant startedFrom);
+
+    /** Not over yet, as in {@link #findUpcomingInvolving}, and both users are on it. */
+    @Query(value = """
+            { $and: [
+                { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
+                { $or: [ { organizerId: ?1 }, { participantIds: ?1 } ] },
+                { $or: [ { endDate: { $gte: ?2 } }, { endDate: null, startDate: { $gte: ?3 } } ] }
+            ] }""", sort = "{ startDate: 1 }")
+    Flux<EventEntity> findUpcomingInvolvingBoth(String userId, String otherId, Instant now, Instant startedFrom,
+                                                Limit limit);
+
+    /** Over: the exact complement of {@link #findUpcomingInvolvingBoth}'s date clause. Most recent first. */
+    @Query(value = """
+            { $and: [
+                { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
+                { $or: [ { organizerId: ?1 }, { participantIds: ?1 } ] },
+                { $or: [ { endDate: { $lt: ?2 } }, { endDate: null, startDate: { $lt: ?3 } } ] }
+            ] }""", sort = "{ startDate: -1 }")
+    Flux<EventEntity> findPastInvolvingBoth(String userId, String otherId, Instant now, Instant startedBefore,
+                                            Limit limit);
+
+    @Query(value = """
+            { $and: [
+                { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
+                { $or: [ { organizerId: ?1 }, { participantIds: ?1 } ] },
+                { $or: [ { endDate: { $lt: ?2 } }, { endDate: null, startDate: { $lt: ?3 } } ] }
+            ] }""", count = true)
+    Mono<Long> countPastInvolvingBoth(String userId, String otherId, Instant now, Instant startedBefore);
+
     // The voter's id is a field name: one ballot is one $set, and two voters never touch the same field.
     @Query("{ '_id': ?0, 'poll.status': 'OPEN' }")
     @Update("{ '$set': { 'poll.ballots.?1': ?2 } }")

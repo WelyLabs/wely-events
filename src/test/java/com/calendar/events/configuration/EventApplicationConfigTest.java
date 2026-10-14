@@ -9,6 +9,7 @@ import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
 import com.calendar.events.domain.services.FriendCalendarService;
+import com.calendar.events.domain.services.FriendOverviewService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.PollService;
 import com.calendar.events.domain.services.ProfileSummaryService;
@@ -67,6 +68,13 @@ class EventApplicationConfigTest {
     @Test
     void friendCalendarService_shouldBuildTheDomainServiceFromItsPorts() {
         FriendCalendarService service = config.friendCalendarService(mock(EventRepository.class), mock(SocialGraph.class));
+
+        assertThat(service).isNotNull();
+    }
+
+    @Test
+    void friendOverviewService_shouldBuildTheDomainServiceFromItsPorts() {
+        FriendOverviewService service = config.friendOverviewService(mock(EventRepository.class), mock(SocialGraph.class));
 
         assertThat(service).isNotNull();
     }

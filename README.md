@@ -120,6 +120,7 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `DELETE` | `/events/{id}/cover` | Retire la couverture (204), organisateur seulement |
 | `POST` | `/events/me/free-slots` | Créneaux où l'utilisateur et des amis sont tous libres (voir plus bas) |
 | `GET` | `/events/users/{friendId}/calendar?from=&to=` | Calendrier d'un ami, dévoilé selon la proximité (voir plus bas) |
+| `GET` | `/events/users/{friendId}/overview` | La page d'un ami : nombre de sorties passées ensemble, 5 prochains événements communs, 6 derniers souvenirs communs, et les 5 prochains événements de l'ami que l'appelant peut voir et où il n'est pas encore (sondages de date ouverts compris). Réservé aux amis (`EVT-BUS-003`, 403) ; sa propre page est refusée (`EVT-BUS-005`, 400) |
 | `GET` | `/events/{id}/expenses` | Dépenses partagées de l'événement, les plus récentes d'abord (membres seulement, 404 sinon) |
 | `POST` | `/events/{id}/expenses` | Ajoute une dépense (201) |
 | `PUT` | `/events/{id}/expenses/{expenseId}` | Modifie une dépense : son auteur ou l'organisateur (403 sinon), `version` lue pour refuser une modification concurrente (409) |
