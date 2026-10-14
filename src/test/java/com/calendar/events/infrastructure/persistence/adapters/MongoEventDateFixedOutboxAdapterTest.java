@@ -33,15 +33,15 @@ class MongoEventDateFixedOutboxAdapterTest {
 
     @Test
     void markPublished_shouldSayYes_whenItWasStillPending() {
-        when(mongoRepository.markDateFixPublished("e1")).thenReturn(Mono.just(1L));
+        when(mongoRepository.markDateFixPublished("e1", 2L)).thenReturn(Mono.just(1L));
 
-        StepVerifier.create(outbox.markPublished("e1")).expectNext(true).verifyComplete();
+        StepVerifier.create(outbox.markPublished("e1", 2L)).expectNext(true).verifyComplete();
     }
 
     @Test
-    void markPublished_shouldSayNo_whenAlreadyMarked() {
-        when(mongoRepository.markDateFixPublished("e1")).thenReturn(Mono.just(0L));
+    void markPublished_shouldSayNo_whenAlreadyMarkedOrMovedSince() {
+        when(mongoRepository.markDateFixPublished("e1", 2L)).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(outbox.markPublished("e1")).expectNext(false).verifyComplete();
+        StepVerifier.create(outbox.markPublished("e1", 2L)).expectNext(false).verifyComplete();
     }
 }

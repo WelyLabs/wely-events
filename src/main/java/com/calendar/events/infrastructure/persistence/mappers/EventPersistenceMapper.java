@@ -22,6 +22,10 @@ public interface EventPersistenceMapper {
     @Mapping(target = "groupSynced", ignore = true)
     // Only written by the date fix, for its relay.
     @Mapping(target = "dateFixSynced", ignore = true)
+    // Only written by the date fix and the move, for the same relay.
+    @Mapping(target = "dateFixVersion", ignore = true)
+    @Mapping(target = "rescheduledFromStart", ignore = true)
+    @Mapping(target = "rescheduledFromEnd", ignore = true)
     EventEntity toEntity(Event domain);
 
     PollEntity toEntity(Poll poll);

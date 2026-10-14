@@ -7,6 +7,7 @@ import com.calendar.events.domain.models.Poll;
 import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
+import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import org.junit.jupiter.api.BeforeEach;
@@ -579,6 +580,73 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.fixPollDate(id, "lea", FRIDAY, List.of())).verifyComplete();
         assertThat(adapter.findById(id).block().isPolling()).isTrue();
+    }
+
+    @Test
+    void fixPollDate_shouldCountAsANewDate_withNoPreviousOne() {
+        String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(id)),
+                new Update().set("rescheduledFromStart", THURSDAY.start()).set("dateFixVersion", 2L),
+                EventEntity.class).block();
+
+        adapter.fixPollDate(id, ORGANIZER, FRIDAY, List.of()).block();
+
+        EventEntity stored = stored(id);
+        assertThat(stored.getDateFixVersion()).isEqualTo(3L);
+        assertThat(stored.getRescheduledFromStart()).isNull();
+        assertThat(stored.getRescheduledFromEnd()).isNull();
+    }
+
+    @Test
+    void reschedule_shouldMoveTheDates_keepThePreviousOnes_andFlagTheAnnouncement() {
+        Event read = saveAt("Bowling", ORGANIZER, List.of("lea"), "2026-10-16T17:00:00Z", "2026-10-16T19:00:00Z");
+        TimeRange later = new TimeRange(Instant.parse("2026-10-16T18:00:00Z"), Instant.parse("2026-10-16T20:00:00Z"));
+
+        StepVerifier.create(adapter.reschedule(read, later, true))
+                .assertNext(moved -> {
+                    assertThat(moved.getStartDate()).isEqualTo(later.start());
+                    assertThat(moved.getEndDate()).isEqualTo(later.end());
+                    assertThat(moved.getParticipantIds()).containsExactly("lea");
+                })
+                .verifyComplete();
+        EventEntity stored = stored(read.getId());
+        assertThat(stored.getRescheduledFromStart()).isEqualTo(Instant.parse("2026-10-16T17:00:00Z"));
+        assertThat(stored.getRescheduledFromEnd()).isEqualTo(Instant.parse("2026-10-16T19:00:00Z"));
+        assertThat(stored.getDateFixSynced()).isFalse();
+        assertThat(stored.getDateFixVersion()).isEqualTo(1L);
+    }
+
+    @Test
+    void reschedule_shouldLeaveNothingToAnnounce_whenAskedNotTo() {
+        Event read = saveAt("Alone", ORGANIZER, List.of(), "2026-10-16T17:00:00Z", null);
+
+        adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), false).block();
+
+        EventEntity stored = stored(read.getId());
+        assertThat(stored.getStartDate()).isEqualTo(FRIDAY.start());
+        assertThat(stored.getDateFixSynced()).isNull();
+    }
+
+    @Test
+    void reschedule_shouldLandOnce_whenTwoMovesStartFromTheSameRead() {
+        Event read = saveAt("Bowling", ORGANIZER, List.of(), "2026-10-16T17:00:00Z", "2026-10-16T19:00:00Z");
+        adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), false).block();
+
+        StepVerifier.create(adapter.reschedule(read, new TimeRange(THURSDAY.start().plusSeconds(3600),
+                THURSDAY.end().plusSeconds(3600)), false)).verifyComplete();
+        assertThat(adapter.findById(read.getId()).block().getStartDate()).isEqualTo(FRIDAY.start());
+    }
+
+    @Test
+    void reschedule_shouldBeEmpty_forAnOpenPollOrSomeoneElse() {
+        Event poll = aPoll("Dinner", ORGANIZER, List.of());
+        Event plain = saveAt("Bowling", ORGANIZER, List.of(), "2026-10-16T17:00:00Z", "2026-10-16T19:00:00Z");
+        Event notMine = Event.builder().id(plain.getId()).organizerId("lea").startDate(plain.getStartDate()).build();
+
+        StepVerifier.create(adapter.reschedule(poll, new TimeRange(FRIDAY.start(), FRIDAY.end()), false)).verifyComplete();
+        StepVerifier.create(adapter.reschedule(notMine, new TimeRange(FRIDAY.start(), FRIDAY.end()), false)).verifyComplete();
+        assertThat(adapter.findById(poll.getId()).block().getStartDate()).isEqualTo(THURSDAY.start());
+        assertThat(adapter.findById(plain.getId()).block().getStartDate()).isEqualTo(THURSDAY.start());
     }
 
     @Test

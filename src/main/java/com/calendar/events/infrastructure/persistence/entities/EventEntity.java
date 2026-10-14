@@ -65,4 +65,12 @@ public class EventEntity {
      */
     @Indexed
     private Boolean dateFixSynced;
+    /**
+     * Bumped by every date fix or move, so the date relay can tell the date it announced from a
+     * newer one. Absent on events stored before moves existed, which match as null.
+     */
+    private Long dateFixVersion;
+    /** The dates before the last move, for its announcement. Null after a poll fix, which has none. */
+    private Instant rescheduledFromStart;
+    private Instant rescheduledFromEnd;
 }

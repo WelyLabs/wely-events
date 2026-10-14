@@ -111,6 +111,24 @@ public enum EventErrorCode {
             "Answer only for slots this event's poll proposes.",
             HttpStatus.BAD_REQUEST),
 
+    SCHEDULE_INVALID(
+            "EVT-BUS-017",
+            "Invalid schedule",
+            "Give a start and an end after it, over at most 62 days; a new date cannot be in the past.",
+            HttpStatus.BAD_REQUEST),
+
+    SCHEDULE_LOCKED(
+            "EVT-BUS-018",
+            "Date poll open",
+            "This event's date is still being voted on: fix it in the poll instead.",
+            HttpStatus.CONFLICT),
+
+    SCHEDULE_CHANGED(
+            "EVT-BUS-019",
+            "Date changed meanwhile",
+            "Someone changed this event's date since it was read; reload it and try again.",
+            HttpStatus.CONFLICT),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",

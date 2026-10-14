@@ -4,6 +4,7 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
+import com.calendar.events.domain.models.TimeRange;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -85,6 +86,14 @@ public interface EventRepository {
      * relays. Empty when no open poll by this organizer matched, e.g. it was fixed meanwhile.
      */
     Mono<Event> fixPollDate(String eventId, String organizerId, PollSlot slot, Collection<String> yesVoterIds);
+
+    /**
+     * Moves the event, as it was read, to {@code range} in one compare-and-set on its organizer and
+     * its start, unless a date poll is open. With {@code announce}, the same write flags the move
+     * for the date relay, keeping the read dates for the announcement. Empty when nothing matched,
+     * e.g. the date changed meanwhile.
+     */
+    Mono<Event> reschedule(Event read, TimeRange range, boolean announce);
 
     /** Events with an open poll that the user organizes, takes part in or voted on. */
     Flux<Event> findOpenPollsInvolving(String userId);
