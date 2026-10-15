@@ -2,6 +2,7 @@ package com.calendar.events.infrastructure.persistence.repositories;
 
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import org.springframework.data.domain.Limit;
+import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 import org.springframework.data.mongodb.repository.Query;
 import org.springframework.data.mongodb.repository.ReactiveMongoRepository;
 import org.springframework.data.mongodb.repository.Update;
@@ -136,6 +137,21 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     @Query("{ '_id': ?0, 'organizerId': ?1 }")
     @Update("{ '$set': { 'image': ?2 } }")
     Mono<Long> setImage(String eventId, String organizerId, String image);
+
+    // Filtered on the organizer too, as the cover: only whoever organizes the event rewrites it.
+    @Query("{ '_id': ?0, 'organizerId': ?1 }")
+    @Update("{ '$set': { 'title': ?2, 'location': ?3, 'coordinates': ?4, 'description': ?5, 'visibility': ?6 } }")
+    Mono<Long> updateDetails(String eventId, String organizerId, String title, String location,
+                             GeoJsonPoint coordinates, String description, String visibility);
+
+    // A new title is the group's new name in wely-chat: the same update marks the group for the relay.
+    @Query("{ '_id': ?0, 'organizerId': ?1 }")
+    @Update("""
+            { '$set': { 'title': ?2, 'location': ?3, 'coordinates': ?4, 'description': ?5, 'visibility': ?6,
+                        'groupSynced': false },
+              '$inc': { 'groupVersion': 1 } }""")
+    Mono<Long> updateDetailsAndGroup(String eventId, String organizerId, String title, String location,
+                                     GeoJsonPoint coordinates, String description, String visibility);
 
     /** Every event the user organizes or takes part in; both fields are indexed. */
     @Query(value = "{ $or: [ { participantIds: ?0 }, { organizerId: ?0 } ] }", sort = "{ startDate: 1 }")

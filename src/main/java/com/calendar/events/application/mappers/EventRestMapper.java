@@ -4,6 +4,7 @@ import com.calendar.events.application.dtos.CalendarEntryResponse;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventCover;
+import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.EventResponses;
 import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.Participants;
@@ -12,6 +13,7 @@ import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollSlotTally;
 import com.calendar.events.domain.models.SignedUrls;
 import com.calendar.events.application.dtos.EventRequest;
+import com.calendar.events.application.dtos.EventUpdateRequest;
 import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.dtos.EventResponsesResponse;
 import com.calendar.events.application.dtos.LeaveResponse;
@@ -37,6 +39,8 @@ public interface EventRestMapper {
     @Mapping(target = "groupVersion", ignore = true)
     @Mapping(target = "responses", ignore = true)
     Event toDomain(EventRequest request);
+
+    EventDetails toDetails(EventUpdateRequest request);
 
     List<PollSlot> toCandidateSlots(List<SlotRequest> slots);
 

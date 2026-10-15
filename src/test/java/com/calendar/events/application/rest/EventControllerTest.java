@@ -1,5 +1,8 @@
 package com.calendar.events.application.rest;
 
+import com.calendar.events.domain.models.Visibility;
+import com.calendar.events.domain.models.EventDetails;
+import com.calendar.events.application.dtos.EventUpdateRequest;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.dtos.LeaveRequest;
@@ -177,6 +180,20 @@ class EventControllerTest {
         StepVerifier.create(controller.createEvent(request, jwt))
                 .expectNext(response)
                 .verifyComplete();
+    }
+
+    @Test
+    void updateEvent_shouldRewriteTheDetailsAsTheCaller() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        EventUpdateRequest request = new EventUpdateRequest("Afterwork", "Ninkasi", null, null, Visibility.PUBLIC);
+        EventDetails details = new EventDetails("Afterwork", "Ninkasi", null, null, Visibility.PUBLIC);
+        Event event = Event.builder().id("1").title("Afterwork").build();
+        EventResponse response = EventResponse.builder().id("1").title("Afterwork").build();
+        when(mapper.toDetails(request)).thenReturn(details);
+        when(eventService.updateDetails("1", "user1", details)).thenReturn(Mono.just(event));
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+
+        StepVerifier.create(controller.updateEvent("1", request, jwt)).expectNext(response).verifyComplete();
     }
 
     @Test

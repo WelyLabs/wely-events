@@ -1,5 +1,6 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
+import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.GeoPoint;
@@ -672,6 +673,36 @@ class MongoEventRepositoryAdapterIntegrationTest {
     @Test
     void setImage_shouldBeEmpty_forAnUnknownEvent() {
         StepVerifier.create(adapter.setImage("64b7f9f2e4b0a1c2d3e4f5a6", ORGANIZER, "events/x/cover-1.jpg")).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("only the organizer rewrites the details; a new title marks the group for wely-chat")
+    void updateDetails_shouldRewriteTheDetails_andBumpTheGroupOnlyOnARename() {
+        Event saved = anEvent("Standup");
+        EventDetails details = new EventDetails("Standup", "Ninkasi", new GeoPoint(45.73, 4.83), "Bring snacks", Visibility.PRIVATE);
+        Long versionBefore = stored(saved.getId()).getGroupVersion();
+
+        StepVerifier.create(adapter.updateDetails(saved.getId(), "someone-else", details, false)).verifyComplete();
+        StepVerifier.create(adapter.updateDetails(saved.getId(), ORGANIZER, details, false))
+                .assertNext(updated -> {
+                    assertThat(updated.getLocation()).isEqualTo("Ninkasi");
+                    assertThat(updated.getCoordinates()).isEqualTo(new GeoPoint(45.73, 4.83));
+                    assertThat(updated.getDescription()).isEqualTo("Bring snacks");
+                    assertThat(updated.getVisibility()).isEqualTo(Visibility.PRIVATE);
+                })
+                .verifyComplete();
+        assertThat(stored(saved.getId()).getGroupVersion()).isEqualTo(versionBefore);
+
+        StepVerifier.create(adapter.updateDetails(saved.getId(), ORGANIZER,
+                        new EventDetails("Daily", "Ninkasi", null, null, Visibility.PUBLIC), true))
+                .assertNext(updated -> {
+                    assertThat(updated.getTitle()).isEqualTo("Daily");
+                    assertThat(updated.getCoordinates()).isNull();
+                })
+                .verifyComplete();
+        EventEntity renamed = stored(saved.getId());
+        assertThat(renamed.getGroupVersion()).isEqualTo(versionBefore == null ? 1L : versionBefore + 1);
+        assertThat(renamed.getGroupSynced()).isFalse();
     }
 
     private static final PollSlot THURSDAY = new PollSlot("thu", Instant.parse("2026-10-16T17:00:00Z"), Instant.parse("2026-10-16T19:00:00Z"));

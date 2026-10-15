@@ -1,6 +1,7 @@
 package com.calendar.events.domain.ports;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
@@ -81,6 +82,13 @@ public interface EventRepository {
 
     /** Sets the event's cover reference (null clears it); empty when no event by this organizer has this id. */
     Mono<Event> setImage(String eventId, String organizerId, String image);
+
+    /**
+     * Rewrites the event's details, for its organizer only: empty when the event is gone or someone
+     * else organizes it now. With {@code renameGroup}, the same write marks the group for the relay,
+     * since its title is the group's name in wely-chat.
+     */
+    Mono<Event> updateDetails(String eventId, String organizerId, EventDetails details, boolean renameGroup);
 
     /** Every event the user organizes or takes part in, past and future. */
     Flux<Event> findInvolving(String userId);
