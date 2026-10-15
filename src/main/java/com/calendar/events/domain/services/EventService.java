@@ -1,5 +1,6 @@
 package com.calendar.events.domain.services;
 
+import com.calendar.events.domain.models.CommunityRole;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventCover;
 import com.calendar.events.domain.models.EventDeletion;
@@ -9,8 +10,10 @@ import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Poll;
+import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.Visibility;
+import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -23,6 +26,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -40,6 +44,7 @@ public class EventService {
     private final ExpenseRepository expenseRepository;
     private final PictureService pictureService;
     private final EventDeletionOutbox deletionOutbox;
+    private final CommunityDirectory communityDirectory;
     private final Clock clock;
 
     public Flux<Event> getAllEvents() {
@@ -72,6 +77,22 @@ public class EventService {
      * poll on them and sits on the earliest until the organizer fixes one. The organizer always takes part.
      */
     public Mono<Event> createEvent(Event event, List<PollSlot> candidateSlots) {
+        if (event.getCommunityId() != null) {
+            // Published in a community: by one of its members, for its members only.
+            return requireMember(event.getCommunityId(), event.getOrganizerId())
+                    .then(Mono.defer(() -> {
+                        event.setVisibility(Visibility.COMMUNITY);
+                        return createOwnEvent(event, candidateSlots);
+                    }));
+        }
+        if (event.getVisibility() == Visibility.COMMUNITY) {
+            // Only the domain sets it, on an event that names its community.
+            event.setVisibility(null);
+        }
+        return createOwnEvent(event, candidateSlots);
+    }
+
+    private Mono<Event> createOwnEvent(Event event, List<PollSlot> candidateSlots) {
         return Mono.fromCallable(() -> {
             event.setImage(null);
             List<String> participantIds = new ArrayList<>(event.getParticipantIds() != null ? event.getParticipantIds() : List.of());
@@ -83,6 +104,7 @@ public class EventService {
                 event.setVisibility(Visibility.DEFAULT);
             }
             event.setPoll(null);
+            event.setResponses(new LinkedHashMap<>());
             if (candidateSlots != null) {
                 Poll poll = Poll.open(candidateSlots, clock.instant());
                 event.setPoll(poll);
@@ -102,14 +124,25 @@ public class EventService {
     public Mono<Void> deleteEvent(String id, String requesterId) {
         return eventRepository.findById(id)
                 .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
-                .flatMap(event -> {
-                    if (!Objects.equals(event.getOrganizerId(), requesterId)) {
-                        return Mono.error(new EventException(EventErrorCode.EVENT_ACCESS_DENIED));
-                    }
-                    return eventRepository.deleteByOrganizer(id, requesterId)
-                            .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
-                            .flatMap(this::afterDeletion);
-                });
+                .flatMap(event -> mayDelete(event, requesterId)
+                        .filter(Boolean::booleanValue)
+                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_ACCESS_DENIED)))
+                        .then(Mono.defer(() -> eventRepository.deleteByOrganizer(id, event.getOrganizerId())))
+                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                        .flatMap(this::afterDeletion));
+    }
+
+    /** The organizer may; so may an admin of the community the event was published in, to moderate it. */
+    private Mono<Boolean> mayDelete(Event event, String requesterId) {
+        if (Objects.equals(event.getOrganizerId(), requesterId)) {
+            return Mono.just(true);
+        }
+        if (!event.isCommunityEvent()) {
+            return Mono.just(false);
+        }
+        return communityDirectory.roleOf(event.getCommunityId(), requesterId)
+                .map(role -> role == CommunityRole.ADMIN)
+                .defaultIfEmpty(false);
     }
 
     /**
@@ -239,7 +272,10 @@ public class EventService {
     public Mono<Event> toggleSubscription(String id, String userId) {
         return eventRepository.findById(id)
                 .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)))
-                .flatMap(event -> event.getParticipantIds().contains(userId)
+                .flatMap(event -> event.isCommunityEvent()
+                        // In a community, joining is answering yes, and leaving answering no.
+                        ? respond(id, userId, event.getParticipantIds().contains(userId) ? PollAnswer.NO : PollAnswer.YES)
+                        : event.getParticipantIds().contains(userId)
                         ? unsubscribe(event, userId)
                         // Joining needs to see the event first: no subscribing by guessed id.
                         : requireVisible(event, userId)
@@ -256,6 +292,37 @@ public class EventService {
                 .flatMap(updated -> userId.equals(updated.getOrganizerId())
                         ? Mono.error(new EventException(EventErrorCode.NEW_ORGANIZER_REQUIRED))
                         : Mono.just(updated));
+    }
+
+    /**
+     * A member answers a community event: YES takes part, MAYBE and NO do not, and every member
+     * sees who said what. The answer can change at any time. The organizer takes part by
+     * definition: their YES changes nothing, and anything else is a hand-over, through {@link #leave}.
+     */
+    public Mono<Event> respond(String eventId, String userId, PollAnswer answer) {
+        return getEventById(eventId, userId).flatMap(event -> {
+            if (!event.isCommunityEvent()) {
+                return Mono.error(new EventException(EventErrorCode.NOT_A_COMMUNITY_EVENT));
+            }
+            if (userId.equals(event.getOrganizerId())) {
+                return answer == PollAnswer.YES
+                        ? Mono.just(event)
+                        : Mono.error(new EventException(EventErrorCode.NEW_ORGANIZER_REQUIRED));
+            }
+            return eventRepository.respond(eventId, userId, answer)
+                    .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+        });
+    }
+
+    /** What a community publishes and has not happened yet, soonest first; for its members only. */
+    public Flux<Event> getCommunityEvents(String communityId, String userId) {
+        return requireMember(communityId, userId)
+                .thenMany(Flux.defer(() -> eventRepository.findUpcomingInCommunity(communityId, clock.instant())));
+    }
+
+    private Mono<CommunityRole> requireMember(String communityId, String userId) {
+        return communityDirectory.roleOf(communityId, userId)
+                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.COMMUNITY_MEMBERS_ONLY)));
     }
 
     public Flux<Event> getSubscribedEvents(String userId) {
@@ -293,10 +360,18 @@ public class EventService {
                         : Mono.error(new EventException(EventErrorCode.EVENT_ACCESS_DENIED)));
     }
 
-    /** The event if the viewer may see it, empty otherwise. Asks for friends only when it matters. */
+    /**
+     * The event if the viewer may see it, empty otherwise. Asks for friends, or the community's
+     * members, only when it matters.
+     */
     private Mono<Event> requireVisible(Event event, String viewerId) {
         if (event.isVisibleTo(viewerId, Set.of())) {
             return Mono.just(event);
+        }
+        if (event.effectiveVisibility() == Visibility.COMMUNITY) {
+            return event.isCommunityEvent()
+                    ? communityDirectory.roleOf(event.getCommunityId(), viewerId).map(role -> event)
+                    : Mono.empty();
         }
         if (event.effectiveVisibility() != Visibility.FRIENDS) {
             return Mono.empty();

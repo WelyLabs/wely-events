@@ -147,6 +147,18 @@ public enum EventErrorCode {
             "Leaving would delete the event; confirm the deletion.",
             HttpStatus.CONFLICT),
 
+    NOT_A_COMMUNITY_EVENT(
+            "EVT-BUS-023",
+            "Not a community event",
+            "Only an event published in a community takes Yes, Maybe or No answers; join or leave this one instead.",
+            HttpStatus.CONFLICT),
+
+    COMMUNITY_MEMBERS_ONLY(
+            "EVT-BUS-024",
+            "Members only",
+            "Only members of the community can see or publish its events.",
+            HttpStatus.FORBIDDEN),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",

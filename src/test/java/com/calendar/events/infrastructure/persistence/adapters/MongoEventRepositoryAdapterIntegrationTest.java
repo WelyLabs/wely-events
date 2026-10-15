@@ -836,4 +836,60 @@ class MongoEventRepositoryAdapterIntegrationTest {
         assertThat(titles(adapter.findUpcomingInvolving("hugo", OVERVIEW_NOW)))
                 .containsExactly("hugo organizes, tomorrow", "hugo joins, later");
     }
+
+    // --- Communities ------------------------------------------------------------------------------
+
+    private Event aCommunityEvent(String title, String communityId, Instant start, Instant end) {
+        List<String> going = new ArrayList<>(List.of(ORGANIZER));
+        return adapter.save(Event.builder().title(title).organizerId(ORGANIZER).startDate(start).endDate(end)
+                .location("Gerland").participantIds(going).visibility(Visibility.COMMUNITY).communityId(communityId)
+                .build()).block();
+    }
+
+    @Test
+    @DisplayName("a community's upcoming events, soonest first, an event without an end lasting an hour")
+    void findUpcomingInCommunity_shouldListWhatIsNotOverYet() {
+        Instant now = Instant.parse("2026-10-15T10:00:00Z");
+        aCommunityEvent("later", "c1", now.plusSeconds(7200), null);
+        aCommunityEvent("soon", "c1", now.plusSeconds(600), now.plusSeconds(3600));
+        aCommunityEvent("started half an hour ago, no end", "c1", now.minusSeconds(1800), null);
+        aCommunityEvent("over", "c1", now.minusSeconds(7200), now.minusSeconds(3600));
+        aCommunityEvent("elsewhere", "c2", now.plusSeconds(600), null);
+
+        assertThat(adapter.findUpcomingInCommunity("c1", now).map(Event::getTitle).collectList().block())
+                .containsExactly("started half an hour ago, no end", "soon", "later");
+    }
+
+    @Test
+    @DisplayName("answers move a member in and out of the participants, keeping maybe and no, and never the organizer")
+    void respond_shouldKeepParticipantsAndAnswersInStep() {
+        Event event = aCommunityEvent("Balade", "c1", Instant.parse("2027-01-01T10:00:00Z"), null);
+        String id = event.getId();
+
+        Event yes = adapter.respond(id, "lea", PollAnswer.YES).block();
+        assertThat(yes.getParticipantIds()).containsExactly(ORGANIZER, "lea");
+
+        Event maybe = adapter.respond(id, "lea", PollAnswer.MAYBE).block();
+        assertThat(maybe.getParticipantIds()).containsExactly(ORGANIZER);
+        assertThat(maybe.getResponses()).containsEntry("lea", PollAnswer.MAYBE);
+
+        Event no = adapter.respond(id, "lea", PollAnswer.NO).block();
+        assertThat(no.getResponses()).containsEntry("lea", PollAnswer.NO);
+
+        Event back = adapter.respond(id, "lea", PollAnswer.YES).block();
+        assertThat(back.getParticipantIds()).containsExactly(ORGANIZER, "lea");
+        assertThat(back.getResponses()).doesNotContainKey("lea");
+
+        StepVerifier.create(adapter.respond(id, ORGANIZER, PollAnswer.NO)).verifyComplete();
+        assertThat(adapter.findById(id).block().getParticipantIds()).contains(ORGANIZER);
+    }
+
+    @Test
+    @DisplayName("answering an event outside any community writes nothing")
+    void respond_shouldIgnoreAnEventOutsideAnyCommunity() {
+        Event event = anEvent("Standup");
+
+        StepVerifier.create(adapter.respond(event.getId(), "lea", PollAnswer.YES)).verifyComplete();
+        assertThat(adapter.findById(event.getId()).block().getParticipantIds()).doesNotContain("lea");
+    }
 }

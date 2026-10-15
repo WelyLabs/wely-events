@@ -9,7 +9,9 @@ import lombok.Setter;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Getter
@@ -40,6 +42,15 @@ public class Event {
     private Poll poll;
     /** Read from storage only, for the deletion's version; null on events stored before group chats. */
     private Long groupVersion;
+    /** The community the event was published in; null for an event of one's own. */
+    private String communityId;
+    /**
+     * The MAYBE and NO answers of a community event's members. A YES is not kept here: it is being
+     * among the participants, which every other path (joining, leaving, a poll's fix) already keeps
+     * up to date. Read from storage only, written by {@code EventRepository#respond}.
+     */
+    @Builder.Default
+    private Map<String, PollAnswer> responses = new LinkedHashMap<>();
 
     /** When the event stops keeping its people busy. */
     public Instant effectiveEnd() {
@@ -49,6 +60,10 @@ public class Event {
     /** Whether the date is still being voted on: then startDate/endDate are only the earliest proposal. */
     public boolean isPolling() {
         return poll != null && poll.isOpen();
+    }
+
+    public boolean isCommunityEvent() {
+        return communityId != null;
     }
 
     public Visibility effectiveVisibility() {
@@ -76,7 +91,8 @@ public class Event {
         return switch (effectiveVisibility()) {
             case PUBLIC -> true;
             case FRIENDS -> friendIdsOfUser.contains(organizerId);
-            case PRIVATE -> false;
+            // Membership is wely-social's to say: whoever knows it decides, see EventService.
+            case PRIVATE, COMMUNITY -> false;
         };
     }
 }

@@ -17,6 +17,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Getter
 @Setter
@@ -44,8 +45,16 @@ public class EventEntity {
     private String description;
     @Builder.Default
     private List<String> participantIds = new ArrayList<>();
-    /** PUBLIC, FRIENDS or PRIVATE. Absent on events stored before it existed, which count as FRIENDS. */
+    /** PUBLIC, FRIENDS, PRIVATE or COMMUNITY. Absent on events stored before it existed, which count as FRIENDS. */
     private String visibility;
+    /** The community the event was published in; absent for an event of one's own. */
+    @Indexed(sparse = true)
+    private String communityId;
+    /**
+     * A community event's MAYBE and NO answers, keyed by member id; a YES is being a participant.
+     * Each member writes only their own field, so two answers never overwrite each other.
+     */
+    private Map<String, String> responses;
     /**
      * Bumped by every change to who takes part, so wely-chat can tell a newer member list from a
      * stale one. Absent on events stored before the group chat existed, which publish as 0.

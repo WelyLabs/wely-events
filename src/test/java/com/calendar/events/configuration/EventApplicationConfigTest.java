@@ -1,5 +1,6 @@
 package com.calendar.events.configuration;
 
+import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -29,7 +30,7 @@ class EventApplicationConfigTest {
         EventRepository repository = mock(EventRepository.class);
 
         EventService service = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
-                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class));
+                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class));
 
         // The domain service is built by hand, with no Spring annotation: that is what
         // makes it testable outside a context.
@@ -48,7 +49,7 @@ class EventApplicationConfigTest {
     void scheduleService_shouldBuildTheDomainServiceFromItsPortAndTheEventService() {
         EventRepository repository = mock(EventRepository.class);
         EventService eventService = config.eventService(repository, mock(SocialGraph.class),
-                mock(ExpenseRepository.class), config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class));
+                mock(ExpenseRepository.class), config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class));
 
         ScheduleService service = config.scheduleService(repository, eventService);
 
@@ -96,7 +97,7 @@ class EventApplicationConfigTest {
     void pollService_shouldBuildTheDomainServiceFromItsPorts() {
         EventRepository repository = mock(EventRepository.class);
         EventService eventService = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
-                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class));
+                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class));
 
         PollService service = config.pollService(repository, eventService, mock(PollUpdates.class));
 

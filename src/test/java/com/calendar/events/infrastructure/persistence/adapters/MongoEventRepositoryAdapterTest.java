@@ -22,6 +22,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -452,5 +453,76 @@ class MongoEventRepositoryAdapterTest {
     @Test
     void findOpenPollsInvolving_shouldRefuseAUserIdThatWouldChangeTheFieldPath() {
         StepVerifier.create(adapter.findOpenPollsInvolving("a.b")).expectError(IllegalArgumentException.class).verify();
+    }
+
+    // --- Communities ------------------------------------------------------------------------------
+
+    private static Event communityEvent(String organizer) {
+        return Event.builder().id("1").organizerId(organizer).communityId("c1").participantIds(new ArrayList<>()).build();
+    }
+
+    @Test
+    void findUpcomingInCommunity_shouldCountAnEventWithoutAnEndAsLastingTheDefaultDuration() {
+        Instant now = Instant.parse("2026-10-15T10:00:00Z");
+        EventEntity entity = new EventEntity();
+        Event domain = communityEvent("bob");
+        when(mongoRepository.findUpcomingInCommunity("c1", now, now.minus(Event.DEFAULT_DURATION))).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findUpcomingInCommunity("c1", now)).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void respond_shouldJoinOnYes_andReadTheEventBack() {
+        Event after = communityEvent("bob");
+        when(mongoRepository.respondYes("1", "lea")).thenReturn(Mono.just(1L));
+        readBack(after);
+
+        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.YES)).expectNext(after).verifyComplete();
+    }
+
+    @Test
+    void respond_shouldLeaveOnMaybe_whenTakingPart() {
+        Event after = communityEvent("bob");
+        when(mongoRepository.respondAndLeave("1", "lea", "MAYBE")).thenReturn(Mono.just(1L));
+        readBack(after);
+
+        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.MAYBE)).expectNext(after).verifyComplete();
+        verify(mongoRepository, never()).respondFromOutside(any(), any(), any());
+    }
+
+    @Test
+    void respond_shouldOnlyStoreTheAnswer_whenNotTakingPart() {
+        Event after = communityEvent("bob");
+        when(mongoRepository.respondAndLeave("1", "lea", "NO")).thenReturn(Mono.just(0L));
+        when(mongoRepository.respondFromOutside("1", "lea", "NO")).thenReturn(Mono.just(1L));
+        readBack(after);
+
+        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.NO)).expectNext(after).verifyComplete();
+    }
+
+    @Test
+    void respond_shouldBeEmpty_forTheOrganizerSteppingOut() {
+        when(mongoRepository.respondAndLeave("1", "bob", "NO")).thenReturn(Mono.just(0L));
+        when(mongoRepository.respondFromOutside("1", "bob", "NO")).thenReturn(Mono.just(0L));
+        readBack(communityEvent("bob"));
+
+        StepVerifier.create(adapter.respond("1", "bob", PollAnswer.NO)).verifyComplete();
+    }
+
+    @Test
+    void respond_shouldBeEmpty_forAnEventOutsideAnyCommunity() {
+        when(mongoRepository.respondYes("1", "lea")).thenReturn(Mono.just(0L));
+        readBack(Event.builder().id("1").organizerId("bob").build());
+
+        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.YES)).verifyComplete();
+    }
+
+    @Test
+    void respond_shouldRefuseAnIdUnusableAsAFieldName() {
+        StepVerifier.create(adapter.respond("1", "lea.$x", PollAnswer.NO))
+                .expectError(IllegalArgumentException.class)
+                .verify();
+        verify(mongoRepository, never()).respondAndLeave(any(), any(), any());
     }
 }

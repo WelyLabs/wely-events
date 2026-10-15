@@ -71,6 +71,24 @@ class EventTest {
     }
 
     @Test
+    void isVisibleTo_shouldHideACommunityEventFromAnyoneNotTakingPart_membershipBeingDecidedElsewhere() {
+        Event event = by("bob", Visibility.COMMUNITY, "lea");
+        event.setCommunityId("c1");
+
+        assertThat(event.isVisibleTo("carol", Set.of("bob"))).isFalse();
+        assertThat(event.isVisibleTo("lea", Set.of())).isTrue();
+    }
+
+    @Test
+    void isCommunityEvent_shouldFollowTheCommunity() {
+        Event event = by("bob", Visibility.FRIENDS);
+        assertThat(event.isCommunityEvent()).isFalse();
+
+        event.setCommunityId("c1");
+        assertThat(event.isCommunityEvent()).isTrue();
+    }
+
+    @Test
     void isPolling_shouldHoldOnlyWhileThePollIsOpen() {
         assertThat(Event.builder().build().isPolling()).isFalse();
         assertThat(Event.builder().poll(new Poll(PollStatus.OPEN, List.of(), null, null)).build().isPolling()).isTrue();

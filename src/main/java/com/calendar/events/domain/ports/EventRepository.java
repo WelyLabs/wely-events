@@ -112,6 +112,16 @@ public interface EventRepository {
      */
     Mono<Event> reschedule(Event read, TimeRange range, boolean announce);
 
+    /** The community's events not over yet at {@code now}, soonest first. */
+    Flux<Event> findUpcomingInCommunity(String communityId, Instant now);
+
+    /**
+     * Records a member's answer to a community event in one write: YES makes them a participant,
+     * MAYBE or NO takes them out and keeps the answer. Never the organizer for MAYBE or NO, who
+     * leaves through {@link #handOver} or {@link #deleteIfAlone}. Empty when nothing matched.
+     */
+    Mono<Event> respond(String eventId, String userId, PollAnswer answer);
+
     /** Events with an open poll that the user organizes, takes part in or voted on. */
     Flux<Event> findOpenPollsInvolving(String userId);
 }

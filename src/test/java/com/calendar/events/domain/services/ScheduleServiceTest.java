@@ -6,6 +6,7 @@ import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.models.Visibility;
+import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -66,7 +67,7 @@ class ScheduleServiceTest {
     void setUp() {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
-                new PictureService(mediaStore), mock(EventDeletionOutbox.class), clock);
+                new PictureService(mediaStore), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class), clock);
         scheduleService = new ScheduleService(eventRepository, eventService, clock, PARIS);
     }
 

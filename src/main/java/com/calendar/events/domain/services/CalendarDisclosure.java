@@ -13,7 +13,7 @@ import java.util.Set;
  * <ol>
  *   <li>An event the viewer may see anyway — taking part, public, or shared with the organizer's
  *       friends and the viewer is one — is shown in full: hiding it here would hide nothing.</li>
- *   <li>A private event only ever shows as busy, whatever the closeness.</li>
+ *   <li>A private event, or one published in a community, only ever shows as busy, whatever the closeness.</li>
  *   <li>Anything else — typically an event of someone the viewer does not know — depends on
  *       how close the viewer is to the friend: busy, then the title, then everything.</li>
  * </ol>
@@ -27,7 +27,8 @@ final class CalendarDisclosure {
         if (event.isVisibleTo(viewerId, viewerFriendIds)) {
             return full(event);
         }
-        if (event.effectiveVisibility() == Visibility.PRIVATE) {
+        // A community's events are its members' business, whatever the closeness.
+        if (event.effectiveVisibility() == Visibility.PRIVATE || event.effectiveVisibility() == Visibility.COMMUNITY) {
             return CalendarEntry.busy(event.getStartDate(), event.effectiveEnd());
         }
         return switch (closeness) {

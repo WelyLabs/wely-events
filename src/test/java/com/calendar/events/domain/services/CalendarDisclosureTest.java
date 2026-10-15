@@ -51,6 +51,14 @@ class CalendarDisclosureTest {
         assertThat(seenBy(event("carol", Visibility.PRIVATE, "bob"), closeness)).isEqualTo(BUSY);
     }
 
+    @ParameterizedTest
+    @EnumSource(Closeness.class)
+    void disclose_shouldOnlyShowACommunityEventAsBusy_evenToAnIntimateFriend(Closeness closeness) {
+        // The community's events are its members' business: closeness to the friend says nothing about them.
+        assertThat(seenBy(event("bob", Visibility.COMMUNITY), closeness)).isEqualTo(BUSY);
+        assertThat(seenBy(event("carol", Visibility.COMMUNITY, "bob"), closeness)).isEqualTo(BUSY);
+    }
+
     @Test
     void disclose_shouldShowAStrangersEventAsBusy_toAFriend() {
         assertThat(seenBy(event("carol", Visibility.FRIENDS, "bob"), Closeness.FRIEND)).isEqualTo(BUSY);
