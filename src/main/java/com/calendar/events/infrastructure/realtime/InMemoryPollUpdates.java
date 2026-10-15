@@ -9,17 +9,13 @@ import reactor.core.publisher.Sinks;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-/**
- * Poll updates passed in memory: one multicast sink per watched event, dropped with its last watcher.
- *
- * <p>Assumes a single replica of wely-events: a vote handled by another pod would never reach the
- * watchers here. MongoDB runs without a replica set, so change streams are not available to
- * share them; see AUDIT.md.
- */
+/** Poll updates passed in memory, one sink per watched event, so on a single replica only (see AUDIT.md). */
 @Component
 public class InMemoryPollUpdates implements PollUpdates {
 
     private final ConcurrentMap<String, Channel> channels = new ConcurrentHashMap<>();
+    /** Viewers whose streams must end, e.g. a deleted account; heard by every open stream. */
+    private final Sinks.Many<String> disconnections = Sinks.many().multicast().directBestEffort();
 
     @Override
     public void publish(String eventId, Poll poll) {
@@ -34,7 +30,7 @@ public class InMemoryPollUpdates implements PollUpdates {
     }
 
     @Override
-    public Flux<Poll> stream(String eventId) {
+    public Flux<Poll> stream(String eventId, String viewerId) {
         // Counted at subscription, inside compute: a channel is never dropped while being joined.
         return Flux.defer(() -> {
             Channel channel = channels.compute(eventId, (id, existing) -> {
@@ -42,8 +38,18 @@ public class InMemoryPollUpdates implements PollUpdates {
                 joined.watchers++;
                 return joined;
             });
-            return channel.sink.asFlux().doFinally(signal -> leave(eventId, channel));
+            return channel.sink.asFlux()
+                    .takeUntilOther(disconnections.asFlux().filter(viewerId::equals))
+                    .doFinally(signal -> leave(eventId, channel));
         });
+    }
+
+    @Override
+    public void disconnect(String viewerId) {
+        // One emitter at a time, as for a channel.
+        synchronized (disconnections) {
+            disconnections.tryEmitNext(viewerId);
+        }
     }
 
     private void leave(String eventId, Channel channel) {

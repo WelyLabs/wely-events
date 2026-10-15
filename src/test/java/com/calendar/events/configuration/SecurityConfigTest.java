@@ -7,11 +7,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
 import reactor.core.publisher.Flux;
@@ -21,15 +24,13 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockJwt;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.springSecurity;
 
-/**
- * Guards the fix for the service's worst defect: the only filter chain used to end in
- * {@code anyExchange().permitAll()}, leaving every endpoint — event deletion included —
- * reachable without a token.
- */
+/** The security chain: no endpoint without a token, and no write from a deleted account. */
 @ExtendWith(SpringExtension.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
@@ -52,6 +53,10 @@ class SecurityConfigTest {
     /** Mocked for the same reason: the feed asks wely-social for the caller's friends. */
     @MockitoBean
     private SocialGraph socialGraph;
+
+    /** The deleted-accounts register, read on every write. */
+    @MockitoBean
+    private DeletedUserMarkers markers;
 
     private WebTestClient client() {
         return WebTestClient.bindToApplicationContext(context)
@@ -85,6 +90,47 @@ class SecurityConfigTest {
                 .get().uri("/events-service/events/me/feed")
                 .exchange()
                 .expectStatus().isOk();
+    }
+
+    @Test
+    @DisplayName("a deleted account's still-valid token can no longer write: 410, in the problem shape")
+    void springSecurityFilterChain_shouldRefuseWritesFromADeletedAccount_with410() {
+        when(markers.isDeleted("gone")).thenReturn(Mono.just(true));
+
+        client().mutateWith(mockJwt().jwt(jwt -> jwt.claim("businessId", "gone")))
+                .post().uri("/events-service/events/e1/subscribe")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.GONE)
+                .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("EVT-BUS-025")
+                .jsonPath("$.instance").isEqualTo("/events-service/events/e1/subscribe");
+        verify(eventRepository, never()).findById(any(String.class));
+    }
+
+    @Test
+    void springSecurityFilterChain_shouldServeReadsToADeletedAccount() {
+        when(socialGraph.friendIdsOf(any())).thenReturn(Mono.just(Set.of()));
+        when(eventRepository.findFeed(any(), any())).thenReturn(Flux.empty());
+
+        client().mutateWith(mockJwt().jwt(jwt -> jwt.claim("businessId", "gone")))
+                .get().uri("/events-service/events/me/feed")
+                .exchange()
+                .expectStatus().isOk();
+        verify(markers, never()).isDeleted(any());
+    }
+
+    @Test
+    void springSecurityFilterChain_shouldLetWritesThrough_forALiveAccount() {
+        when(markers.isDeleted("lea")).thenReturn(Mono.just(false));
+        when(eventRepository.findById("e1")).thenReturn(Mono.empty());
+
+        client().mutateWith(mockJwt().jwt(jwt -> jwt.claim("businessId", "lea")))
+                .post().uri("/events-service/events/e1/subscribe")
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("EVT-BUS-001");
     }
 
     @Test

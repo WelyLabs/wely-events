@@ -10,24 +10,26 @@ import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Date polls: voting, fixing the date, and watching the votes live. Who may see or act on an
- * event is decided by {@link EventService}, so the rules stay in one place.
- */
+/** Date polls: voting, fixing the date, and watching the votes live; access rules stay in {@link EventService}. */
 public class PollService {
 
     private final EventRepository eventRepository;
     private final EventService eventService;
     private final PollUpdates pollUpdates;
+    private final AccountGuard accountGuard;
 
-    public PollService(EventRepository eventRepository, EventService eventService, PollUpdates pollUpdates) {
+    public PollService(EventRepository eventRepository, EventService eventService, PollUpdates pollUpdates,
+                       AccountGuard accountGuard) {
         this.eventRepository = eventRepository;
         this.eventService = eventService;
         this.pollUpdates = pollUpdates;
+        this.accountGuard = accountGuard;
     }
 
     /**
@@ -51,11 +53,7 @@ public class PollService {
                 .doOnNext(poll -> pollUpdates.publish(eventId, poll));
     }
 
-    /**
-     * Fixes the date on one of the proposed slots, for the organizer only. Those who answered yes
-     * for it are subscribed. The yes voters come from the read: a vote landing between the read
-     * and the write still counts in the poll, but does not subscribe its author.
-     */
+    /** Fixes the date on a slot, for the organizer only, subscribing the yes voters read, deleted accounts excepted. */
     public Mono<Event> fix(String eventId, String organizerId, String slotId) {
         return eventService.requireOrganizer(eventId, organizerId)
                 .flatMap(event -> {
@@ -67,7 +65,10 @@ public class PollService {
                     if (slot == null) {
                         return Mono.error(new EventException(EventErrorCode.POLL_SLOT_UNKNOWN));
                     }
-                    return eventRepository.fixPollDate(eventId, organizerId, slot, poll.yesVotersOf(slotId))
+                    List<String> yesVoters = poll.yesVotersOf(slotId);
+                    return accountGuard.deletedAmong(yesVoters)
+                            .flatMap(deleted -> eventRepository.fixPollDate(eventId, organizerId, slot,
+                                    yesVoters.stream().filter(voter -> !deleted.contains(voter)).toList()))
                             .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.POLL_CLOSED)));
                 })
                 .doOnNext(fixed -> pollUpdates.publish(eventId, fixed.getPoll()));
@@ -78,30 +79,35 @@ public class PollService {
         return eventRepository.findOpenPollsInvolving(userId);
     }
 
-    /**
-     * The poll's state now, then every change, ending with the closed state once the date is fixed.
-     * The outer Mono settles access first, so a refusal is an error before anything is streamed.
-     */
+    /** The poll's state now, then every change until it closes, once access is settled; a deleted viewer is refused. */
     public Mono<Flux<Poll>> watch(String eventId, String viewerId) {
-        return eventService.getEventById(eventId, viewerId)
+        return accountGuard.requireLive(viewerId)
+                .then(Mono.defer(() -> eventService.getEventById(eventId, viewerId)))
                 .flatMap(event -> event.getPoll() == null
                         ? Mono.error(new EventException(EventErrorCode.POLL_CLOSED))
-                        : Mono.just(liveStates(eventId)));
+                        : Mono.just(liveStates(eventId, viewerId)));
     }
 
-    /**
-     * Live updates are subscribed before the current state is read, so no vote falls in between.
-     * If one arrives first it is newer than any read still in flight, which is then dropped.
-     */
-    private Flux<Poll> liveStates(String eventId) {
+    /** Subscribes live updates before reading the current state, which is dropped if a live update beat it. */
+    private Flux<Poll> liveStates(String eventId, String viewerId) {
         return Flux.defer(() -> {
             AtomicBoolean liveSeen = new AtomicBoolean();
-            Flux<Poll> live = pollUpdates.stream(eventId).doOnNext(poll -> liveSeen.set(true));
+            Sinks.Empty<Void> listening = Sinks.empty();
+            Flux<Poll> live = pollUpdates.stream(eventId, viewerId)
+                    .doOnSubscribe(subscription -> listening.tryEmitEmpty())
+                    .doOnNext(poll -> liveSeen.set(true));
             Mono<Poll> current = eventRepository.findById(eventId)
                     .mapNotNull(Event::getPoll)
                     .filter(poll -> !liveSeen.get());
+            // Checked again once live listens: an erasure in between disconnected nobody.
+            Mono<Boolean> deletedMeanwhile = Mono.defer(() -> accountGuard.isDeleted(viewerId))
+                    .filter(Boolean::booleanValue)
+                    // takeUntilOther also stops on an empty completion: a live viewer must never signal.
+                    .switchIfEmpty(Mono.never())
+                    .delaySubscription(listening.asMono());
             return Flux.merge(live, current)
-                    .takeUntil(poll -> !poll.isOpen());
+                    .takeUntil(poll -> !poll.isOpen())
+                    .takeUntilOther(deletedMeanwhile);
         });
     }
 }

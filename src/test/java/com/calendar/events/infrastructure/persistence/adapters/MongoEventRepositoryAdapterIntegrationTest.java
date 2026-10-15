@@ -32,20 +32,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Runs {@link MongoEventRepositoryAdapter} against a real MongoDB.
- *
- * <p>The subscription methods are the reason this exists. {@code addParticipant} uses
- * {@code $addToSet} and {@code removeParticipant} uses {@code $pull}, both as in-place updates
- * declared on the repository — chosen so that two people subscribing at the same time cannot
- * overwrite each other, which is exactly what a read-modify-write would do.
- * That property is a claim about MongoDB, and only MongoDB can settle it.
- *
- * <p>Opt-in: CI sets {@code CI=true}, locally pass {@code -Dintegration.tests=true}.
- */
+/** Runs {@link MongoEventRepositoryAdapter} against a real MongoDB, opt-in via {@code -Dintegration.tests=true}. */
 @Testcontainers
 @SpringBootTest
 @ActiveProfiles("test")
@@ -297,10 +288,10 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.addParticipant(listed, ORGANIZER).block();
         String unlisted = anEvent("Unlisted").getId();
 
-        StepVerifier.create(adapter.deleteIfAlone(listed, ORGANIZER))
+        StepVerifier.create(adapter.deleteIfAlone(listed, ORGANIZER, Set.of()))
                 .assertNext(removed -> assertThat(removed.getId()).isEqualTo(listed))
                 .verifyComplete();
-        StepVerifier.create(adapter.deleteIfAlone(unlisted, ORGANIZER))
+        StepVerifier.create(adapter.deleteIfAlone(unlisted, ORGANIZER, Set.of()))
                 .assertNext(removed -> assertThat(removed.getId()).isEqualTo(unlisted))
                 .verifyComplete();
         assertThat(adapter.findAll().collectList().block()).isEmpty();
@@ -312,9 +303,162 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.addParticipant(id, ORGANIZER).block();
         adapter.addParticipant(id, "alice").block();
 
-        StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER)).verifyComplete();
-        StepVerifier.create(adapter.deleteIfAlone(id, "alice")).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER, Set.of())).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone(id, "alice", Set.of())).verifyComplete();
         assertThat(adapter.findById(id).block()).isNotNull();
+    }
+
+    @Test
+    void deleteIfAlone_shouldDelete_whenTheOtherParticipantsAreAllFormerMembers() {
+        String id = anEvent("Standup").getId();
+        adapter.addParticipant(id, ORGANIZER).block();
+        adapter.addParticipant(id, "gone").block();
+        adapter.addParticipant(id, "demo").block();
+
+        StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER, Set.of("gone", "demo")))
+                .assertNext(removed -> assertThat(removed.getId()).isEqualTo(id))
+                .verifyComplete();
+        assertThat(adapter.findById(id).block()).isNull();
+    }
+
+    @Test
+    void deleteIfAlone_shouldKeepTheEvent_whenALiveParticipantRemains() {
+        String id = anEvent("Standup").getId();
+        adapter.addParticipant(id, ORGANIZER).block();
+        adapter.addParticipant(id, "gone").block();
+        adapter.addParticipant(id, "alice").block();
+
+        StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER, Set.of("gone"))).verifyComplete();
+        assertThat(adapter.findById(id).block()).isNotNull();
+    }
+
+    @Test
+    void addParticipant_shouldAppendInJoinOrder() {
+        // The successor of a deleted organizer is the earliest participant: the order is the join order.
+        String id = anEvent("Standup").getId();
+        adapter.addParticipant(id, ORGANIZER).block();
+        adapter.addParticipant(id, "zoe").block();
+        adapter.addParticipant(id, "alice").block();
+        adapter.addParticipant(id, "mia").block();
+        adapter.removeParticipant(id, "zoe").block();
+        adapter.addParticipant(id, "zoe").block();
+
+        assertThat(stored(id).getParticipantIds()).containsExactly(ORGANIZER, "alice", "mia", "zoe");
+    }
+
+    @Test
+    void findOrganizedBy_shouldReturnPastAndUpcomingEvents() {
+        Instant at = Instant.parse("2026-10-15T14:00:00Z");
+        dated("past", ORGANIZER, at.minusSeconds(86_400), at.minusSeconds(82_800), List.of(ORGANIZER));
+        dated("upcoming", ORGANIZER, at.plusSeconds(86_400), null, List.of(ORGANIZER));
+        dated("someone else's", "alice", at.plusSeconds(3600), null, List.of("alice", ORGANIZER));
+
+        assertThat(titles(adapter.findOrganizedBy(ORGANIZER))).containsExactly("past", "upcoming");
+    }
+
+    @Test
+    void handOverKeepingFormer_shouldSwapTheOrganizer_keepTheFormer_andFlagTheGroup() {
+        String id = anEvent("Standup").getId();
+        adapter.addParticipant(id, ORGANIZER).block();
+        adapter.addParticipant(id, "alice").block();
+        markGroupSynced(id);
+
+        StepVerifier.create(adapter.handOverKeepingFormer(id, ORGANIZER, "alice"))
+                .assertNext(event -> {
+                    assertThat(event.getOrganizerId()).isEqualTo("alice");
+                    assertThat(event.getParticipantIds()).containsExactly(ORGANIZER, "alice");
+                })
+                .verifyComplete();
+        EventEntity stored = stored(id);
+        assertThat(stored.getGroupVersion()).isEqualTo(3L);
+        assertThat(stored.getGroupSynced()).isFalse();
+    }
+
+    @Test
+    void handOverKeepingFormer_shouldChangeNothing_whenTheSuccessorLeft() {
+        String id = anEvent("Standup").getId();
+        adapter.addParticipant(id, ORGANIZER).block();
+        adapter.addParticipant(id, "alice").block();
+
+        StepVerifier.create(adapter.handOverKeepingFormer(id, ORGANIZER, "bob")).verifyComplete();
+        StepVerifier.create(adapter.handOverKeepingFormer(id, "alice", ORGANIZER)).verifyComplete();
+        EventEntity stored = stored(id);
+        assertThat(stored.getOrganizerId()).isEqualTo(ORGANIZER);
+        assertThat(stored.getGroupVersion()).isEqualTo(2L);
+    }
+
+    private static final Instant DELETED_AT = Instant.parse("2026-10-15T14:00:00Z");
+
+    private String dated(String title, String organizer, Instant start, Instant end, List<String> participants) {
+        return adapter.save(Event.builder().title(title).organizerId(organizer).startDate(start).endDate(end)
+                .location("Somewhere").participantIds(new ArrayList<>(participants)).visibility(Visibility.PUBLIC)
+                .build()).block().getId();
+    }
+
+    private void markGroupSynced(String id) {
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(id)),
+                new Update().set("groupSynced", true).set("groupVersion", 2L), EventEntity.class).block();
+    }
+
+    @Test
+    void leaveUpcoming_shouldPullTheUserFromEventsNotOver_andFlagEachGroup() {
+        String endsLater = dated("ends later", "alice", DELETED_AT.minusSeconds(3600), DELETED_AT.plusSeconds(3600),
+                List.of("alice", "gone"));
+        String endsExactlyThen = dated("ends exactly then", "alice", DELETED_AT.minusSeconds(3600), DELETED_AT,
+                List.of("alice", "gone"));
+        String noEndStartedLessThanAnHourAgo = dated("no end, started 30 min ago", "alice",
+                DELETED_AT.minusSeconds(1800), null, List.of("gone", "alice"));
+        List.of(endsLater, endsExactlyThen, noEndStartedLessThanAnHourAgo).forEach(this::markGroupSynced);
+
+        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(3L).verifyComplete();
+
+        for (String id : List.of(endsLater, endsExactlyThen, noEndStartedLessThanAnHourAgo)) {
+            EventEntity stored = stored(id);
+            assertThat(stored.getParticipantIds()).containsExactly("alice");
+            assertThat(stored.getGroupVersion()).isEqualTo(3L);
+            assertThat(stored.getGroupSynced()).isFalse();
+        }
+    }
+
+    @Test
+    void leaveUpcoming_shouldKeepPastEventsAndEventsTheUserOrganizes() {
+        String endedBefore = dated("ended before", "alice", DELETED_AT.minusSeconds(7200), DELETED_AT.minusSeconds(1),
+                List.of("alice", "gone"));
+        String noEndStartedOverAnHourAgo = dated("no end, started 2 h ago", "alice", DELETED_AT.minusSeconds(7200), null,
+                List.of("alice", "gone"));
+        String organized = dated("organized", "gone", DELETED_AT.plusSeconds(3600), null, List.of("gone", "alice"));
+        String elsewhere = dated("someone else's", "alice", DELETED_AT.plusSeconds(3600), null, List.of("alice"));
+        List.of(endedBefore, noEndStartedOverAnHourAgo, organized, elsewhere).forEach(this::markGroupSynced);
+
+        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(0L).verifyComplete();
+
+        assertThat(stored(endedBefore).getParticipantIds()).containsExactly("alice", "gone");
+        assertThat(stored(noEndStartedOverAnHourAgo).getParticipantIds()).containsExactly("alice", "gone");
+        assertThat(stored(organized).getParticipantIds()).containsExactly("gone", "alice");
+        for (String id : List.of(endedBefore, noEndStartedOverAnHourAgo, organized, elsewhere)) {
+            assertThat(stored(id).getGroupSynced()).isTrue();
+        }
+    }
+
+    @Test
+    void leaveUpcoming_shouldTreatAnOpenPollAsUpcoming() {
+        String open = aPoll("open, earliest slot long past", "alice", List.of("alice", "gone")).getId();
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(open)),
+                new Update().set("startDate", DELETED_AT.minusSeconds(86_400)).set("endDate", DELETED_AT.minusSeconds(82_800)),
+                EventEntity.class).block();
+
+        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(1L).verifyComplete();
+        assertThat(stored(open).getParticipantIds()).containsExactly("alice");
+    }
+
+    @Test
+    void leaveUpcoming_shouldNotBumpAnyVersion_whenReplayed() {
+        String id = dated("upcoming", "alice", DELETED_AT.plusSeconds(3600), null, List.of("alice", "gone"));
+        adapter.leaveUpcoming("gone", DELETED_AT).block();
+        Long version = stored(id).getGroupVersion();
+
+        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(0L).verifyComplete();
+        assertThat(stored(id).getGroupVersion()).isEqualTo(version);
     }
 
     @Test
@@ -882,6 +1026,23 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.respond(id, ORGANIZER, PollAnswer.NO)).verifyComplete();
         assertThat(adapter.findById(id).block().getParticipantIds()).contains(ORGANIZER);
+    }
+
+    @Test
+    void clearUpcomingResponses_shouldUnsetOnlyUpcomingCommunityAnswers() {
+        String upcoming = aCommunityEvent("upcoming", "c1", DELETED_AT.plusSeconds(3600), null).getId();
+        String past = aCommunityEvent("past", "c1", DELETED_AT.minusSeconds(7200), DELETED_AT.minusSeconds(3600)).getId();
+        adapter.respond(upcoming, "gone", PollAnswer.MAYBE).block();
+        adapter.respond(upcoming, "lea", PollAnswer.NO).block();
+        adapter.respond(past, "gone", PollAnswer.NO).block();
+        Long version = stored(upcoming).getGroupVersion();
+
+        StepVerifier.create(adapter.clearUpcomingResponses("gone", DELETED_AT)).expectNext(1L).verifyComplete();
+
+        assertThat(adapter.findById(upcoming).block().getResponses()).containsOnlyKeys("lea");
+        assertThat(adapter.findById(past).block().getResponses()).containsEntry("gone", PollAnswer.NO);
+        assertThat(stored(upcoming).getGroupVersion()).isEqualTo(version);
+        StepVerifier.create(adapter.clearUpcomingResponses("gone", DELETED_AT)).expectNext(0L).verifyComplete();
     }
 
     @Test

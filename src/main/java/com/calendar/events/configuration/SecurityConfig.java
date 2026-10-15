@@ -1,10 +1,13 @@
 package com.calendar.events.configuration;
 
+import com.calendar.events.domain.services.AccountGuard;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.codec.ServerCodecConfigurer;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
+import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 
@@ -12,15 +15,10 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
-    /**
-     * Deny by default: every exchange but the CORS preflight requires a valid JWT.
-     *
-     * <p>The gateway already authenticates incoming traffic, but this service must
-     * not rely on that alone — it is reachable from inside the cluster, so it
-     * enforces the same contract independently.
-     */
+    /** Deny by default: every exchange but the CORS preflight needs a valid JWT, and a deleted account cannot write. */
     @Bean
-    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http, AccountGuard accountGuard,
+                                                           ServerCodecConfigurer codecs) {
         return http
                 .cors(Customizer.withDefaults())
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
@@ -36,6 +34,7 @@ public class SecurityConfig {
                                       "/swagger-ui.html", "/webjars/swagger-ui/**").permitAll()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                .addFilterAfter(new DeletedRequesterFilter(accountGuard, codecs), SecurityWebFiltersOrder.AUTHORIZATION)
                 .build();
     }
 }

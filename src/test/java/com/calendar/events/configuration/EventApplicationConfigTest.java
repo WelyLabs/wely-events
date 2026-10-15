@@ -1,12 +1,15 @@
 package com.calendar.events.configuration;
 
 import com.calendar.events.domain.ports.CommunityDirectory;
+import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
+import com.calendar.events.domain.services.AccountErasureService;
+import com.calendar.events.domain.services.AccountGuard;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
@@ -30,7 +33,8 @@ class EventApplicationConfigTest {
         EventRepository repository = mock(EventRepository.class);
 
         EventService service = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
-                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class));
+                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
+                guard());
 
         // The domain service is built by hand, with no Spring annotation: that is what
         // makes it testable outside a context.
@@ -40,7 +44,7 @@ class EventApplicationConfigTest {
     @Test
     void expenseService_shouldBuildTheDomainServiceFromItsPorts() {
         ExpenseService service = config.expenseService(mock(EventRepository.class), mock(ExpenseRepository.class),
-                config.pictureService(mock(MediaStore.class)));
+                config.pictureService(mock(MediaStore.class)), guard());
 
         assertThat(service).isNotNull();
     }
@@ -49,7 +53,8 @@ class EventApplicationConfigTest {
     void scheduleService_shouldBuildTheDomainServiceFromItsPortAndTheEventService() {
         EventRepository repository = mock(EventRepository.class);
         EventService eventService = config.eventService(repository, mock(SocialGraph.class),
-                mock(ExpenseRepository.class), config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class));
+                mock(ExpenseRepository.class), config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
+                guard());
 
         ScheduleService service = config.scheduleService(repository, eventService);
 
@@ -97,10 +102,47 @@ class EventApplicationConfigTest {
     void pollService_shouldBuildTheDomainServiceFromItsPorts() {
         EventRepository repository = mock(EventRepository.class);
         EventService eventService = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
-                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class));
+                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
+                guard());
 
-        PollService service = config.pollService(repository, eventService, mock(PollUpdates.class));
+        PollService service = config.pollService(repository, eventService, mock(PollUpdates.class), guard());
 
         assertThat(service).isNotNull();
+    }
+
+    @Test
+    void accountGuard_shouldBuildTheDomainServiceFromItsPort() {
+        assertThat(config.accountGuard(mock(DeletedUserMarkers.class))).isNotNull();
+    }
+
+    @Test
+    void accountErasureService_shouldBuildTheDomainServiceFromItsPorts() {
+        EventRepository repository = mock(EventRepository.class);
+        EventService eventService = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
+                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
+                guard());
+
+        AccountErasureService service = config.accountErasureService(repository, eventService,
+                mock(ExpenseRepository.class), mock(MediaStore.class), mock(DeletedUserMarkers.class),
+                mock(PollUpdates.class), "89a380b8-f66a-44d0-b9d9-616241080430");
+
+        assertThat(service).isNotNull();
+    }
+
+    @Test
+    void parseIds_shouldTrimLowercaseAndDropBlanks() {
+        assertThat(EventApplicationConfig.parseIds(" 89A380B8-F66A-44D0-B9D9-616241080430 ,, b2 ,"))
+                .containsExactlyInAnyOrder("89a380b8-f66a-44d0-b9d9-616241080430", "b2");
+    }
+
+    @Test
+    void parseIds_shouldBeEmpty_whenNothingIsConfigured() {
+        assertThat(EventApplicationConfig.parseIds("")).isEmpty();
+        assertThat(EventApplicationConfig.parseIds("  ")).isEmpty();
+        assertThat(EventApplicationConfig.parseIds(null)).isEmpty();
+    }
+
+    private static AccountGuard guard() {
+        return new AccountGuard(mock(DeletedUserMarkers.class));
     }
 }

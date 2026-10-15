@@ -22,11 +22,11 @@ public interface EventRepository {
     /** Deletes the event if this user organizes it, and returns it as it was; empty when nothing matched. */
     Mono<Event> deleteByOrganizer(String eventId, String organizerId);
 
-    /**
-     * Deletes the event only if this user organizes it and nobody else takes part, in one conditional
-     * write, and returns it as it was. Empty when nothing matched, e.g. someone joined meanwhile.
-     */
-    Mono<Event> deleteIfAlone(String eventId, String organizerId);
+    /** Deletes and returns the event only while nobody but its organizer and {@code formerMemberIds} takes part. */
+    Mono<Event> deleteIfAlone(String eventId, String organizerId, Collection<String> formerMemberIds);
+
+    /** Every event the user organizes, past and future. */
+    Flux<Event> findOrganizedBy(String organizerId);
 
     Flux<Event> findByParticipantId(String userId);
 
@@ -62,6 +62,15 @@ public interface EventRepository {
      * in one write conditioned on both still holding their place. Empty when nothing matched.
      */
     Mono<Event> handOver(String eventId, String organizerId, String newOrganizerId);
+
+    /** As {@link #handOver}, but the former organizer stays a participant, as a past event keeps who was there. */
+    Mono<Event> handOverKeepingFormer(String eventId, String organizerId, String newOrganizerId);
+
+    /** Removes the user from every event they join, not organize, that is not over at {@code at}; returns the count. */
+    Mono<Long> leaveUpcoming(String userId, Instant at);
+
+    /** Drops the user's MAYBE or NO from every community event not over at {@code at}; returns how many changed. */
+    Mono<Long> clearUpcomingResponses(String userId, Instant at);
 
     /**
      * Events that keep one of these users busy between {@code from} and {@code to}: those they

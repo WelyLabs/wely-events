@@ -19,7 +19,7 @@ class ExpensePersistenceMapperTest {
 
     private final Expense expense = new Expense("x1", "ev-1", "Courses", 1250, "EUR", "alice", "bob",
             ExpenseKind.SETTLEMENT, SplitMode.EXACT, List.of(new Share("carol", 1250)),
-            Instant.parse("2026-10-13T10:00:00Z"), "events/ev-1/receipts/x1-a.jpg", 7L);
+            Instant.parse("2026-10-13T10:00:00Z"), "events/ev-1/receipts/x1-a.jpg", "bob", 7L);
 
     @Test
     void toEntity_shouldStoreTheEnumsAsText() {
@@ -30,6 +30,7 @@ class ExpensePersistenceMapperTest {
         assertThat(entity.getShares()).containsExactly(new ExpenseEntity.ShareEntity("carol", 1250));
         assertThat(entity.getVersion()).isEqualTo(7L);
         assertThat(entity.getReceiptKey()).isEqualTo("events/ev-1/receipts/x1-a.jpg");
+        assertThat(entity.getReceiptAddedBy()).isEqualTo("bob");
     }
 
     @Test

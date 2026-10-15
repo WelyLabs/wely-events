@@ -129,7 +129,7 @@ class ExpenseControllerTest {
 
     private static Expense withReceipt(String id, String receiptKey) {
         return new Expense(id, "ev-1", "Courses", 1000, "EUR", "alice", "alice", ExpenseKind.EXPENSE, SplitMode.EQUAL,
-                List.of(new Share("alice", 0)), Instant.EPOCH, receiptKey, 0L);
+                List.of(new Share("alice", 0)), Instant.EPOCH, receiptKey, null, 0L);
     }
 
     @Test

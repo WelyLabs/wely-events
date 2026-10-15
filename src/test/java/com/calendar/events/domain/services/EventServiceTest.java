@@ -18,6 +18,7 @@ import com.calendar.events.domain.models.SplitMode;
 import com.calendar.events.domain.models.StoredMedia;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.CommunityDirectory;
+import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -70,6 +71,9 @@ class EventServiceTest {
     @Mock
     private CommunityDirectory communityDirectory;
 
+    @Mock
+    private DeletedUserMarkers markers;
+
     private EventService eventService;
 
     private static final Instant NOW = Instant.parse("2026-10-11T16:00:00Z");
@@ -78,8 +82,9 @@ class EventServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, socialGraph, expenseRepository, new PictureService(mediaStore),
-                deletionOutbox, communityDirectory, Clock.fixed(NOW, ZoneOffset.UTC));
+                deletionOutbox, communityDirectory, new AccountGuard(markers), Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(deletionOutbox.record(any())).thenReturn(Mono.empty());
+        lenient().when(markers.deletedAmong(any())).thenReturn(Mono.just(Set.of()));
     }
 
     @Test
@@ -529,7 +534,7 @@ class EventServiceTest {
 
     private static Expense expenseWithReceipt(String id, String receiptKey) {
         return new Expense(id, "1", "Courses", 1000, "EUR", "organizer", "organizer", ExpenseKind.EXPENSE,
-                SplitMode.EQUAL, List.of(new Share("organizer", 0)), NOW, receiptKey, 0L);
+                SplitMode.EQUAL, List.of(new Share("organizer", 0)), NOW, receiptKey, null, 0L);
     }
 
     @Test
@@ -673,7 +678,7 @@ class EventServiceTest {
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
                 .verify();
         verify(eventRepository, never()).handOver(any(), any(), any());
-        verify(eventRepository, never()).deleteIfAlone(any(), any());
+        verify(eventRepository, never()).deleteIfAlone(any(), any(), any());
     }
 
     @Test
@@ -746,7 +751,7 @@ class EventServiceTest {
         StepVerifier.create(eventService.leave("1", "org", null, false))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.LAST_MEMBER))
                 .verify();
-        verify(eventRepository, never()).deleteIfAlone(any(), any());
+        verify(eventRepository, never()).deleteIfAlone(any(), any(), any());
     }
 
     @Test
@@ -754,7 +759,7 @@ class EventServiceTest {
         Event alone = quiz("org", "org");
         alone.setImage("events/1/cover-a.jpg");
         when(eventRepository.findById("1")).thenReturn(Mono.just(alone));
-        when(eventRepository.deleteIfAlone("1", "org")).thenReturn(Mono.just(alone));
+        when(eventRepository.deleteIfAlone("1", "org", Set.of())).thenReturn(Mono.just(alone));
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.just(expenseWithReceipt("x1", "events/1/receipts/x1-a.jpg")));
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
         when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
@@ -773,7 +778,7 @@ class EventServiceTest {
     void leave_shouldCountAnOrganizerNotListedAsTheLastMember() {
         Event legacy = quiz("org");
         when(eventRepository.findById("1")).thenReturn(Mono.just(legacy));
-        when(eventRepository.deleteIfAlone("1", "org")).thenReturn(Mono.just(legacy));
+        when(eventRepository.deleteIfAlone("1", "org", Set.of())).thenReturn(Mono.just(legacy));
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
@@ -785,7 +790,7 @@ class EventServiceTest {
     @Test
     void leave_shouldAskForASuccessor_whenSomeoneJoinedBeforeTheDeletion() {
         when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org")), Mono.just(quiz("org", "org", "lea")));
-        when(eventRepository.deleteIfAlone("1", "org")).thenReturn(Mono.empty());
+        when(eventRepository.deleteIfAlone("1", "org", Set.of())).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
@@ -797,11 +802,72 @@ class EventServiceTest {
     @Test
     void leave_shouldAnswerNotFound_whenTheEventWasDeletedMeanwhile() {
         when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org")), Mono.empty());
-        when(eventRepository.deleteIfAlone("1", "org")).thenReturn(Mono.empty());
+        when(eventRepository.deleteIfAlone("1", "org", Set.of())).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
                 .verify();
+    }
+
+    @Test
+    void leave_shouldDeleteTheEvent_whenTheOtherParticipantsAreAllDeletedAccounts() {
+        Event past = quiz("org", "org", "gone");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(past));
+        when(markers.deletedAmong(List.of("org", "gone"))).thenReturn(Mono.just(Set.of("gone")));
+        when(eventRepository.deleteIfAlone("1", "org", Set.of("gone"))).thenReturn(Mono.just(past));
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "org", null, true))
+                .expectNext(LeaveOutcome.eventDeleted())
+                .verifyComplete();
+        verify(eventRepository, never()).handOver(any(), any(), any());
+    }
+
+    @Test
+    void leave_shouldAskForConfirmation_whenOnlyDeletedAccountsRemain() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "gone")));
+        when(markers.deletedAmong(List.of("org", "gone"))).thenReturn(Mono.just(Set.of("gone")));
+
+        StepVerifier.create(eventService.leave("1", "org", null, false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.LAST_MEMBER))
+                .verify();
+        verify(eventRepository, never()).deleteIfAlone(any(), any(), any());
+    }
+
+    @Test
+    void leave_shouldRejectADeletedAccountAsSuccessor() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "gone", "lea")));
+        when(markers.deletedAmong(List.of("org", "gone", "lea"))).thenReturn(Mono.just(Set.of("gone")));
+
+        StepVerifier.create(eventService.leave("1", "org", "gone", false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_INVALID))
+                .verify();
+        verify(eventRepository, never()).handOver(any(), any(), any());
+    }
+
+    @Test
+    void leave_shouldHandOver_whenALiveParticipantRemainsBesideDeletedOnes() {
+        Event handedOver = quiz("lea", "gone", "lea");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "gone", "lea")));
+        when(markers.deletedAmong(List.of("org", "gone", "lea"))).thenReturn(Mono.just(Set.of("gone")));
+        when(eventRepository.handOver("1", "org", "lea")).thenReturn(Mono.just(handedOver));
+
+        StepVerifier.create(eventService.leave("1", "org", "lea", false))
+                .expectNext(LeaveOutcome.left(handedOver))
+                .verifyComplete();
+    }
+
+    @Test
+    void leave_shouldAnswerTheStoreError_whenTheRegisterCannotBeRead() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
+        when(markers.deletedAmong(List.of("org", "lea")))
+                .thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+
+        StepVerifier.create(eventService.leave("1", "org", "lea", false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.STORE_UNAVAILABLE))
+                .verify();
+        verify(eventRepository, never()).handOver(any(), any(), any());
     }
 
     @Test

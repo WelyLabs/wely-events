@@ -73,15 +73,38 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
               '$inc': { 'groupVersion': 1 } }""")
     Mono<Long> handOver(String eventId, String organizerId, String newOrganizerId);
 
+    /** As {@link #handOver}, without pulling the former organizer: a past event keeps who was there. */
+    @Query("{ '_id': ?0, 'organizerId': ?1, 'participantIds': ?2 }")
+    @Update("{ '$set': { 'organizerId': ?2, 'groupSynced': false }, '$inc': { 'groupVersion': 1 } }")
+    Mono<Long> handOverKeepingFormer(String eventId, String organizerId, String newOrganizerId);
+
+    /** Every event the user organizes, past and future, on the organizer_start index. */
+    @Query(value = "{ 'organizerId': ?0 }", sort = "{ startDate: 1 }")
+    Flux<EventEntity> findOrganizedBy(String organizerId);
+
+    /** Pulls the user from every event they join, not organize, still upcoming or polling at {@code at}, flagging its group. */
+    @Query("""
+            { 'participantIds': ?0, 'organizerId': { $ne: ?0 },
+              $or: [ { 'poll.status': 'OPEN' }, { endDate: { $gte: ?1 } }, { endDate: null, startDate: { $gte: ?2 } } ] }""")
+    @Update("{ '$pull': { 'participantIds': ?0 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
+    Mono<Long> leaveUpcoming(String userId, Instant at, Instant startedFrom);
+
+    // An answer is not membership, so the group is not flagged.
+    @Query("""
+            { 'communityId': { $ne: null }, 'responses.?0': { $exists: true },
+              $or: [ { 'poll.status': 'OPEN' }, { endDate: { $gte: ?1 } }, { endDate: null, startDate: { $gte: ?2 } } ] }""")
+    @Update("{ '$unset': { 'responses.?0': '' } }")
+    Mono<Long> clearUpcomingResponses(String userId, Instant at, Instant startedFrom);
+
     /** Removes the event and returns it as it was, its group version included. */
     @Query(value = "{ '_id': ?0, 'organizerId': ?1 }", delete = true)
     Mono<EventEntity> deleteByOrganizer(String eventId, String organizerId);
 
-    /** As {@link #deleteByOrganizer}, only while nobody but the organizer takes part. */
+    /** As {@link #deleteByOrganizer}, only while every participant is among {@code allowedIds}. */
     @Query(value = """
             { '_id': ?0, 'organizerId': ?1,
-              $or: [ { 'participantIds': { $size: 0 } }, { 'participantIds': [ ?1 ] } ] }""", delete = true)
-    Mono<EventEntity> deleteIfAlone(String eventId, String organizerId);
+              'participantIds': { $not: { $elemMatch: { $nin: ?2 } } } }""", delete = true)
+    Mono<EventEntity> deleteIfOnlyAmong(String eventId, String organizerId, Collection<String> allowedIds);
 
     /** Events whose member list wely-chat has not been sent yet, oldest first. Absent counts as not sent. */
     @Query(value = "{ 'groupSynced': { $in: [ false, null ] } }", sort = "{ '_id': 1 }")

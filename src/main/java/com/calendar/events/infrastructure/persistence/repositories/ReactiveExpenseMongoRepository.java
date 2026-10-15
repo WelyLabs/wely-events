@@ -24,9 +24,17 @@ public interface ReactiveExpenseMongoRepository extends ReactiveMongoRepository<
 
     Flux<ExpenseEntity> findAllByEventIdIn(Collection<String> eventIds);
 
-    // Bumps the version: an edit form opened before the receipt changed gets EXPENSE_CONFLICT
-    // instead of a full save that would write the old receipt key back.
+    // Bumps the version, so an edit opened before the receipt changed gets EXPENSE_CONFLICT.
     @Query("{ '_id': ?0, 'eventId': ?1 }")
-    @Update("{ '$set': { 'receiptKey': ?2 }, '$inc': { 'version': 1 } }")
-    Mono<Long> setReceiptKey(String id, String eventId, String receiptKey);
+    @Update("{ '$set': { 'receiptKey': ?2, 'receiptAddedBy': ?3 }, '$inc': { 'version': 1 } }")
+    Mono<Long> setReceiptKey(String id, String eventId, String receiptKey, String addedBy);
+
+    /** The user's own expenses whose receipt they attached; null also matches a missing attacher (legacy). */
+    @Query("{ 'createdBy': ?0, 'receiptKey': { $ne: null }, 'receiptAddedBy': { $in: [ ?0, null ] } }")
+    Flux<ExpenseEntity> findWithReceiptRecordedBy(String userId);
+
+    // Only while the key is still the one read: a receipt replaced meanwhile is left alone.
+    @Query("{ '_id': ?0, 'eventId': ?1, 'receiptKey': ?2 }")
+    @Update("{ '$unset': { 'receiptKey': '', 'receiptAddedBy': '' }, '$inc': { 'version': 1 } }")
+    Mono<Long> clearReceiptKey(String id, String eventId, String receiptKey);
 }

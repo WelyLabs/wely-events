@@ -40,7 +40,7 @@ class ExpenseRestMapperTest {
     void toResponse_shouldIncludeWhatEachPersonOwes() {
         Expense expense = new Expense("x1", "ev-1", "Courses", 1000, "EUR", "alice", "alice", ExpenseKind.EXPENSE,
                 SplitMode.EQUAL, List.of(new Share("alice", 0), new Share("bob", 0), new Share("carol", 0)),
-                Instant.parse("2026-10-13T10:00:00Z"), null, 1L);
+                Instant.parse("2026-10-13T10:00:00Z"), null, null, 1L);
 
         ExpenseResponse response = mapper.toResponse(expense, SignedUrls.NONE);
 
@@ -67,7 +67,7 @@ class ExpenseRestMapperTest {
     void toResponse_shouldShowTheReceiptThroughItsSignedUrl_andNeverItsKey() {
         Expense expense = new Expense("x1", "ev-1", "Courses", 1000, "EUR", "alice", "alice", ExpenseKind.EXPENSE,
                 SplitMode.EQUAL, List.of(new Share("alice", 0)), Instant.parse("2026-10-13T10:00:00Z"),
-                "events/ev-1/receipts/x1-a.jpg", 1L);
+                "events/ev-1/receipts/x1-a.jpg", null, 1L);
 
         assertThat(mapper.toResponse(expense, new SignedUrls(Map.of("events/ev-1/receipts/x1-a.jpg", "https://media/r")))
                 .receiptUrl()).isEqualTo("https://media/r");

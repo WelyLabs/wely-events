@@ -4,12 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
-/**
- * Business outcomes this service refuses on, each with a stable code.
- *
- * <p>{@code code} is the contract a client branches on; {@code title} and {@code detail}
- * are English, for whoever reads the response or the logs.
- */
+/** Outcomes this service refuses on, each with the stable code a client branches on. */
 @Getter
 @AllArgsConstructor
 public enum EventErrorCode {
@@ -159,6 +154,12 @@ public enum EventErrorCode {
             "Only members of the community can see or publish its events.",
             HttpStatus.FORBIDDEN),
 
+    ACCOUNT_DELETED(
+            "EVT-BUS-025",
+            "Account deleted",
+            "This account has been deleted: it can no longer change anything.",
+            HttpStatus.GONE),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",
@@ -176,7 +177,22 @@ public enum EventErrorCode {
             "EVT-TEC-003",
             "Media service unavailable",
             "The picture could not be stored; try again shortly.",
-            HttpStatus.BAD_GATEWAY);
+            HttpStatus.BAD_GATEWAY),
+
+    // EVT-TEC-004 is reserved for the wely-users client of the reconciliation.
+
+    STORE_UNAVAILABLE(
+            "EVT-TEC-005",
+            "Database unavailable",
+            "The deleted-accounts register could not be read or written; try again shortly.",
+            HttpStatus.BAD_GATEWAY),
+
+    /** Raised by the account erasure in the background: no request waits on it, the erasure is retried. */
+    ERASURE_INCOMPLETE(
+            "EVT-TEC-006",
+            "Account erasure incomplete",
+            "An event kept changing while a deleted account was being erased; the erasure is retried.",
+            HttpStatus.SERVICE_UNAVAILABLE);
 
     private final String code;
     private final String title;

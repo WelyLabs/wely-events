@@ -18,7 +18,7 @@ class ExpenseTest {
 
     private static Expense expense(long amountCents, SplitMode split, List<Share> shares) {
         return new Expense(null, "ev-1", "Courses", amountCents, null, "alice", "alice",
-                ExpenseKind.EXPENSE, split, shares, AT, null, null);
+                ExpenseKind.EXPENSE, split, shares, AT, null, null, null);
     }
 
     private static void assertInvalid(Runnable build) {
@@ -100,15 +100,15 @@ class ExpenseTest {
     @Test
     void constructor_shouldRefuseABlankOrLongTitle() {
         assertInvalid(() -> new Expense(null, "ev-1", "  ", 100, null, "alice", "alice",
-                ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null, null));
+                ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null, null, null));
         assertInvalid(() -> new Expense(null, "ev-1", "x".repeat(Expense.MAX_TITLE_LENGTH + 1), 100, null, "alice",
-                "alice", ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null, null));
+                "alice", ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null, null, null));
     }
 
     @Test
     void constructor_shouldDefaultTheCurrencyAndTrimTheTitle() {
         Expense expense = new Expense(null, "ev-1", "  Essence ", 100, null, "alice", "alice",
-                ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null, null);
+                ExpenseKind.EXPENSE, SplitMode.EQUAL, List.of(new Share("alice", 0)), AT, null, null, null);
 
         assertThat(expense.currency()).isEqualTo("EUR");
         assertThat(expense.title()).isEqualTo("Essence");

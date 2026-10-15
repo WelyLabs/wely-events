@@ -7,6 +7,7 @@ import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.CommunityDirectory;
+import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -26,16 +27,19 @@ import reactor.core.publisher.Sinks;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -59,15 +63,20 @@ class PollServiceTest {
     private MediaStore mediaStore;
     @Mock
     private PollUpdates pollUpdates;
+    @Mock
+    private DeletedUserMarkers markers;
 
     private PollService pollService;
 
     @BeforeEach
     void setUp() {
+        AccountGuard accountGuard = new AccountGuard(markers);
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
                 new PictureService(mediaStore), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
-                Clock.fixed(NOW, ZoneOffset.UTC));
-        pollService = new PollService(eventRepository, eventService, pollUpdates);
+                accountGuard, Clock.fixed(NOW, ZoneOffset.UTC));
+        pollService = new PollService(eventRepository, eventService, pollUpdates, accountGuard);
+        lenient().when(markers.isDeleted(anyString())).thenReturn(Mono.just(false));
+        lenient().when(markers.deletedAmong(any())).thenReturn(Mono.just(Set.of()));
     }
 
     private static Poll openPoll(Map<String, Map<String, PollAnswer>> ballots) {
@@ -189,6 +198,33 @@ class PollServiceTest {
     }
 
     @Test
+    void fix_shouldNotSubscribeYesVotersWhoseAccountIsDeleted() {
+        Poll poll = openPoll(Map.of(
+                "lea", Map.of("fri", PollAnswer.YES),
+                "gone", Map.of("fri", PollAnswer.YES)));
+        Event fixed = polling(Visibility.PRIVATE, new Poll(PollStatus.CLOSED, poll.slots(), poll.ballots(), "fri"));
+        when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PRIVATE, poll)));
+        when(markers.deletedAmong(any())).thenReturn(Mono.just(Set.of("gone")));
+        when(eventRepository.fixPollDate("e1", "org", FRIDAY, List.of("lea"))).thenReturn(Mono.just(fixed));
+
+        StepVerifier.create(pollService.fix("e1", "org", "fri"))
+                .expectNext(fixed)
+                .verifyComplete();
+    }
+
+    @Test
+    void fix_shouldAnswerTheStoreError_whenTheRegisterCannotBeRead() {
+        when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PRIVATE,
+                openPoll(Map.of("lea", Map.of("fri", PollAnswer.YES))))));
+        when(markers.deletedAmong(any())).thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+
+        StepVerifier.create(pollService.fix("e1", "org", "fri"))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.STORE_UNAVAILABLE))
+                .verify();
+        verify(eventRepository, never()).fixPollDate(anyString(), anyString(), any(), any());
+    }
+
+    @Test
     void fix_shouldBeRefused_forSomeoneOtherThanTheOrganizer() {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, openPoll(Map.of()))));
 
@@ -256,6 +292,45 @@ class PollServiceTest {
     }
 
     @Test
+    void watch_shouldRefuseADeletedViewer_withoutStreaming() {
+        when(markers.isDeleted("gone")).thenReturn(Mono.just(true));
+
+        StepVerifier.create(pollService.watch("e1", "gone"))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.ACCOUNT_DELETED))
+                .verify();
+        verify(eventRepository, never()).findById(anyString());
+        verifyNoInteractions(pollUpdates);
+    }
+
+    @Test
+    void watch_shouldEndTheStream_whenTheViewerIsDeletedBetweenTheCheckAndTheSubscription() {
+        List<String> order = new CopyOnWriteArrayList<>();
+        when(markers.isDeleted("lea"))
+                .thenReturn(Mono.just(false))
+                .thenReturn(Mono.fromCallable(() -> order.add("recheck")));
+        when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, openPoll(Map.of()))));
+        when(pollUpdates.stream("e1", "lea")).thenReturn(Flux.<Poll>never().doOnSubscribe(subscription -> order.add("live")));
+
+        StepVerifier.create(pollService.watch("e1", "lea").flatMapMany(states -> states))
+                .expectComplete()
+                .verify(Duration.ofSeconds(5));
+        assertThat(order).containsExactly("live", "recheck");
+    }
+
+    @Test
+    void watch_shouldFailTheStream_whenTheRecheckCannotReadTheRegister() {
+        when(markers.isDeleted("lea"))
+                .thenReturn(Mono.just(false))
+                .thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+        when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, openPoll(Map.of()))));
+        when(pollUpdates.stream("e1", "lea")).thenReturn(Flux.never());
+
+        StepVerifier.create(pollService.watch("e1", "lea").flatMapMany(states -> states))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.STORE_UNAVAILABLE))
+                .verify(Duration.ofSeconds(5));
+    }
+
+    @Test
     void watch_shouldAnswerPollClosed_whenTheEventHasNoPoll() {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, null)));
 
@@ -271,7 +346,7 @@ class PollServiceTest {
         Poll closed = new Poll(PollStatus.CLOSED, voted.slots(), voted.ballots(), "thu");
         Sinks.Many<Poll> live = Sinks.many().multicast().directBestEffort();
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, current)));
-        when(pollUpdates.stream("e1")).thenReturn(live.asFlux());
+        when(pollUpdates.stream("e1", "lea")).thenReturn(live.asFlux());
 
         Flux<Poll> states = pollService.watch("e1", "lea").block();
 
@@ -288,7 +363,7 @@ class PollServiceTest {
     void watch_shouldEndAtOnce_whenThePollIsAlreadyClosed() {
         Poll closed = new Poll(PollStatus.CLOSED, List.of(THURSDAY, FRIDAY), Map.of(), "thu");
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, closed)));
-        when(pollUpdates.stream("e1")).thenReturn(Flux.never());
+        when(pollUpdates.stream("e1", "lea")).thenReturn(Flux.never());
 
         StepVerifier.create(pollService.watch("e1", "lea").flatMapMany(states -> states))
                 .expectNext(closed)
@@ -304,13 +379,13 @@ class PollServiceTest {
                 .thenReturn(Mono.just(polling(Visibility.PUBLIC, stale)))
                 .thenReturn(slowRead.asMono());
         Sinks.Many<Poll> live = Sinks.many().multicast().directBestEffort();
-        when(pollUpdates.stream("e1")).thenReturn(live.asFlux());
+        when(pollUpdates.stream("e1", "lea")).thenReturn(live.asFlux());
 
         StepVerifier.create(pollService.watch("e1", "lea").flatMapMany(states -> states))
                 .then(() -> live.tryEmitNext(newer))
                 .expectNext(newer)
                 .then(() -> slowRead.tryEmitValue(polling(Visibility.PUBLIC, stale)))
-                .expectNoEvent(java.time.Duration.ofMillis(50))
+                .expectNoEvent(Duration.ofMillis(50))
                 .thenCancel()
                 .verify();
     }

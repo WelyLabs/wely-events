@@ -9,9 +9,11 @@ import lombok.Setter;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 @Getter
@@ -75,9 +77,16 @@ public class Event {
         return userId.equals(organizerId) || participantIds.contains(userId);
     }
 
-    /** Whether someone besides the organizer takes part. */
-    public boolean hasOtherParticipants() {
-        return participantIds.stream().anyMatch(id -> !id.equals(organizerId));
+    /** Whether the event ended strictly before {@code at}; an event whose poll is open is never over. */
+    public boolean isOverAt(Instant at) {
+        return !isPolling() && effectiveEnd().isBefore(at);
+    }
+
+    /** The earliest participant, in join order, who is neither the organizer nor one of {@code excludedIds}. */
+    public Optional<String> successorExcluding(Collection<String> excludedIds) {
+        return participantIds.stream()
+                .filter(id -> !id.equals(organizerId) && !excludedIds.contains(id))
+                .findFirst();
     }
 
     /**
