@@ -1,5 +1,9 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
+import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
+import com.calendar.events.domain.models.Visibility;
+import com.calendar.events.domain.models.GeoPoint;
+import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.Poll;
@@ -385,6 +389,38 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(adapter.setImage("1", "someone-else", null)).verifyComplete();
 
+        verify(mongoRepository, never()).findById("1");
+    }
+
+    @Test
+    void updateDetails_shouldWriteGeoJson_andReadTheEventBack() {
+        EventDetails details = new EventDetails("T", "L", new GeoPoint(45.7, 4.8), "D", Visibility.PRIVATE);
+        GeoJsonPoint point = new GeoJsonPoint(4.8, 45.7);
+        Event domain = Event.builder().id("1").title("T").build();
+        when(mapper.toGeoJson(details.coordinates())).thenReturn(point);
+        when(mongoRepository.updateDetails("1", "org", "T", "L", point, "D", "PRIVATE")).thenReturn(Mono.just(1L));
+        readBack(domain);
+
+        StepVerifier.create(adapter.updateDetails("1", "org", details, false)).expectNext(domain).verifyComplete();
+        verify(mongoRepository, never()).updateDetailsAndGroup(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void updateDetails_shouldMarkTheGroup_whenRenaming() {
+        EventDetails details = new EventDetails("T", "L", null, null, null);
+        Event domain = Event.builder().id("1").title("T").build();
+        when(mongoRepository.updateDetailsAndGroup("1", "org", "T", "L", null, null, null)).thenReturn(Mono.just(1L));
+        readBack(domain);
+
+        StepVerifier.create(adapter.updateDetails("1", "org", details, true)).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void updateDetails_shouldBeEmpty_whenNoEventOfThatOrganizerMatched() {
+        EventDetails details = new EventDetails("T", "L", null, null, null);
+        when(mongoRepository.updateDetails("1", "someone-else", "T", "L", null, null, null)).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.updateDetails("1", "someone-else", details, false)).verifyComplete();
         verify(mongoRepository, never()).findById("1");
     }
 

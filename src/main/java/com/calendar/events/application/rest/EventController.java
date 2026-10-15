@@ -7,6 +7,7 @@ import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
+import com.calendar.events.application.dtos.EventUpdateRequest;
 import com.calendar.events.application.dtos.LeaveRequest;
 import com.calendar.events.application.dtos.LeaveResponse;
 import com.calendar.events.application.dtos.ParticipantsResponse;
@@ -100,6 +101,17 @@ public class EventController {
         Event event = mapper.toDomain(request);
         event.setOrganizerId(userId);
         return respond(eventService.createEvent(event, mapper.toCandidateSlots(request.getCandidateSlots())));
+    }
+
+    /**
+     * Organizer only: changes the title, place, description or visibility. The date moves through
+     * {@code PUT /{id}/schedule}. 403 EVT-BUS-002 for someone else's event, 404 EVT-BUS-001 for one not visible.
+     */
+    @PutMapping("/{id}")
+    public Mono<EventResponse> updateEvent(@PathVariable String id, @Valid @RequestBody EventUpdateRequest request,
+                                           @AuthenticationPrincipal Jwt jwt) {
+        String userId = jwt.getClaimAsString("businessId");
+        return respond(eventService.updateDetails(id, userId, mapper.toDetails(request)));
     }
 
     @DeleteMapping("/{id}")

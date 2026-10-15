@@ -2,6 +2,7 @@ package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.CommunityRole;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.EventCover;
 import com.calendar.events.domain.models.EventDeletion;
 import com.calendar.events.domain.models.Expense;
@@ -237,6 +238,24 @@ public class EventService {
                                 .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
                                 .onErrorResume(error -> pictureService.discard(stored.key()).then(Mono.error(error))))
                         .flatMap(updated -> pictureService.discard(EventCover.of(event).storedKey()).thenReturn(updated)));
+    }
+
+    /**
+     * Rewrites what the event is, for its organizer only: title, place, description, and who may see
+     * it — the date moves through {@link ScheduleService}. A community event stays its community's,
+     * and COMMUNITY is never chosen, as at creation. A new title renames the event's group in wely-chat.
+     */
+    public Mono<Event> updateDetails(String id, String requesterId, EventDetails details) {
+        return requireOrganizer(id, requesterId)
+                .flatMap(event -> {
+                    Visibility visibility = event.isCommunityEvent() ? Visibility.COMMUNITY
+                            : details.visibility() == null || details.visibility() == Visibility.COMMUNITY
+                            ? event.effectiveVisibility()
+                            : details.visibility();
+                    boolean renamed = !Objects.equals(details.title(), event.getTitle());
+                    return eventRepository.updateDetails(event.getId(), requesterId, details.withVisibility(visibility), renamed)
+                            .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+                });
     }
 
     /** Clears the event's cover, for its organizer only; the stored object goes after, best effort. */

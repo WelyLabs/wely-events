@@ -1,6 +1,7 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
@@ -9,6 +10,7 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.infrastructure.persistence.mappers.EventPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveEventMongoRepository;
 import org.springframework.data.domain.Limit;
+import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -134,6 +136,18 @@ public class MongoEventRepositoryAdapter implements EventRepository {
         return mongoRepository.setImage(eventId, organizerId, image)
                 .filter(matched -> matched > 0)
                 .flatMap(matched -> findById(eventId));
+    }
+
+    @Override
+    public Mono<Event> updateDetails(String eventId, String organizerId, EventDetails details, boolean renameGroup) {
+        GeoJsonPoint coordinates = mapper.toGeoJson(details.coordinates());
+        String visibility = details.visibility() == null ? null : details.visibility().name();
+        Mono<Long> write = renameGroup
+                ? mongoRepository.updateDetailsAndGroup(eventId, organizerId, details.title(), details.location(),
+                        coordinates, details.description(), visibility)
+                : mongoRepository.updateDetails(eventId, organizerId, details.title(), details.location(),
+                        coordinates, details.description(), visibility);
+        return write.filter(matched -> matched > 0).flatMap(matched -> findById(eventId));
     }
 
     @Override

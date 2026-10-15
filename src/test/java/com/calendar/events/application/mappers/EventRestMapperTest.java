@@ -1,5 +1,7 @@
 package com.calendar.events.application.mappers;
 
+import com.calendar.events.domain.models.EventDetails;
+import com.calendar.events.application.dtos.EventUpdateRequest;
 import com.calendar.events.application.dtos.PollResponse;
 import com.calendar.events.application.dtos.PollSlotResponse;
 import com.calendar.events.application.dtos.SlotRequest;
@@ -34,6 +36,14 @@ import static org.junit.jupiter.api.Assertions.*;
 class EventRestMapperTest {
 
     private final EventRestMapper mapper = Mappers.getMapper(EventRestMapper.class);
+
+    @Test
+    void toDetails_shouldCarryEveryField_andTheCoordinates() {
+        EventUpdateRequest request = new EventUpdateRequest("T", "L", new CoordinatesDto(45.7, 4.8), "D", Visibility.PRIVATE);
+
+        assertEquals(new EventDetails("T", "L", new GeoPoint(45.7, 4.8), "D", Visibility.PRIVATE), mapper.toDetails(request));
+        assertNull(mapper.toDetails(new EventUpdateRequest("T", "L", null, null, null)).coordinates());
+    }
 
     @Test
     void toDomain_shouldMapRequestToDomain() {

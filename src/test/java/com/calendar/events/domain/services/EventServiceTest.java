@@ -1,5 +1,7 @@
 package com.calendar.events.domain.services;
 
+import com.calendar.events.domain.models.GeoPoint;
+import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.CommunityRole;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventDeletion;
@@ -45,6 +47,7 @@ import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
@@ -933,6 +936,82 @@ class EventServiceTest {
     private void storesUnderTheKeyGiven() {
         when(mediaStore.store(anyString(), any(), eq(MediaProfile.COVER)))
                 .thenAnswer(call -> Mono.just(new StoredMedia(call.getArgument(0), 1600, 900)));
+    }
+
+    private static final EventDetails NEW_DETAILS =
+            new EventDetails("Afterwork", "Ninkasi", new GeoPoint(45.73, 4.83), "First round on me", Visibility.PUBLIC);
+
+    @Test
+    void updateDetails_shouldRewriteTheOrganizersEvent_andRenameTheGroupWhenTheTitleChanges() {
+        Event event = Event.builder().id("1").title("Old title").organizerId("organizer").visibility(Visibility.FRIENDS).build();
+        Event updated = Event.builder().id("1").title("Afterwork").organizerId("organizer").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.updateDetails("1", "organizer", NEW_DETAILS, true)).thenReturn(Mono.just(updated));
+
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS)).expectNext(updated).verifyComplete();
+    }
+
+    @Test
+    void updateDetails_shouldLeaveTheGroupAlone_whenTheTitleIsTheSame() {
+        Event event = Event.builder().id("1").title("Afterwork").organizerId("organizer").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.updateDetails("1", "organizer", NEW_DETAILS, false)).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS)).expectNextCount(1).verifyComplete();
+    }
+
+    @Test
+    void updateDetails_shouldKeepTheVisibility_whenNoneIsGiven_orCommunityIsAskedFor() {
+        Event event = Event.builder().id("1").title("Afterwork").organizerId("organizer").visibility(Visibility.PRIVATE).build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.updateDetails(eq("1"), eq("organizer"), any(), eq(false))).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS.withVisibility(null))).expectNextCount(1).verifyComplete();
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS.withVisibility(Visibility.COMMUNITY))).expectNextCount(1).verifyComplete();
+
+        verify(eventRepository, times(2)).updateDetails("1", "organizer", NEW_DETAILS.withVisibility(Visibility.PRIVATE), false);
+    }
+
+    @Test
+    void updateDetails_shouldKeepACommunityEventInItsCommunity() {
+        Event event = Event.builder().id("1").title("Afterwork").organizerId("organizer").communityId("c1")
+                .visibility(Visibility.COMMUNITY).build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.updateDetails(eq("1"), eq("organizer"), any(), eq(false))).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS)).expectNextCount(1).verifyComplete();
+
+        verify(eventRepository).updateDetails("1", "organizer", NEW_DETAILS.withVisibility(Visibility.COMMUNITY), false);
+    }
+
+    @Test
+    void updateDetails_shouldRefuseAParticipant() {
+        Event event = Event.builder().id("1").organizerId("organizer").participantIds(new ArrayList<>(List.of("alice"))).build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.updateDetails("1", "alice", NEW_DETAILS))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .verify();
+        verify(eventRepository, never()).updateDetails(any(), any(), any(), anyBoolean());
+    }
+
+    @Test
+    void updateDetails_shouldAnswerNotFound_toSomeoneWhoCannotSeeTheEvent() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
+
+        StepVerifier.create(eventService.updateDetails("1", "mallory", NEW_DETAILS))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    @Test
+    void updateDetails_shouldAnswerNotFound_whenTheEventIsGoneMeanwhile() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
+        when(eventRepository.updateDetails(eq("1"), eq("organizer"), any(), anyBoolean())).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
     }
 
     @Test
