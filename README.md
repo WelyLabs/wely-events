@@ -109,13 +109,14 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `GET` | `/events/{id}` | Détail d'un événement, s'il est visible (404 sinon) |
 | `GET` | `/events/{id}/participants` | Participants d'un événement visible (404 sinon) : `count`, `friendsGoingIds` (les amis de l'appelant parmi eux) et `participantIds`, la liste complète, réservée à l'organisateur et aux participants (vide pour les autres) |
 | `GET` | `/events/map?south=&west=&north=&east=` | Événements à venir que l'appelant peut voir, dans la zone affichée par la carte « Explorer » : requête `$geoWithin` sur l'index `2dsphere`, 200 au plus, les plus proches dans le temps d'abord. Zone de 90° au plus de côté (400 sinon) |
-| `POST` | `/events` | Crée un événement (201). `visibility` facultatif, `FRIENDS` par défaut. Avec `candidateSlots` (2 à 5 `{start, end}`), ouvre un sondage de date (voir plus bas) |
+| `POST` | `/events` | Crée un événement (201), l'organisateur toujours inscrit. `visibility` facultatif, `FRIENDS` par défaut. Avec `candidateSlots` (2 à 5 `{start, end}`), ouvre un sondage de date (voir plus bas) |
 | `GET` | `/events/me/polls` | Sondages ouverts que l'appelant organise, rejoint ou a votés |
 | `PUT` | `/events/{id}/poll/ballot` | Remplace le bulletin de l'appelant, `{"answers": {"<slotId>": "YES"\|"MAYBE"\|"NO"}}` ; vide, il le retire. Renvoie le `PollResponse` |
 | `POST` | `/events/{id}/poll/fix` | `{"slotId"}` : fixe la date, organisateur seulement. Inscrit les votants « Oui » de ce créneau |
 | `GET` | `/events/{id}/poll/stream` | `text/event-stream` : l'état du sondage puis chaque vote, événements `poll` ; se termine une fois la date fixée |
-| `POST` | `/events/{id}/subscribe` | Inscrit ou désinscrit l'utilisateur |
-| `DELETE` | `/events/{id}` | Supprime un événement (204), avec ses dépenses, sa couverture et ses justificatifs |
+| `POST` | `/events/{id}/subscribe` | Inscrit ou désinscrit l'utilisateur. L'organisateur ne s'y désinscrit pas (`EVT-BUS-020`, 409) : il passe par `/leave` |
+| `POST` | `/events/{id}/leave` | Quitte l'événement, corps facultatif `{newOrganizerId?, deleteIfLast?}`. Répond `{deleted, event}`, `event` absent si l'événement a été supprimé (voir « Quitter un événement ») |
+| `DELETE` | `/events/{id}` | Supprime un événement (204), avec ses dépenses, sa couverture et ses justificatifs, et prévient wely-chat |
 | `POST` | `/events/{id}/cover` | Multipart, partie `file` : remplace la couverture (organisateur seulement, 403 sinon, 404 si l'événement n'est pas visible). Renvoie l'`EventResponse`, couverture signée |
 | `DELETE` | `/events/{id}/cover` | Retire la couverture (204), organisateur seulement |
 | `POST` | `/events/me/free-slots` | Créneaux où l'utilisateur et des amis sont tous libres (voir plus bas) |
@@ -157,9 +158,10 @@ public class EventRequest {
     @NotBlank(message = "Location is required") private String location;
     @Valid                                      private CoordinatesDto coordinates; // facultatif
                                                 private String description;
-    private boolean subscribeByDefault;   // inscrit l'organisateur à la création
 }
 ```
+
+Pas de `subscribeByDefault` : l'organisateur est toujours inscrit, et le champ envoyé par un ancien client est ignoré.
 
 Pas de champ `image` : une couverture ne se désigne pas par URL, elle se téléverse (voir « Photos »). Sinon n'importe qui pourrait faire charger une URL de son choix aux navigateurs des autres.
 
@@ -180,9 +182,33 @@ public class Event {
     private GeoPoint coordinates;   // null si le lieu a été tapé
     private String image;           // clé wely-media (events/…), chemin servi par le web (/demo/…) ou null
     private String description;
-    private List<String> participantIds;
+    private List<String> participantIds;   // l'organisateur compris
+    private Long groupVersion;             // lu en base seulement, pour la version de la suppression
 }
 ```
+
+---
+
+## Quitter un événement
+
+Sur le modèle d'un groupe de messagerie : les **membres** sont l'organisateur et les participants, et l'organisateur est inscrit dès la création. `POST /events/{id}/leave` :
+
+| Qui part | Effet |
+|---|---|
+| Pas membre | Rien ne change, l'événement est renvoyé tel quel |
+| Un participant | Retiré par un `$pull` conditionné à `organizerId ≠ lui` ; jamais le dernier, l'organisateur compte |
+| L'organisateur, avec d'autres participants | `newOrganizerId` obligatoire (`EVT-BUS-020`, 409), et ce doit être un autre participant (`EVT-BUS-021`, 400). La passation est **une seule écriture** : `$set organizerId`, `$pull` de l'ancien, `$inc groupVersion` |
+| L'organisateur, seul | `deleteIfLast: true` obligatoire (`EVT-BUS-022`, 409), puis suppression de l'événement, de ses dépenses et de ses photos, y compris pour un événement passé |
+
+- **Chaque écriture est conditionnée à ce qui a été lu.** La passation ne passe que si le successeur participe encore et l'organisateur l'est toujours ; sinon la réponse est `EVT-BUS-021` si le successeur est parti, `EVT-BUS-020` autrement. La suppression du dernier membre filtre sur `participantIds` vide ou réduit à l'organisateur : si quelqu'un vient de rejoindre, rien n'est supprimé et la réponse est `EVT-BUS-020`.
+- **Un client périmé ne supprime jamais par accident** : sans `deleteIfLast`, le dernier départ est refusé.
+- **Un participant nommé organisateur pendant sa demande** n'est pas retiré : sa demande est réévaluée comme celle d'un organisateur.
+
+### Suppression et chat
+
+Supprimer un événement (par `DELETE` ou par le dernier départ) emporte son document, donc son outbox de groupe. La suppression laisse une **pierre tombale** dans la collection `event_deletions` (`{_id: eventId, title, version, deletedAt}`), avec `version` = la dernière `groupVersion` + 1, lue sur le document effectivement supprimé (`findAndRemove`).
+
+`EventDeletionRelay` l'envoie sur le **même topic** `EVENT_GROUP_CHANGED`, avec la même clé `eventId`, donc après les listes de membres précédentes sur la même partition : `{deleted: true, memberIds: [], organizerId: null, version}`. La pierre tombale est effacée une fois l'envoi confirmé. Un échec d'écriture de la pierre tombale est journalisé sans faire échouer la suppression, déjà faite. Les messages de groupe ordinaires portent `deleted: false`.
 
 ---
 
@@ -290,6 +316,12 @@ La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /soci
 | `EVT-BUS-014` | 400 | Sondage invalide : 2 à 5 créneaux distincts, à venir, qui finissent après avoir commencé |
 | `EVT-BUS-015` | 409 | Pas de sondage ouvert : la date est déjà fixée |
 | `EVT-BUS-016` | 400 | Réponse pour un créneau que le sondage ne propose pas |
+| `EVT-BUS-017` | 400 | Nouvelle date invalide : fin avant le début, plus de 62 jours, ou dans le passé |
+| `EVT-BUS-018` | 409 | Sondage de date ouvert : la date se fixe dans le sondage |
+| `EVT-BUS-019` | 409 | Date modifiée entre-temps par quelqu'un d'autre |
+| `EVT-BUS-020` | 409 | L'organisateur part en laissant des participants : il doit nommer son successeur (ou quelqu'un vient de rejoindre) |
+| `EVT-BUS-021` | 400 | Successeur invalide : ce doit être un autre participant de l'événement |
+| `EVT-BUS-022` | 409 | Dernier membre : partir supprime l'événement, à confirmer avec `deleteIfLast` |
 | `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
 | `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
 | `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |
@@ -334,6 +366,7 @@ client peut tester et un `timestamp` :
 | `SOCIAL_API_URL` | URL interne de `wely-social`, interrogé pour la liste d'amis |
 | `MEDIA_API_URL` | URL interne de `wely-media` (`http://localhost:8085` en profil `dev`) |
 | `EVENT_DATE_FIXED_TOPIC` | Topic des dates fixées, `EVENT_DATE_FIXED` par défaut |
+| `EVENT_DELETION_RELAY_ENABLED` | Relais des suppressions vers wely-chat, `true` par défaut |
 | `MEDIA_API_SECRET` | Secret partagé envoyé dans `X-Internal-Secret`. Vide par défaut : le service démarre, mais les envois répondent `EVT-TEC-003` et les images sortent sans URL |
 
 ---
@@ -369,7 +402,7 @@ kubectl apply -k overlays/local --server-side
 ## Limites connues
 
 - **Aucune pagination.** `/me/feed` et `/me/subscribed` renvoient l'intégralité du résultat.
-- **Le modèle de domaine est anémique.** `Event` est un POJO à setters sans invariant : rien n'interdit `endDate` antérieure à `startDate`, et la logique de création (`organizerId`, `subscribeByDefault`) vit dans le contrôleur au lieu d'une fabrique de domaine.
+- **Le modèle de domaine est anémique.** `Event` est un POJO à setters sans invariant : rien n'interdit `endDate` antérieure à `startDate`, et l'organisateur est encore posé par le contrôleur au lieu d'une fabrique de domaine (son inscription, elle, est une règle du domaine).
 - **`EventResponse` n'expose pas `participantIds`**, ce qui empêche le client de connaître l'état d'abonnement à la lecture.
 - **Pas de gestion d'erreurs métier** : contrairement à `wely-users` et `wely-social`, seule la validation est traitée.
 - **Le Dockerfile installe Maven via `apk`** alors que le wrapper `mvnw` est présent dans le dépôt — build non reproductible, à aligner sur les autres services.

@@ -1,10 +1,12 @@
 package com.calendar.events.infrastructure.messaging.mappers;
 
+import com.calendar.events.domain.models.EventDeletion;
 import com.calendar.events.infrastructure.messaging.models.EventGroupChangedDTO;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -28,7 +30,7 @@ class EventGroupMapperTest {
     void toDto_shouldCarryTheOrganizerFirstThenParticipants() {
         EventGroupChangedDTO dto = mapper.toDto(event("org", List.of("a", "b"), 3L));
 
-        assertThat(dto).isEqualTo(new EventGroupChangedDTO("e1", "Board games", "org", List.of("org", "a", "b"), 3));
+        assertThat(dto).isEqualTo(new EventGroupChangedDTO("e1", "Board games", "org", List.of("org", "a", "b"), 3, false));
     }
 
     @Test
@@ -49,5 +51,12 @@ class EventGroupMapperTest {
         bare.setParticipantIds(null);
 
         assertThat(mapper.members(bare)).isEmpty();
+    }
+
+    @Test
+    void toDto_shouldSendADeletionAsAnEmptyGroupWithoutOrganizer() {
+        EventGroupChangedDTO dto = mapper.toDto(new EventDeletion("e1", "Board games", 4L, Instant.parse("2026-10-15T12:00:00Z")));
+
+        assertThat(dto).isEqualTo(new EventGroupChangedDTO("e1", "Board games", null, List.of(), 4, true));
     }
 }

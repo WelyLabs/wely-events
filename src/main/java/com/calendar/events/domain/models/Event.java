@@ -38,6 +38,8 @@ public class Event {
     private Visibility visibility;
     /** Null unless the organizer proposed several dates instead of one. */
     private Poll poll;
+    /** Read from storage only, for the deletion's version; null on events stored before group chats. */
+    private Long groupVersion;
 
     /** When the event stops keeping its people busy. */
     public Instant effectiveEnd() {
@@ -56,6 +58,11 @@ public class Event {
     /** Whether the user organizes the event or takes part in it. */
     public boolean involves(String userId) {
         return userId.equals(organizerId) || participantIds.contains(userId);
+    }
+
+    /** Whether someone besides the organizer takes part. */
+    public boolean hasOtherParticipants() {
+        return participantIds.stream().anyMatch(id -> !id.equals(organizerId));
     }
 
     /**

@@ -76,4 +76,11 @@ class EventTest {
         assertThat(Event.builder().poll(new Poll(PollStatus.OPEN, List.of(), null, null)).build().isPolling()).isTrue();
         assertThat(Event.builder().poll(new Poll(PollStatus.CLOSED, List.of(), null, "s1")).build().isPolling()).isFalse();
     }
+
+    @Test
+    void hasOtherParticipants_shouldIgnoreTheOrganizer() {
+        assertThat(Event.builder().organizerId("org").participantIds(List.of("org")).build().hasOtherParticipants()).isFalse();
+        assertThat(Event.builder().organizerId("org").build().hasOtherParticipants()).isFalse();
+        assertThat(Event.builder().organizerId("org").participantIds(List.of("org", "lea")).build().hasOtherParticipants()).isTrue();
+    }
 }

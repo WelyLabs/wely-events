@@ -50,8 +50,13 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
-    public Mono<Void> deleteById(String id) {
-        return mongoRepository.deleteById(id);
+    public Mono<Event> deleteByOrganizer(String eventId, String organizerId) {
+        return mongoRepository.deleteByOrganizer(eventId, organizerId).map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Event> deleteIfAlone(String eventId, String organizerId) {
+        return mongoRepository.deleteIfAlone(eventId, organizerId).map(mapper::toDomain);
     }
 
     @Override
@@ -79,6 +84,13 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     @Override
     public Mono<Event> removeParticipant(String eventId, String userId) {
         return mongoRepository.removeParticipant(eventId, userId).then(findById(eventId));
+    }
+
+    @Override
+    public Mono<Event> handOver(String eventId, String organizerId, String newOrganizerId) {
+        return mongoRepository.handOver(eventId, organizerId, newOrganizerId)
+                .filter(modified -> modified > 0)
+                .flatMap(modified -> findById(eventId));
     }
 
     @Override

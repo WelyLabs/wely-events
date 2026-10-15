@@ -4,6 +4,7 @@ import com.calendar.events.application.dtos.CalendarEntryResponse;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventCover;
+import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Poll;
 import com.calendar.events.domain.models.PollSlot;
@@ -11,6 +12,7 @@ import com.calendar.events.domain.models.PollSlotTally;
 import com.calendar.events.domain.models.SignedUrls;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
+import com.calendar.events.application.dtos.LeaveResponse;
 import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.dtos.PollResponse;
 import com.calendar.events.application.dtos.PollSlotResponse;
@@ -29,6 +31,8 @@ public interface EventRestMapper {
     @Mapping(target = "image", ignore = true)
     // Opened by the domain from the candidate slots, which are mapped on their own.
     @Mapping(target = "poll", ignore = true)
+    // Read from storage only.
+    @Mapping(target = "groupVersion", ignore = true)
     Event toDomain(EventRequest request);
 
     List<PollSlot> toCandidateSlots(List<SlotRequest> slots);
@@ -41,6 +45,9 @@ public interface EventRestMapper {
     @Mapping(target = "visibility", expression = "java(domain.effectiveVisibility())")
     @Mapping(target = "image", expression = "java(EventCover.of(domain).shownWith(urls))")
     EventResponse toResponse(Event domain, @Context SignedUrls urls);
+
+    // The event, if any, goes through toResponse(Event, urls) with the same signed URLs.
+    LeaveResponse toResponse(LeaveOutcome outcome, @Context SignedUrls urls);
 
     CalendarEntryResponse toResponse(CalendarEntry entry);
 

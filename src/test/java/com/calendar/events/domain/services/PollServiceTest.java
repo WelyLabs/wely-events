@@ -6,6 +6,7 @@ import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.Visibility;
+import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
@@ -37,6 +38,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -62,7 +64,7 @@ class PollServiceTest {
     @BeforeEach
     void setUp() {
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
-                new PictureService(mediaStore), Clock.fixed(NOW, ZoneOffset.UTC));
+                new PictureService(mediaStore), mock(EventDeletionOutbox.class), Clock.fixed(NOW, ZoneOffset.UTC));
         pollService = new PollService(eventRepository, eventService, pollUpdates);
     }
 

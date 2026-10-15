@@ -19,7 +19,14 @@ public interface EventRepository {
 
     Mono<Event> save(Event event);
 
-    Mono<Void> deleteById(String id);
+    /** Deletes the event if this user organizes it, and returns it as it was; empty when nothing matched. */
+    Mono<Event> deleteByOrganizer(String eventId, String organizerId);
+
+    /**
+     * Deletes the event only if this user organizes it and nobody else takes part, in one conditional
+     * write, and returns it as it was. Empty when nothing matched, e.g. someone joined meanwhile.
+     */
+    Mono<Event> deleteIfAlone(String eventId, String organizerId);
 
     Flux<Event> findByParticipantId(String userId);
 
@@ -43,8 +50,18 @@ public interface EventRepository {
      */
     Mono<Event> addParticipant(String eventId, String userId);
 
-    /** Removes the user from the event's participants, idempotently. */
+    /**
+     * Removes the user from the event's participants, idempotently, unless they organize it: an
+     * organizer leaves through {@link #handOver} or {@link #deleteIfAlone}. Returns the event as it
+     * stands after the write.
+     */
     Mono<Event> removeParticipant(String eventId, String userId);
+
+    /**
+     * Makes {@code newOrganizerId} the organizer and removes the current one from the participants,
+     * in one write conditioned on both still holding their place. Empty when nothing matched.
+     */
+    Mono<Event> handOver(String eventId, String organizerId, String newOrganizerId);
 
     /**
      * Events that keep one of these users busy between {@code from} and {@code to}: those they

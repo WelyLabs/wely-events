@@ -95,13 +95,57 @@ class MongoEventRepositoryAdapterTest {
     }
 
     @Test
-    void deleteById_shouldCallRepository() {
-        when(mongoRepository.deleteById("1")).thenReturn(Mono.empty());
+    void deleteByOrganizer_shouldReturnTheEventAsItWas() {
+        EventEntity removed = new EventEntity();
+        Event domain = Event.builder().id("1").build();
+        when(mongoRepository.deleteByOrganizer("1", "org")).thenReturn(Mono.just(removed));
+        when(mapper.toDomain(removed)).thenReturn(domain);
 
-        Mono<Void> result = adapter.deleteById("1");
+        StepVerifier.create(adapter.deleteByOrganizer("1", "org")).expectNext(domain).verifyComplete();
+    }
 
-        StepVerifier.create(result)
-                .verifyComplete();
+    @Test
+    void deleteByOrganizer_shouldBeEmpty_whenNothingMatched() {
+        when(mongoRepository.deleteByOrganizer("1", "org")).thenReturn(Mono.empty());
+
+        StepVerifier.create(adapter.deleteByOrganizer("1", "org")).verifyComplete();
+    }
+
+    @Test
+    void deleteIfAlone_shouldReturnTheEventAsItWas() {
+        EventEntity removed = new EventEntity();
+        Event domain = Event.builder().id("1").build();
+        when(mongoRepository.deleteIfAlone("1", "org")).thenReturn(Mono.just(removed));
+        when(mapper.toDomain(removed)).thenReturn(domain);
+
+        StepVerifier.create(adapter.deleteIfAlone("1", "org")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void deleteIfAlone_shouldBeEmpty_whenSomeoneElseTakesPart() {
+        when(mongoRepository.deleteIfAlone("1", "org")).thenReturn(Mono.empty());
+
+        StepVerifier.create(adapter.deleteIfAlone("1", "org")).verifyComplete();
+    }
+
+    @Test
+    void handOver_shouldUpdateInPlaceThenReturnTheEvent() {
+        EventEntity updated = new EventEntity();
+        Event domain = Event.builder().id("1").build();
+        when(mongoRepository.handOver("1", "org", "lea")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("1")).thenReturn(Mono.just(updated));
+        when(mapper.toDomain(updated)).thenReturn(domain);
+
+        StepVerifier.create(adapter.handOver("1", "org", "lea")).expectNext(domain).verifyComplete();
+        verify(mongoRepository, never()).save(any());
+    }
+
+    @Test
+    void handOver_shouldBeEmpty_whenNothingMatched() {
+        when(mongoRepository.handOver("1", "org", "lea")).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.handOver("1", "org", "lea")).verifyComplete();
+        verify(mongoRepository, never()).findById("1");
     }
 
     @Test

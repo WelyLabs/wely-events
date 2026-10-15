@@ -1,5 +1,6 @@
 package com.calendar.events.configuration;
 
+import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
@@ -28,7 +29,7 @@ class EventApplicationConfigTest {
         EventRepository repository = mock(EventRepository.class);
 
         EventService service = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
-                config.pictureService(mock(MediaStore.class)));
+                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class));
 
         // The domain service is built by hand, with no Spring annotation: that is what
         // makes it testable outside a context.
@@ -47,7 +48,7 @@ class EventApplicationConfigTest {
     void scheduleService_shouldBuildTheDomainServiceFromItsPortAndTheEventService() {
         EventRepository repository = mock(EventRepository.class);
         EventService eventService = config.eventService(repository, mock(SocialGraph.class),
-                mock(ExpenseRepository.class), config.pictureService(mock(MediaStore.class)));
+                mock(ExpenseRepository.class), config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class));
 
         ScheduleService service = config.scheduleService(repository, eventService);
 
@@ -95,7 +96,7 @@ class EventApplicationConfigTest {
     void pollService_shouldBuildTheDomainServiceFromItsPorts() {
         EventRepository repository = mock(EventRepository.class);
         EventService eventService = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
-                config.pictureService(mock(MediaStore.class)));
+                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class));
 
         PollService service = config.pollService(repository, eventService, mock(PollUpdates.class));
 

@@ -269,12 +269,97 @@ class MongoEventRepositoryAdapterIntegrationTest {
     }
 
     @Test
-    @DisplayName("deleting removes the event")
-    void deleteById_shouldRemoveTheEvent() {
+    @DisplayName("the organizer's deletion removes the event and gives it back with its group version")
+    void deleteByOrganizer_shouldRemoveTheEvent_andReturnItAsItWas() {
+        Event saved = anEvent("Standup");
+        adapter.addParticipant(saved.getId(), "alice").block();
+
+        StepVerifier.create(adapter.deleteByOrganizer(saved.getId(), ORGANIZER))
+                .assertNext(removed -> {
+                    assertThat(removed.getTitle()).isEqualTo("Standup");
+                    assertThat(removed.getGroupVersion()).isEqualTo(1L);
+                })
+                .verifyComplete();
+        StepVerifier.create(adapter.findById(saved.getId())).verifyComplete();
+    }
+
+    @Test
+    void deleteByOrganizer_shouldLeaveSomeoneElsesEvent() {
         Event saved = anEvent("Standup");
 
-        StepVerifier.create(adapter.deleteById(saved.getId())).verifyComplete();
-        StepVerifier.create(adapter.findById(saved.getId())).verifyComplete();
+        StepVerifier.create(adapter.deleteByOrganizer(saved.getId(), "alice")).verifyComplete();
+        assertThat(adapter.findById(saved.getId()).block()).isNotNull();
+    }
+
+    @Test
+    void deleteIfAlone_shouldDelete_whenOnlyTheOrganizerTakesPart() {
+        String listed = anEvent("Listed").getId();
+        adapter.addParticipant(listed, ORGANIZER).block();
+        String unlisted = anEvent("Unlisted").getId();
+
+        StepVerifier.create(adapter.deleteIfAlone(listed, ORGANIZER))
+                .assertNext(removed -> assertThat(removed.getId()).isEqualTo(listed))
+                .verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone(unlisted, ORGANIZER))
+                .assertNext(removed -> assertThat(removed.getId()).isEqualTo(unlisted))
+                .verifyComplete();
+        assertThat(adapter.findAll().collectList().block()).isEmpty();
+    }
+
+    @Test
+    void deleteIfAlone_shouldKeepTheEvent_whenSomeoneJoined() {
+        String id = anEvent("Standup").getId();
+        adapter.addParticipant(id, ORGANIZER).block();
+        adapter.addParticipant(id, "alice").block();
+
+        StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER)).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone(id, "alice")).verifyComplete();
+        assertThat(adapter.findById(id).block()).isNotNull();
+    }
+
+    @Test
+    void removeParticipant_shouldNeverRemoveTheOrganizer() {
+        String id = anEvent("Standup").getId();
+        adapter.addParticipant(id, ORGANIZER).block();
+        Long version = stored(id).getGroupVersion();
+
+        StepVerifier.create(adapter.removeParticipant(id, ORGANIZER))
+                .assertNext(event -> assertThat(event.getParticipantIds()).containsExactly(ORGANIZER))
+                .verifyComplete();
+        assertThat(stored(id).getGroupVersion()).isEqualTo(version);
+    }
+
+    @Test
+    void handOver_shouldSwapTheOrganizer_andFlagTheGroup_inOneWrite() {
+        String id = anEvent("Standup").getId();
+        adapter.addParticipant(id, ORGANIZER).block();
+        adapter.addParticipant(id, "alice").block();
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(id)),
+                new Update().set("groupSynced", true), EventEntity.class).block();
+
+        StepVerifier.create(adapter.handOver(id, ORGANIZER, "alice"))
+                .assertNext(event -> {
+                    assertThat(event.getOrganizerId()).isEqualTo("alice");
+                    assertThat(event.getParticipantIds()).containsExactly("alice");
+                })
+                .verifyComplete();
+        EventEntity stored = stored(id);
+        assertThat(stored.getGroupVersion()).isEqualTo(3L);
+        assertThat(stored.getGroupSynced()).isFalse();
+    }
+
+    @Test
+    void handOver_shouldChangeNothing_whenTheSuccessorNoLongerTakesPart_orTheOrganizerChanged() {
+        String id = anEvent("Standup").getId();
+        adapter.addParticipant(id, ORGANIZER).block();
+        adapter.addParticipant(id, "alice").block();
+
+        StepVerifier.create(adapter.handOver(id, ORGANIZER, "bob")).verifyComplete();
+        StepVerifier.create(adapter.handOver(id, "alice", ORGANIZER)).verifyComplete();
+        EventEntity stored = stored(id);
+        assertThat(stored.getOrganizerId()).isEqualTo(ORGANIZER);
+        assertThat(stored.getParticipantIds()).containsExactly(ORGANIZER, "alice");
+        assertThat(stored.getGroupVersion()).isEqualTo(2L);
     }
 
     @Test

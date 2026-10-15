@@ -60,9 +60,28 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     @Update("{ '$addToSet': { 'participantIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
     Mono<Long> addParticipant(String eventId, String userId);
 
-    @Query("{ '_id': ?0, 'participantIds': ?1 }")
+    // Never the organizer: leaving the organizer's seat empty is a hand-over or a deletion.
+    @Query("{ '_id': ?0, 'participantIds': ?1, 'organizerId': { $ne: ?1 } }")
     @Update("{ '$pull': { 'participantIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
     Mono<Long> removeParticipant(String eventId, String userId);
+
+    /** One write: the successor must still take part and the organizer still organize, or nothing changes. */
+    @Query("{ '_id': ?0, 'organizerId': ?1, 'participantIds': ?2 }")
+    @Update("""
+            { '$set': { 'organizerId': ?2, 'groupSynced': false },
+              '$pull': { 'participantIds': ?1 },
+              '$inc': { 'groupVersion': 1 } }""")
+    Mono<Long> handOver(String eventId, String organizerId, String newOrganizerId);
+
+    /** Removes the event and returns it as it was, its group version included. */
+    @Query(value = "{ '_id': ?0, 'organizerId': ?1 }", delete = true)
+    Mono<EventEntity> deleteByOrganizer(String eventId, String organizerId);
+
+    /** As {@link #deleteByOrganizer}, only while nobody but the organizer takes part. */
+    @Query(value = """
+            { '_id': ?0, 'organizerId': ?1,
+              $or: [ { 'participantIds': { $size: 0 } }, { 'participantIds': [ ?1 ] } ] }""", delete = true)
+    Mono<EventEntity> deleteIfAlone(String eventId, String organizerId);
 
     /** Events whose member list wely-chat has not been sent yet, oldest first. Absent counts as not sent. */
     @Query(value = "{ 'groupSynced': { $in: [ false, null ] } }", sort = "{ '_id': 1 }")

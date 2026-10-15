@@ -11,11 +11,13 @@ import java.util.List;
  *                    photo), so it is named rather than left to the order of {@code memberIds}
  * @param memberIds   the organizer and everyone taking part; empty once nobody does
  * @param version     grows with every change; wely-chat ignores a list older than the one it has
+ * @param deleted     the event was deleted: wely-chat closes its group, members and organizer then empty
  */
 public record EventGroupChangedDTO(
         String eventId,
         String title,
         String organizerId,
         List<String> memberIds,
-        long version
+        long version,
+        boolean deleted
 ) {}

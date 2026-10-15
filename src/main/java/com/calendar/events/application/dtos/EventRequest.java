@@ -30,7 +30,6 @@ public class EventRequest {
     @Valid
     private CoordinatesDto coordinates;
     private String description;
-    private boolean subscribeByDefault;
     /** Optional: FRIENDS when left out. */
     private Visibility visibility;
     /**

@@ -129,6 +129,24 @@ public enum EventErrorCode {
             "Someone changed this event's date since it was read; reload it and try again.",
             HttpStatus.CONFLICT),
 
+    NEW_ORGANIZER_REQUIRED(
+            "EVT-BUS-020",
+            "New organizer required",
+            "The organizer cannot leave while others take part: name one of them as the new organizer.",
+            HttpStatus.CONFLICT),
+
+    NEW_ORGANIZER_INVALID(
+            "EVT-BUS-021",
+            "Invalid new organizer",
+            "The new organizer must be someone else taking part in the event.",
+            HttpStatus.BAD_REQUEST),
+
+    LAST_MEMBER(
+            "EVT-BUS-022",
+            "Last member",
+            "Leaving would delete the event; confirm the deletion.",
+            HttpStatus.CONFLICT),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",

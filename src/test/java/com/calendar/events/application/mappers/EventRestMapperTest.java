@@ -9,12 +9,14 @@ import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
+import com.calendar.events.application.dtos.LeaveResponse;
 import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.dtos.CalendarEntryResponse;
 import com.calendar.events.application.dtos.CoordinatesDto;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoPoint;
+import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.SignedUrls;
 import com.calendar.events.domain.models.Visibility;
@@ -40,7 +42,6 @@ class EventRestMapperTest {
         request.setEndDate(Instant.now().plusSeconds(3600));
         request.setLocation("Paris");
         request.setDescription("Desc");
-        request.setSubscribeByDefault(true);
 
         Event domain = mapper.toDomain(request);
 
@@ -192,5 +193,27 @@ class EventRestMapperTest {
         assertEquals(PollStatus.CLOSED, response.status());
         assertEquals("thu", response.fixedSlotId());
         assertEquals(List.of(), response.slots());
+    }
+
+    @Test
+    void toResponse_shouldMapALeaveWithTheEventSigned() {
+        Event domain = Event.builder().id("1").image("events/1/cover-a.jpg").build();
+
+        LeaveResponse response = mapper.toResponse(LeaveOutcome.left(domain),
+                new SignedUrls(Map.of("events/1/cover-a.jpg", "https://media/a")));
+
+        assertFalse(response.deleted());
+        assertEquals("1", response.event().getId());
+        assertEquals("https://media/a", response.event().getImage());
+    }
+
+    @Test
+    void toResponse_shouldMapADeletionWithoutEvent() {
+        assertEquals(new LeaveResponse(true, null), mapper.toResponse(LeaveOutcome.eventDeleted(), SignedUrls.NONE));
+    }
+
+    @Test
+    void toDomain_shouldNeverTakeAGroupVersion_fromTheRequest() {
+        assertNull(mapper.toDomain(EventRequest.builder().title("t").build()).getGroupVersion());
     }
 }

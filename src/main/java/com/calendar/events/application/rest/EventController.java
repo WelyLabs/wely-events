@@ -7,6 +7,8 @@ import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
+import com.calendar.events.application.dtos.LeaveRequest;
+import com.calendar.events.application.dtos.LeaveResponse;
 import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.mappers.EventRestMapper;
 import jakarta.validation.Valid;
@@ -78,11 +80,6 @@ public class EventController {
         String userId = jwt.getClaimAsString("businessId");
         Event event = mapper.toDomain(request);
         event.setOrganizerId(userId);
-
-        if (request.isSubscribeByDefault()) {
-            event.getParticipantIds().add(userId);
-        }
-
         return respond(eventService.createEvent(event, mapper.toCandidateSlots(request.getCandidateSlots())));
     }
 
@@ -97,6 +94,21 @@ public class EventController {
     public Mono<EventResponse> toggleSubscription(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         return respond(eventService.toggleSubscription(id, userId));
+    }
+
+    /**
+     * Leaves the event. The organizer names a successor when others take part (409 EVT-BUS-020
+     * without one), and confirms with {@code deleteIfLast} when alone, which deletes the event
+     * (409 EVT-BUS-022 without it). No body counts as neither.
+     */
+    @PostMapping("/{id}/leave")
+    public Mono<LeaveResponse> leave(@PathVariable String id, @RequestBody(required = false) LeaveRequest request,
+                                     @AuthenticationPrincipal Jwt jwt) {
+        String userId = jwt.getClaimAsString("businessId");
+        LeaveRequest choice = request != null ? request : new LeaveRequest(null, false);
+        return eventService.leave(id, userId, choice.newOrganizerId(), choice.deleteIfLast())
+                .flatMap(outcome -> pictureService.signCovers(outcome.event() != null ? List.of(outcome.event()) : List.of())
+                        .map(urls -> mapper.toResponse(outcome, urls)));
     }
 
     /** Multipart {@code file}, organizer only. 413 EVT-BUS-012 above 10 MB, 400 EVT-BUS-011 for anything but an image. */

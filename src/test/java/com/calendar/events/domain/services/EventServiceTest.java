@@ -1,9 +1,11 @@
 package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.EventDeletion;
 import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.models.ExpenseKind;
 import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Poll;
@@ -13,6 +15,7 @@ import com.calendar.events.domain.models.Share;
 import com.calendar.events.domain.models.SplitMode;
 import com.calendar.events.domain.models.StoredMedia;
 import com.calendar.events.domain.models.Visibility;
+import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
@@ -58,6 +61,9 @@ class EventServiceTest {
     @Mock
     private MediaStore mediaStore;
 
+    @Mock
+    private EventDeletionOutbox deletionOutbox;
+
     private EventService eventService;
 
     private static final Instant NOW = Instant.parse("2026-10-11T16:00:00Z");
@@ -66,7 +72,8 @@ class EventServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, socialGraph, expenseRepository, new PictureService(mediaStore),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                deletionOutbox, Clock.fixed(NOW, ZoneOffset.UTC));
+        lenient().when(deletionOutbox.record(any())).thenReturn(Mono.empty());
     }
 
     @Test
@@ -315,20 +322,20 @@ class EventServiceTest {
     void deleteEvent_shouldDeleteWhenRequesterIsOrganizer() {
         Event event = Event.builder().id("1").organizerId("organizer").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
-        when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.just(event));
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer"))
                 .verifyComplete();
-        verify(eventRepository, times(1)).deleteById("1");
+        verify(eventRepository, times(1)).deleteByOrganizer("1", "organizer");
     }
 
     @Test
     void deleteEvent_shouldTakeItsExpensesWithIt() {
         Event event = Event.builder().id("1").organizerId("organizer").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
-        when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.just(event));
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
@@ -341,7 +348,7 @@ class EventServiceTest {
     void deleteEvent_shouldKeepTheExpenses_whenTheEventCannotBeDeleted() {
         Event event = Event.builder().id("1").organizerId("organizer").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
-        when(eventRepository.deleteById("1")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+        when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyError(IllegalStateException.class);
 
@@ -357,7 +364,7 @@ class EventServiceTest {
                 .expectErrorMatches(e -> e instanceof EventException
                         && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_ACCESS_DENIED)
                 .verify();
-        verify(eventRepository, never()).deleteById(any());
+        verify(eventRepository, never()).deleteByOrganizer(any(), any());
     }
 
     @Test
@@ -368,7 +375,7 @@ class EventServiceTest {
                 .expectErrorMatches(e -> e instanceof EventException
                         && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_NOT_FOUND)
                 .verify();
-        verify(eventRepository, never()).deleteById(any());
+        verify(eventRepository, never()).deleteByOrganizer(any(), any());
     }
 
     @Test
@@ -523,7 +530,7 @@ class EventServiceTest {
     void deleteEvent_shouldDiscardTheCoverAndEveryReceipt() {
         Event event = Event.builder().id("1").organizerId("organizer").image("events/1/cover-a.jpg").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
-        when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.just(event));
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.just(expenseWithReceipt("x1", "events/1/receipts/x1-a.jpg"),
                 expenseWithReceipt("x2", null)));
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
@@ -540,7 +547,7 @@ class EventServiceTest {
     void deleteEvent_shouldSucceed_whenWelyMediaCannotDiscard() {
         Event event = Event.builder().id("1").organizerId("organizer").image("events/1/cover-a.jpg").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
-        when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.just(event));
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
         when(mediaStore.delete(anyString())).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
@@ -552,13 +559,303 @@ class EventServiceTest {
     void deleteEvent_shouldLeaveADemoCoverAlone() {
         Event event = Event.builder().id("1").organizerId("organizer").image("/demo/events/picnic.jpg").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
-        when(eventRepository.deleteById("1")).thenReturn(Mono.empty());
+        when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.just(event));
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
 
         verify(mediaStore, never()).delete(anyString());
+    }
+
+    @Test
+    void createEvent_shouldAlwaysSubscribeTheOrganizer() {
+        Event event = Event.builder().title("Dinner").organizerId("org").build();
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        eventService.createEvent(event).block();
+
+        assertThat(event.getParticipantIds()).containsExactly("org");
+    }
+
+    @Test
+    void createEvent_shouldListTheOrganizerOnce_whenAlreadyGiven() {
+        Event event = Event.builder().title("Dinner").organizerId("org").participantIds(List.of("org")).build();
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        eventService.createEvent(event).block();
+
+        assertThat(event.getParticipantIds()).containsExactly("org");
+    }
+
+    /** A private event: only its members see it, so no friendship lookup is involved. */
+    private static Event quiz(String organizer, String... participants) {
+        return Event.builder().id("1").title("Quiz").organizerId(organizer).visibility(Visibility.PRIVATE)
+                .participantIds(new ArrayList<>(List.of(participants))).groupVersion(3L).build();
+    }
+
+    @Test
+    void leave_shouldAnswerNotFound_whenTheEventIsMissing() {
+        when(eventRepository.findById("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "lea", null, false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    @Test
+    void leave_shouldAnswerNotFound_whenTheUserCannotSeeTheEvent() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org")));
+
+        StepVerifier.create(eventService.leave("1", "lea", null, false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+        verify(eventRepository, never()).removeParticipant(any(), any());
+    }
+
+    @Test
+    void leave_shouldReturnTheEventUnchanged_whenTheUserIsNotAMember() {
+        Event event = by("org", Visibility.PUBLIC);
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.leave("1", "lea", null, false))
+                .expectNext(LeaveOutcome.left(event))
+                .verifyComplete();
+        verify(eventRepository, never()).removeParticipant(any(), any());
+    }
+
+    @Test
+    void leave_shouldRemoveAParticipant() {
+        Event after = quiz("org", "org");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
+        when(eventRepository.removeParticipant("1", "lea")).thenReturn(Mono.just(after));
+
+        StepVerifier.create(eventService.leave("1", "lea", null, false))
+                .expectNext(LeaveOutcome.left(after))
+                .verifyComplete();
+    }
+
+    @Test
+    void leave_shouldDecideAgain_whenTheParticipantWasMadeOrganizerMeanwhile() {
+        Event handedOver = quiz("lea", "lea", "hugo");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea", "hugo")), Mono.just(handedOver));
+        when(eventRepository.removeParticipant("1", "lea")).thenReturn(Mono.just(handedOver));
+
+        StepVerifier.create(eventService.leave("1", "lea", null, false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .verify();
+    }
+
+    @Test
+    void leave_shouldAnswerNotFound_whenTheEventVanishesAsTheParticipantLeaves() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
+        when(eventRepository.removeParticipant("1", "lea")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "lea", null, false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    @Test
+    void leave_shouldRequireANewOrganizer_whenOthersTakePart() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
+
+        StepVerifier.create(eventService.leave("1", "org", null, true))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .verify();
+        StepVerifier.create(eventService.leave("1", "org", " ", true))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .verify();
+        verify(eventRepository, never()).handOver(any(), any(), any());
+        verify(eventRepository, never()).deleteIfAlone(any(), any());
+    }
+
+    @Test
+    void leave_shouldRejectASuccessorWhoDoesNotTakePart() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
+
+        StepVerifier.create(eventService.leave("1", "org", "hugo", false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_INVALID))
+                .verify();
+        verify(eventRepository, never()).handOver(any(), any(), any());
+    }
+
+    @Test
+    void leave_shouldRejectTheOrganizerAsTheirOwnSuccessor() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
+
+        StepVerifier.create(eventService.leave("1", "org", "org", false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_INVALID))
+                .verify();
+    }
+
+    @Test
+    void leave_shouldHandTheEventOverToTheChosenParticipant() {
+        Event handedOver = quiz("lea", "lea");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
+        when(eventRepository.handOver("1", "org", "lea")).thenReturn(Mono.just(handedOver));
+
+        StepVerifier.create(eventService.leave("1", "org", "lea", false))
+                .expectNext(LeaveOutcome.left(handedOver))
+                .verifyComplete();
+        verify(eventRepository, never()).removeParticipant(any(), any());
+    }
+
+    @Test
+    void leave_shouldAnswerInvalid_whenTheSuccessorLeftBeforeTheHandOver() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea", "hugo")),
+                Mono.just(quiz("org", "org", "hugo")));
+        when(eventRepository.handOver("1", "org", "lea")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "org", "lea", false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_INVALID))
+                .verify();
+    }
+
+    @Test
+    void leave_shouldAnswerRequired_whenTheHandOverRacedAnythingElse() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")),
+                Mono.just(quiz("hugo", "hugo", "lea")));
+        when(eventRepository.handOver("1", "org", "lea")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "org", "lea", false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .verify();
+    }
+
+    @Test
+    void leave_shouldAnswerNotFound_whenTheEventWasDeletedBeforeTheHandOver() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")), Mono.empty());
+        when(eventRepository.handOver("1", "org", "lea")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "org", "lea", false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    @Test
+    void leave_shouldAskForConfirmation_whenTheOrganizerIsTheLastMember() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org")));
+
+        StepVerifier.create(eventService.leave("1", "org", null, false))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.LAST_MEMBER))
+                .verify();
+        verify(eventRepository, never()).deleteIfAlone(any(), any());
+    }
+
+    @Test
+    void leave_shouldDeleteTheEventWithItsExpensesAndTombstone_whenTheLastMemberConfirms() {
+        Event alone = quiz("org", "org");
+        alone.setImage("events/1/cover-a.jpg");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(alone));
+        when(eventRepository.deleteIfAlone("1", "org")).thenReturn(Mono.just(alone));
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.just(expenseWithReceipt("x1", "events/1/receipts/x1-a.jpg")));
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+        when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "org", null, true))
+                .expectNext(LeaveOutcome.eventDeleted())
+                .verifyComplete();
+
+        verify(deletionOutbox).record(new EventDeletion("1", "Quiz", 4L, NOW));
+        verify(expenseRepository).deleteByEvent("1");
+        verify(mediaStore).delete("events/1/cover-a.jpg");
+        verify(mediaStore).delete("events/1/receipts/x1-a.jpg");
+    }
+
+    @Test
+    void leave_shouldCountAnOrganizerNotListedAsTheLastMember() {
+        Event legacy = quiz("org");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(legacy));
+        when(eventRepository.deleteIfAlone("1", "org")).thenReturn(Mono.just(legacy));
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "org", null, true))
+                .expectNext(LeaveOutcome.eventDeleted())
+                .verifyComplete();
+    }
+
+    @Test
+    void leave_shouldAskForASuccessor_whenSomeoneJoinedBeforeTheDeletion() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org")), Mono.just(quiz("org", "org", "lea")));
+        when(eventRepository.deleteIfAlone("1", "org")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "org", null, true))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .verify();
+        verify(deletionOutbox, never()).record(any());
+        verify(expenseRepository, never()).deleteByEvent(any());
+    }
+
+    @Test
+    void leave_shouldAnswerNotFound_whenTheEventWasDeletedMeanwhile() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org")), Mono.empty());
+        when(eventRepository.deleteIfAlone("1", "org")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.leave("1", "org", null, true))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    @Test
+    void toggleSubscription_shouldSendTheOrganizerToLeave_ratherThanUnsubscribe() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "org"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .verify();
+        verify(eventRepository, never()).removeParticipant(any(), any());
+    }
+
+    @Test
+    void toggleSubscription_shouldRefuse_whenTheUserWasMadeOrganizerMeanwhile() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
+        when(eventRepository.removeParticipant("1", "lea")).thenReturn(Mono.just(quiz("lea", "lea")));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "lea"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .verify();
+    }
+
+    @Test
+    void deleteEvent_shouldLeaveATombstoneOneVersionPastTheGroup() {
+        Event event = quiz("organizer", "organizer");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.just(event));
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+
+        verify(deletionOutbox).record(new EventDeletion("1", "Quiz", 4L, NOW));
+    }
+
+    @Test
+    void deleteEvent_shouldSucceed_whenTheTombstoneCannotBeWritten() {
+        Event event = quiz("organizer", "organizer");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.just(event));
+        when(deletionOutbox.record(any())).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+
+        verify(expenseRepository).deleteByEvent("1");
+    }
+
+    @Test
+    void deleteEvent_shouldAnswerNotFound_whenNothingWasLeftToDelete() {
+        Event event = quiz("organizer", "organizer");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("1", "organizer"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+        verify(deletionOutbox, never()).record(any());
+        verify(expenseRepository, never()).deleteByEvent(any());
     }
 
     private void storesUnderTheKeyGiven() {

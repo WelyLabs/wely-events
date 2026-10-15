@@ -1,5 +1,6 @@
 package com.calendar.events.configuration;
 
+import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
@@ -33,8 +34,10 @@ public class EventApplicationConfig {
 
     @Bean
     public EventService eventService(EventRepository eventRepository, SocialGraph socialGraph,
-                                     ExpenseRepository expenseRepository, PictureService pictureService) {
-        return new EventService(eventRepository, socialGraph, expenseRepository, pictureService, Clock.systemUTC());
+                                     ExpenseRepository expenseRepository, PictureService pictureService,
+                                     EventDeletionOutbox deletionOutbox) {
+        return new EventService(eventRepository, socialGraph, expenseRepository, pictureService, deletionOutbox,
+                Clock.systemUTC());
     }
 
     @Bean

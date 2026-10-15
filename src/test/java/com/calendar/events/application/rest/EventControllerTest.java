@@ -2,11 +2,14 @@ package com.calendar.events.application.rest;
 
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
+import com.calendar.events.application.dtos.LeaveRequest;
+import com.calendar.events.application.dtos.LeaveResponse;
 import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.dtos.SlotRequest;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
+import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.SignedUrls;
@@ -137,7 +140,7 @@ class EventControllerTest {
     @Test
     void createEvent_shouldReturnCreatedEvent() {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
-        EventRequest request = EventRequest.builder().title("Title").subscribeByDefault(true).build();
+        EventRequest request = EventRequest.builder().title("Title").build();
         Event event = Event.builder().title("Title").participantIds(new ArrayList<>()).build();
         EventResponse response = EventResponse.builder().id("1").title("Title").build();
 
@@ -324,5 +327,69 @@ class EventControllerTest {
         StepVerifier.create(controller.removeCover("1", jwt)).verifyComplete();
 
         verify(eventService).removeCover("1", "user1");
+    }
+
+    @Test
+    void createEvent_shouldMakeTheCallerTheOrganizer() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        EventRequest request = EventRequest.builder().title("Title").build();
+        Event event = Event.builder().title("Title").participantIds(new ArrayList<>()).build();
+        when(mapper.toDomain(request)).thenReturn(event);
+        when(eventService.createEvent(any(Event.class), any())).thenReturn(Mono.just(event));
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(EventResponse.builder().build());
+
+        controller.createEvent(request, jwt).block();
+
+        // Subscribing the organizer is the domain's rule, not the controller's.
+        verify(eventService).createEvent(argThat(created -> "user1".equals(created.getOrganizerId())
+                && created.getParticipantIds().isEmpty()), any());
+    }
+
+    @Test
+    void leave_shouldLeaveAsTheCaller_andAnswerTheEvent() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        Event event = Event.builder().id("1").build();
+        LeaveOutcome outcome = LeaveOutcome.left(event);
+        LeaveResponse response = new LeaveResponse(false, EventResponse.builder().id("1").build());
+        when(eventService.leave("1", "user1", "lea", false)).thenReturn(Mono.just(outcome));
+        when(mapper.toResponse(outcome, SignedUrls.NONE)).thenReturn(response);
+
+        StepVerifier.create(controller.leave("1", new LeaveRequest("lea", false), jwt))
+                .expectNext(response)
+                .verifyComplete();
+    }
+
+    @Test
+    void leave_shouldReadNoBodyAsNeitherSuccessorNorConfirmation() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.leave("1", "user1", null, false))
+                .thenReturn(Mono.error(new EventException(EventErrorCode.LAST_MEMBER)));
+
+        StepVerifier.create(controller.leave("1", null, jwt))
+                .expectErrorMatches(error -> error instanceof EventException e && e.getErrorCode() == EventErrorCode.LAST_MEMBER)
+                .verify();
+    }
+
+    @Test
+    void leave_shouldAnswerDeletedWithoutEvent_whenTheLastMemberLeft() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.leave("1", "user1", null, true)).thenReturn(Mono.just(LeaveOutcome.eventDeleted()));
+
+        StepVerifier.create(withRealMapping().leave("1", new LeaveRequest(null, true), jwt))
+                .expectNext(new LeaveResponse(true, null))
+                .verifyComplete();
+        verify(mediaStore, never()).urls(any());
+    }
+
+    @Test
+    void leave_shouldSignTheCoverOfTheEventLeft() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.leave("1", "user1", "lea", false))
+                .thenReturn(Mono.just(LeaveOutcome.left(coveredBy("1", "events/1/cover-a.jpg"))));
+        when(mediaStore.urls(List.of("events/1/cover-a.jpg"))).thenReturn(Mono.just(Map.of("events/1/cover-a.jpg", "https://media/a")));
+
+        StepVerifier.create(withRealMapping().leave("1", new LeaveRequest("lea", false), jwt))
+                .expectNextMatches(response -> !response.deleted() && "https://media/a".equals(response.event().getImage()))
+                .verifyComplete();
     }
 }
