@@ -8,6 +8,7 @@ import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.models.Share;
 import com.calendar.events.domain.models.SplitMode;
 import com.calendar.events.domain.models.StoredMedia;
+import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
@@ -29,12 +30,14 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -54,6 +57,9 @@ class ExpenseServiceTest {
     @Mock
     private MediaStore mediaStore;
 
+    @Mock
+    private DeletedUserMarkers markers;
+
     private ExpenseService service;
 
     /** Olivia organizes; Alice and Bob take part; Mallory does not. */
@@ -63,7 +69,8 @@ class ExpenseServiceTest {
     @BeforeEach
     void setUp() {
         service = new ExpenseService(eventRepository, expenseRepository, new PictureService(mediaStore),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                new AccountGuard(markers), Clock.fixed(NOW, ZoneOffset.UTC));
+        lenient().when(markers.deletedAmong(any())).thenReturn(Mono.just(Set.of()));
     }
 
     private static ExpenseDraft draft(String paidBy, String... people) {
@@ -73,12 +80,12 @@ class ExpenseServiceTest {
 
     private static Expense stored(String id, String createdBy, ExpenseKind kind) {
         return new Expense(id, EVENT, "Courses", 3000, "EUR", createdBy, createdBy, kind, SplitMode.EXACT,
-                List.of(new Share(createdBy.equals("alice") ? "bob" : "alice", 3000)), NOW, null, 3L);
+                List.of(new Share(createdBy.equals("alice") ? "bob" : "alice", 3000)), NOW, null, null, 3L);
     }
 
     private static Expense withReceipt(String id, String createdBy, String receiptKey) {
         return new Expense(id, EVENT, "Courses", 3000, "EUR", createdBy, createdBy, ExpenseKind.EXPENSE, SplitMode.EXACT,
-                List.of(new Share(createdBy.equals("alice") ? "bob" : "alice", 3000)), NOW, receiptKey, 3L);
+                List.of(new Share(createdBy.equals("alice") ? "bob" : "alice", 3000)), NOW, receiptKey, createdBy, 3L);
     }
 
     private static boolean failsWith(Throwable error, EventErrorCode code) {
@@ -263,7 +270,7 @@ class ExpenseServiceTest {
         eventExists();
         when(expenseRepository.findByEvent(EVENT)).thenReturn(Flux.just(
                 new Expense("x1", EVENT, "Courses", 3000, "EUR", "alice", "alice", ExpenseKind.EXPENSE,
-                        SplitMode.EQUAL, List.of(new Share("alice", 0), new Share("bob", 0), new Share("olivia", 0)), NOW, null, 0L)));
+                        SplitMode.EQUAL, List.of(new Share("alice", 0), new Share("bob", 0), new Share("olivia", 0)), NOW, null, null, 0L)));
 
         StepVerifier.create(service.ledger(EVENT, "bob"))
                 .assertNext(ledger -> {
@@ -316,6 +323,98 @@ class ExpenseServiceTest {
                 .verify();
     }
 
+    /** Alice paid for Gone, whose account was deleted since and who is no longer a member. */
+    private static Expense owedByAFormerParty() {
+        return new Expense("x9", EVENT, "Billets", 2000, "EUR", "alice", "alice", ExpenseKind.EXPENSE, SplitMode.EXACT,
+                List.of(new Share("alice", 1000), new Share("gone", 1000)), NOW, null, null, 1L);
+    }
+
+    @Test
+    void settle_shouldAcceptADeletedAccountAlreadyPartyToTheAccounts() {
+        eventExists();
+        savesWhatItIsGiven();
+        when(markers.deletedAmong(Set.of("gone"))).thenReturn(Mono.just(Set.of("gone")));
+        when(expenseRepository.findByEvent(EVENT)).thenReturn(Flux.just(owedByAFormerParty()));
+
+        StepVerifier.create(service.settle(EVENT, "alice", "alice", "gone", 1000))
+                .assertNext(settlement -> assertThat(settlement.people()).containsExactlyInAnyOrder("alice", "gone"))
+                .verifyComplete();
+    }
+
+    @Test
+    void settle_shouldRefuseADeletedAccountNeverPartyToTheAccounts() {
+        eventExists();
+        when(markers.deletedAmong(Set.of("gone"))).thenReturn(Mono.just(Set.of("gone")));
+        when(expenseRepository.findByEvent(EVENT)).thenReturn(Flux.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
+
+        StepVerifier.create(service.settle(EVENT, "alice", "alice", "gone", 1000))
+                .expectErrorMatches(error -> failsWith(error, EventErrorCode.EXPENSE_INVALID))
+                .verify();
+        verify(expenseRepository, never()).save(any());
+    }
+
+    @Test
+    void update_shouldKeepADeletedFormerPartyInTheShares() {
+        eventExists();
+        savesWhatItIsGiven();
+        when(expenseRepository.findByIdInEvent(EVENT, "x9")).thenReturn(Mono.just(owedByAFormerParty()));
+        when(markers.deletedAmong(Set.of("gone"))).thenReturn(Mono.just(Set.of("gone")));
+        when(expenseRepository.findByEvent(EVENT)).thenReturn(Flux.just(owedByAFormerParty()));
+        ExpenseDraft edit = new ExpenseDraft("Billets de train", 2000, "alice", SplitMode.EQUAL,
+                List.of(new Share("alice", 0), new Share("gone", 0)), null, 1L);
+
+        StepVerifier.create(service.update(EVENT, "x9", "alice", edit))
+                .assertNext(expense -> assertThat(expense.title()).isEqualTo("Billets de train"))
+                .verifyComplete();
+    }
+
+    @Test
+    void add_shouldRefuseADeletedFormerParty() {
+        eventExists();
+        lenient().when(markers.deletedAmong(Set.of("gone"))).thenReturn(Mono.just(Set.of("gone")));
+        lenient().when(expenseRepository.findByEvent(EVENT)).thenReturn(Flux.just(owedByAFormerParty()));
+
+        StepVerifier.create(service.add(EVENT, "alice", draft("alice", "alice", "gone")))
+                .expectErrorMatches(error -> failsWith(error, EventErrorCode.EXPENSE_INVALID))
+                .verify();
+        verify(markers, never()).deletedAmong(any());
+        verify(expenseRepository, never()).save(any());
+    }
+
+    @Test
+    void update_shouldRefuseSomeoneWhoIsNeitherMemberNorDeletedFormerParty() {
+        eventExists();
+        when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
+
+        StepVerifier.create(service.update(EVENT, "x1", "alice", draft("alice", "alice", "mallory")))
+                .expectErrorMatches(error -> failsWith(error, EventErrorCode.EXPENSE_INVALID))
+                .verify();
+        verify(expenseRepository, never()).findByEvent(any());
+        verify(expenseRepository, never()).save(any());
+    }
+
+    @Test
+    void settle_shouldNotLookUpDeletedAccounts_whenBothAreMembers() {
+        eventExists();
+        savesWhatItIsGiven();
+
+        StepVerifier.create(service.settle(EVENT, "alice", "alice", "bob", 1000))
+                .expectNextCount(1)
+                .verifyComplete();
+        verify(markers, never()).deletedAmong(any());
+    }
+
+    @Test
+    void settle_shouldAnswerTheStoreError_whenTheRegisterCannotBeRead() {
+        eventExists();
+        when(markers.deletedAmong(Set.of("gone"))).thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+
+        StepVerifier.create(service.settle(EVENT, "alice", "alice", "gone", 1000))
+                .expectErrorMatches(error -> failsWith(error, EventErrorCode.STORE_UNAVAILABLE))
+                .verify();
+        verify(expenseRepository, never()).save(any());
+    }
+
     @Test
     void add_shouldSaveExactlyOneExpense() {
         eventExists();
@@ -329,13 +428,16 @@ class ExpenseServiceTest {
     }
 
     @Test
-    void update_shouldKeepTheReceipt_whichTheDraftCannotCarry() {
+    void update_shouldKeepTheReceiptAndWhoAttachedIt_whichTheDraftCannotCarry() {
         eventExists();
         savesWhatItIsGiven();
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(withReceipt("x1", "alice", "events/ev-1/receipts/x1-a.jpg")));
 
-        StepVerifier.create(service.update(EVENT, "x1", "alice", draft("alice", "alice", "bob")))
-                .assertNext(expense -> assertThat(expense.receiptKey()).isEqualTo("events/ev-1/receipts/x1-a.jpg"))
+        StepVerifier.create(service.update(EVENT, "x1", "olivia", draft("alice", "alice", "bob")))
+                .assertNext(expense -> {
+                    assertThat(expense.receiptKey()).isEqualTo("events/ev-1/receipts/x1-a.jpg");
+                    assertThat(expense.receiptAddedBy()).isEqualTo("alice");
+                })
                 .verifyComplete();
     }
 
@@ -383,26 +485,28 @@ class ExpenseServiceTest {
         storesUnderTheKeyGiven();
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(withReceipt("x1", "alice", "events/ev-1/receipts/x1-old.jpg")));
         Expense updated = withReceipt("x1", "alice", "events/ev-1/receipts/x1-new.jpg");
-        when(expenseRepository.setReceipt(eq(EVENT), eq("x1"), anyString())).thenReturn(Mono.just(updated));
+        when(expenseRepository.setReceipt(eq(EVENT), eq("x1"), anyString(), eq("alice"))).thenReturn(Mono.just(updated));
         when(mediaStore.delete("events/ev-1/receipts/x1-old.jpg")).thenReturn(Mono.empty());
         ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
 
         StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1})).expectNext(updated).verifyComplete();
 
-        verify(expenseRepository).setReceipt(eq(EVENT), eq("x1"), key.capture());
+        verify(expenseRepository).setReceipt(eq(EVENT), eq("x1"), key.capture(), eq("alice"));
         assertThat(key.getValue()).matches("events/ev-1/receipts/x1-[0-9a-f-]{36}\\.jpg");
         verify(mediaStore).delete("events/ev-1/receipts/x1-old.jpg");
     }
 
     @Test
-    void attachReceipt_shouldBeAllowedToTheOrganizer() {
+    void attachReceipt_shouldBeAllowedToTheOrganizer_andRecordThemAsTheAttacher() {
         eventExists();
         storesUnderTheKeyGiven();
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
-        when(expenseRepository.setReceipt(eq(EVENT), eq("x1"), anyString())).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
+        when(expenseRepository.setReceipt(eq(EVENT), eq("x1"), anyString(), eq("olivia")))
+                .thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
 
         StepVerifier.create(service.attachReceipt(EVENT, "x1", "olivia", new byte[]{1})).expectNextCount(1).verifyComplete();
 
+        verify(expenseRepository).setReceipt(eq(EVENT), eq("x1"), startsWith("events/ev-1/receipts/x1-"), eq("olivia"));
         verify(mediaStore, never()).delete(anyString());
     }
 
@@ -448,7 +552,7 @@ class ExpenseServiceTest {
         StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1}))
                 .expectErrorMatches(error -> failsWith(error, EventErrorCode.RECEIPT_INVALID))
                 .verify();
-        verify(expenseRepository, never()).setReceipt(any(), any(), any());
+        verify(expenseRepository, never()).setReceipt(any(), any(), any(), any());
     }
 
     @Test
@@ -456,7 +560,7 @@ class ExpenseServiceTest {
         eventExists();
         storesUnderTheKeyGiven();
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
-        when(expenseRepository.setReceipt(eq(EVENT), eq("x1"), anyString())).thenReturn(Mono.empty());
+        when(expenseRepository.setReceipt(eq(EVENT), eq("x1"), anyString(), eq("alice"))).thenReturn(Mono.empty());
         when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
 
         StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1}))
@@ -470,7 +574,8 @@ class ExpenseServiceTest {
         eventExists();
         storesUnderTheKeyGiven();
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
-        when(expenseRepository.setReceipt(eq(EVENT), eq("x1"), anyString())).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+        when(expenseRepository.setReceipt(eq(EVENT), eq("x1"), anyString(), eq("alice")))
+                .thenReturn(Mono.error(new IllegalStateException("mongo down")));
         when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
 
         StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1})).verifyError(IllegalStateException.class);
@@ -481,7 +586,7 @@ class ExpenseServiceTest {
     void removeReceipt_shouldClearTheKey_thenDiscardTheObject() {
         eventExists();
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(withReceipt("x1", "alice", "events/ev-1/receipts/x1-a.jpg")));
-        when(expenseRepository.setReceipt(EVENT, "x1", null)).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
+        when(expenseRepository.setReceipt(EVENT, "x1", null, null)).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
         when(mediaStore.delete("events/ev-1/receipts/x1-a.jpg")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.removeReceipt(EVENT, "x1", "olivia")).verifyComplete();
@@ -496,7 +601,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.removeReceipt(EVENT, "x1", "alice")).verifyComplete();
 
-        verify(expenseRepository, never()).setReceipt(any(), any(), any());
+        verify(expenseRepository, never()).setReceipt(any(), any(), any(), any());
         verify(mediaStore, never()).delete(anyString());
     }
 
@@ -524,7 +629,7 @@ class ExpenseServiceTest {
     void removeReceipt_shouldAnswerNotFound_whenTheExpenseIsGoneMeanwhile() {
         eventExists();
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(withReceipt("x1", "alice", "events/ev-1/receipts/x1-a.jpg")));
-        when(expenseRepository.setReceipt(EVENT, "x1", null)).thenReturn(Mono.empty());
+        when(expenseRepository.setReceipt(EVENT, "x1", null, null)).thenReturn(Mono.empty());
 
         StepVerifier.create(service.removeReceipt(EVENT, "x1", "alice"))
                 .expectErrorMatches(error -> failsWith(error, EventErrorCode.EXPENSE_NOT_FOUND))

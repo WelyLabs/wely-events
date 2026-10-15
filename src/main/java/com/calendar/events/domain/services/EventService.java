@@ -45,6 +45,7 @@ public class EventService {
     private final PictureService pictureService;
     private final EventDeletionOutbox deletionOutbox;
     private final CommunityDirectory communityDirectory;
+    private final AccountGuard accountGuard;
     private final Clock clock;
 
     public Flux<Event> getAllEvents() {
@@ -145,19 +146,7 @@ public class EventService {
                 .defaultIfEmpty(false);
     }
 
-    /**
-     * Takes the user out of the event; members are the organizer and the participants.
-     *
-     * <ul>
-     *   <li>Not a member: nothing changes, the event comes back as it is.</li>
-     *   <li>A participant: removed, never the last one since the organizer counts.</li>
-     *   <li>The organizer, with others taking part: hands the event over to {@code newOrganizerId}.</li>
-     *   <li>The organizer alone: deletes the event, only if {@code deleteIfLast} confirms it.</li>
-     * </ul>
-     *
-     * Every write is conditioned on what was read, so a concurrent change answers an error instead
-     * of applying a choice made on stale data.
-     */
+    /** Takes the user out of the event: a participant leaves, the organizer hands over or, alone, deletes it. */
     public Mono<LeaveOutcome> leave(String eventId, String userId, String newOrganizerId, boolean deleteIfLast) {
         return getEventById(eventId, userId).flatMap(event -> {
             if (!event.involves(userId)) {
@@ -171,18 +160,20 @@ public class EventService {
                                 ? leave(eventId, userId, newOrganizerId, deleteIfLast)
                                 : Mono.just(LeaveOutcome.left(updated)));
             }
-            return event.hasOtherParticipants()
-                    ? handOver(event, newOrganizerId)
-                    : deleteAsLastMember(event, deleteIfLast);
+            return accountGuard.deletedAmong(event.getParticipantIds())
+                    .flatMap(former -> event.successorExcluding(former).isPresent()
+                            ? handOver(event, newOrganizerId, former)
+                            : deleteAsLastMember(event, deleteIfLast, former));
         });
     }
 
-    private Mono<LeaveOutcome> handOver(Event event, String newOrganizerId) {
+    private Mono<LeaveOutcome> handOver(Event event, String newOrganizerId, Set<String> former) {
         String organizerId = event.getOrganizerId();
         if (newOrganizerId == null || newOrganizerId.isBlank()) {
             return Mono.error(new EventException(EventErrorCode.NEW_ORGANIZER_REQUIRED));
         }
-        if (newOrganizerId.equals(organizerId) || !event.getParticipantIds().contains(newOrganizerId)) {
+        if (newOrganizerId.equals(organizerId) || !event.getParticipantIds().contains(newOrganizerId)
+                || former.contains(newOrganizerId)) {
             return Mono.error(new EventException(EventErrorCode.NEW_ORGANIZER_INVALID));
         }
         return eventRepository.handOver(event.getId(), organizerId, newOrganizerId)
@@ -195,11 +186,11 @@ public class EventService {
                                 : EventErrorCode.NEW_ORGANIZER_INVALID)))));
     }
 
-    private Mono<LeaveOutcome> deleteAsLastMember(Event event, boolean deleteIfLast) {
+    private Mono<LeaveOutcome> deleteAsLastMember(Event event, boolean deleteIfLast, Set<String> former) {
         if (!deleteIfLast) {
             return Mono.error(new EventException(EventErrorCode.LAST_MEMBER));
         }
-        return eventRepository.deleteIfAlone(event.getId(), event.getOrganizerId())
+        return eventRepository.deleteIfAlone(event.getId(), event.getOrganizerId(), former)
                 .flatMap(deleted -> afterDeletion(deleted).thenReturn(LeaveOutcome.eventDeleted()))
                 // Nothing deleted: someone joined since the read, unless the event is gone already.
                 .switchIfEmpty(Mono.defer(() -> eventRepository.findById(event.getId())
@@ -207,13 +198,8 @@ public class EventService {
                         .flatMap(current -> Mono.<LeaveOutcome>error(new EventException(EventErrorCode.NEW_ORGANIZER_REQUIRED)))));
     }
 
-    /**
-     * Everything that goes with a deleted event. The tombstone first, so wely-chat hears of it even if
-     * the rest fails. Then its expenses: the event went first, so a failure in between leaves stray
-     * expenses nobody can reach rather than an event that lost its accounts. Its cover and receipts
-     * go last, best effort.
-     */
-    private Mono<Void> afterDeletion(Event deleted) {
+    /** Everything that goes with a deleted event: its tombstone, then its expenses, then its pictures best effort. */
+    Mono<Void> afterDeletion(Event deleted) {
         String id = deleted.getId();
         return recordDeletion(deleted)
                 // Receipts are read before their expenses go, or nothing would name them.

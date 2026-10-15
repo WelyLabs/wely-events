@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -116,17 +117,79 @@ class MongoEventRepositoryAdapterTest {
     void deleteIfAlone_shouldReturnTheEventAsItWas() {
         EventEntity removed = new EventEntity();
         Event domain = Event.builder().id("1").build();
-        when(mongoRepository.deleteIfAlone("1", "org")).thenReturn(Mono.just(removed));
+        when(mongoRepository.deleteIfOnlyAmong("1", "org", Set.of("org"))).thenReturn(Mono.just(removed));
         when(mapper.toDomain(removed)).thenReturn(domain);
 
-        StepVerifier.create(adapter.deleteIfAlone("1", "org")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone("1", "org", Set.of())).expectNext(domain).verifyComplete();
     }
 
     @Test
     void deleteIfAlone_shouldBeEmpty_whenSomeoneElseTakesPart() {
-        when(mongoRepository.deleteIfAlone("1", "org")).thenReturn(Mono.empty());
+        when(mongoRepository.deleteIfOnlyAmong("1", "org", Set.of("org"))).thenReturn(Mono.empty());
 
-        StepVerifier.create(adapter.deleteIfAlone("1", "org")).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone("1", "org", List.of())).verifyComplete();
+    }
+
+    @Test
+    void deleteIfAlone_shouldCountTheOrganizerAmongTheIdsToIgnore() {
+        when(mongoRepository.deleteIfOnlyAmong("1", "org", Set.of("gone", "demo", "org"))).thenReturn(Mono.empty());
+
+        StepVerifier.create(adapter.deleteIfAlone("1", "org", List.of("gone", "demo"))).verifyComplete();
+        verify(mongoRepository).deleteIfOnlyAmong("1", "org", Set.of("gone", "demo", "org"));
+    }
+
+    @Test
+    void findOrganizedBy_shouldMapEveryEvent() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().id("1").build();
+        when(mongoRepository.findOrganizedBy("org")).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findOrganizedBy("org")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void handOverKeepingFormer_shouldReturnTheEvent_whenTheWriteMatched() {
+        EventEntity updated = new EventEntity();
+        Event domain = Event.builder().id("1").build();
+        when(mongoRepository.handOverKeepingFormer("1", "org", "lea")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("1")).thenReturn(Mono.just(updated));
+        when(mapper.toDomain(updated)).thenReturn(domain);
+
+        StepVerifier.create(adapter.handOverKeepingFormer("1", "org", "lea")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void handOverKeepingFormer_shouldBeEmpty_whenNothingMatched() {
+        when(mongoRepository.handOverKeepingFormer("1", "org", "lea")).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.handOverKeepingFormer("1", "org", "lea")).verifyComplete();
+        verify(mongoRepository, never()).findById("1");
+    }
+
+    @Test
+    void leaveUpcoming_shouldPassTheInstantAndTheOneHourDefault() {
+        Instant at = Instant.parse("2026-10-15T14:00:00Z");
+        when(mongoRepository.leaveUpcoming("lea", at, Instant.parse("2026-10-15T13:00:00Z"))).thenReturn(Mono.just(2L));
+
+        StepVerifier.create(adapter.leaveUpcoming("lea", at)).expectNext(2L).verifyComplete();
+    }
+
+    @Test
+    void clearUpcomingResponses_shouldPassTheInstantAndTheOneHourDefault() {
+        Instant at = Instant.parse("2026-10-15T14:00:00Z");
+        when(mongoRepository.clearUpcomingResponses("lea", at, Instant.parse("2026-10-15T13:00:00Z")))
+                .thenReturn(Mono.just(1L));
+
+        StepVerifier.create(adapter.clearUpcomingResponses("lea", at)).expectNext(1L).verifyComplete();
+    }
+
+    @Test
+    void clearUpcomingResponses_shouldRejectAnIdUnusableAsAFieldName() {
+        StepVerifier.create(adapter.clearUpcomingResponses("lea.$x", Instant.parse("2026-10-15T14:00:00Z")))
+                .expectError(IllegalArgumentException.class)
+                .verify();
+        verify(mongoRepository, never()).clearUpcomingResponses(any(), any(), any());
     }
 
     @Test

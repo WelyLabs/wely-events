@@ -96,9 +96,57 @@ class EventTest {
     }
 
     @Test
-    void hasOtherParticipants_shouldIgnoreTheOrganizer() {
-        assertThat(Event.builder().organizerId("org").participantIds(List.of("org")).build().hasOtherParticipants()).isFalse();
-        assertThat(Event.builder().organizerId("org").build().hasOtherParticipants()).isFalse();
-        assertThat(Event.builder().organizerId("org").participantIds(List.of("org", "lea")).build().hasOtherParticipants()).isTrue();
+    void isOverAt_shouldBeTrue_whenTheEventEndedBefore() {
+        Event event = Event.builder().startDate(START).endDate(START.plusSeconds(7200)).build();
+
+        assertThat(event.isOverAt(START.plusSeconds(7201))).isTrue();
+    }
+
+    @Test
+    void isOverAt_shouldBeFalse_whenTheEventEndsExactlyThen() {
+        Event event = Event.builder().startDate(START).endDate(START.plusSeconds(7200)).build();
+
+        assertThat(event.isOverAt(START.plusSeconds(7200))).isFalse();
+        assertThat(event.isOverAt(START)).isFalse();
+    }
+
+    @Test
+    void isOverAt_shouldUseTheDefaultDuration_whenTheEventHasNoEnd() {
+        Event event = Event.builder().startDate(START).build();
+
+        assertThat(event.isOverAt(START.plus(Event.DEFAULT_DURATION))).isFalse();
+        assertThat(event.isOverAt(START.plus(Event.DEFAULT_DURATION).plusSeconds(1))).isTrue();
+    }
+
+    @Test
+    void isOverAt_shouldBeFalse_whileAPollIsOpen() {
+        Event open = Event.builder().startDate(START).endDate(START.plusSeconds(3600))
+                .poll(new Poll(PollStatus.OPEN, List.of(), null, null)).build();
+        Event fixed = Event.builder().startDate(START).endDate(START.plusSeconds(3600))
+                .poll(new Poll(PollStatus.CLOSED, List.of(), null, "s1")).build();
+
+        assertThat(open.isOverAt(START.plusSeconds(86_400))).isFalse();
+        assertThat(fixed.isOverAt(START.plusSeconds(86_400))).isTrue();
+    }
+
+    @Test
+    void successorExcluding_shouldReturnTheEarliestParticipantOtherThanTheOrganizer() {
+        Event event = by("org", Visibility.FRIENDS, "org", "lea", "hugo");
+
+        assertThat(event.successorExcluding(Set.of())).contains("lea");
+    }
+
+    @Test
+    void successorExcluding_shouldSkipExcludedIds() {
+        Event event = by("org", Visibility.FRIENDS, "lea", "org", "hugo", "zoe");
+
+        assertThat(event.successorExcluding(Set.of("lea", "hugo"))).contains("zoe");
+    }
+
+    @Test
+    void successorExcluding_shouldBeEmpty_whenOnlyTheOrganizerOrExcludedIdsRemain() {
+        assertThat(by("org", Visibility.FRIENDS, "org", "lea").successorExcluding(Set.of("lea"))).isEmpty();
+        assertThat(by("org", Visibility.FRIENDS, "org").successorExcluding(Set.of())).isEmpty();
+        assertThat(by("org", Visibility.FRIENDS).successorExcluding(Set.of())).isEmpty();
     }
 }

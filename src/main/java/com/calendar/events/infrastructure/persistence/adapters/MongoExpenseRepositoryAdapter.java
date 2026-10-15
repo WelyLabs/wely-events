@@ -55,8 +55,8 @@ public class MongoExpenseRepositoryAdapter implements ExpenseRepository {
     }
 
     @Override
-    public Mono<Expense> setReceipt(String eventId, String expenseId, String receiptKey) {
-        return mongoRepository.setReceiptKey(expenseId, eventId, receiptKey)
+    public Mono<Expense> setReceipt(String eventId, String expenseId, String receiptKey, String addedBy) {
+        return mongoRepository.setReceiptKey(expenseId, eventId, receiptKey, addedBy)
                 .filter(matched -> matched > 0)
                 .flatMap(matched -> findByIdInEvent(eventId, expenseId));
     }
@@ -64,5 +64,15 @@ public class MongoExpenseRepositoryAdapter implements ExpenseRepository {
     @Override
     public Flux<Expense> findByEvents(Collection<String> eventIds) {
         return mongoRepository.findAllByEventIdIn(eventIds).map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Expense> findWithReceiptRecordedBy(String userId) {
+        return mongoRepository.findWithReceiptRecordedBy(userId).map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Boolean> clearReceipt(String eventId, String expenseId, String receiptKey) {
+        return mongoRepository.clearReceiptKey(expenseId, eventId, receiptKey).map(modified -> modified > 0);
     }
 }

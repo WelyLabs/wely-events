@@ -8,6 +8,7 @@ import reactor.test.StepVerifier;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -23,9 +24,9 @@ class InMemoryPollUpdatesTest {
         List<Poll> alice = new CopyOnWriteArrayList<>();
         List<Poll> bob = new CopyOnWriteArrayList<>();
         List<Poll> otherEvent = new CopyOnWriteArrayList<>();
-        Disposable a = updates.stream("e1").subscribe(alice::add);
-        Disposable b = updates.stream("e1").subscribe(bob::add);
-        Disposable c = updates.stream("e2").subscribe(otherEvent::add);
+        Disposable a = updates.stream("e1", "alice").subscribe(alice::add);
+        Disposable b = updates.stream("e1", "bob").subscribe(bob::add);
+        Disposable c = updates.stream("e2", "carol").subscribe(otherEvent::add);
 
         updates.publish("e1", FIRST);
         updates.publish("e1", SECOND);
@@ -47,10 +48,10 @@ class InMemoryPollUpdatesTest {
 
     @Test
     void stream_shouldNotReplayWhatWasPublishedBeforeSubscribing() {
-        Disposable first = updates.stream("e1").subscribe();
+        Disposable first = updates.stream("e1", "lea").subscribe();
         updates.publish("e1", FIRST);
 
-        StepVerifier.create(updates.stream("e1"))
+        StepVerifier.create(updates.stream("e1", "lea"))
                 .then(() -> updates.publish("e1", SECOND))
                 .expectNext(SECOND)
                 .thenCancel()
@@ -60,8 +61,8 @@ class InMemoryPollUpdatesTest {
 
     @Test
     void stream_shouldDropTheChannel_whenTheLastWatcherLeaves() {
-        Disposable a = updates.stream("e1").subscribe();
-        Disposable b = updates.stream("e1").subscribe();
+        Disposable a = updates.stream("e1", "lea").subscribe();
+        Disposable b = updates.stream("e1", "lea").subscribe();
         assertThat(updates.channelCount()).isEqualTo(1);
 
         a.dispose();
@@ -73,10 +74,10 @@ class InMemoryPollUpdatesTest {
 
     @Test
     void stream_shouldOpenANewChannel_afterTheOldOneWasDropped() {
-        updates.stream("e1").subscribe().dispose();
+        updates.stream("e1", "lea").subscribe().dispose();
         List<Poll> received = new CopyOnWriteArrayList<>();
 
-        Disposable again = updates.stream("e1").subscribe(received::add);
+        Disposable again = updates.stream("e1", "lea").subscribe(received::add);
         updates.publish("e1", FIRST);
 
         assertThat(received).containsExactly(FIRST);
@@ -85,8 +86,47 @@ class InMemoryPollUpdatesTest {
     }
 
     @Test
+    void disconnect_shouldCompleteEveryStreamOfThatViewer_only() {
+        List<Poll> others = new CopyOnWriteArrayList<>();
+        AtomicInteger completed = new AtomicInteger();
+        updates.stream("e1", "gone").subscribe(poll -> { }, error -> { }, completed::incrementAndGet);
+        updates.stream("e2", "gone").subscribe(poll -> { }, error -> { }, completed::incrementAndGet);
+        Disposable other = updates.stream("e1", "lea").subscribe(others::add);
+
+        updates.disconnect("gone");
+
+        assertThat(completed).hasValue(2);
+        assertThat(other.isDisposed()).isFalse();
+        updates.publish("e1", FIRST);
+        assertThat(others).containsExactly(FIRST);
+        other.dispose();
+    }
+
+    @Test
+    void disconnect_shouldBeHarmless_whenTheViewerWatchesNothing() {
+        Disposable other = updates.stream("e1", "lea").subscribe();
+
+        updates.disconnect("gone");
+
+        assertThat(other.isDisposed()).isFalse();
+        assertThat(updates.channelCount()).isEqualTo(1);
+        other.dispose();
+    }
+
+    @Test
+    void stream_shouldLeaveTheChannel_whenTheViewerIsDisconnected() {
+        Disposable gone = updates.stream("e1", "gone").subscribe();
+        assertThat(updates.channelCount()).isEqualTo(1);
+
+        updates.disconnect("gone");
+
+        assertThat(gone.isDisposed()).isTrue();
+        assertThat(updates.channelCount()).isZero();
+    }
+
+    @Test
     void stream_shouldNotOpenAChannel_untilSubscribed() {
-        updates.stream("e1");
+        updates.stream("e1", "lea");
 
         assertThat(updates.channelCount()).isZero();
     }

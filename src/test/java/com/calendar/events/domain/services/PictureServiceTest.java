@@ -155,9 +155,9 @@ class PictureServiceTest {
         when(mediaStore.urls(List.of("events/ev/receipts/x1-a.jpg"))).thenReturn(Mono.just(Map.of(
                 "events/ev/receipts/x1-a.jpg", "https://media/r")));
         Expense withReceipt = new Expense("x1", "ev", "Courses", 1000, "EUR", "alice", "alice", ExpenseKind.EXPENSE,
-                SplitMode.EQUAL, List.of(new Share("alice", 0)), Instant.EPOCH, "events/ev/receipts/x1-a.jpg", 0L);
+                SplitMode.EQUAL, List.of(new Share("alice", 0)), Instant.EPOCH, "events/ev/receipts/x1-a.jpg", null, 0L);
         Expense without = new Expense("x2", "ev", "Essence", 1000, "EUR", "alice", "alice", ExpenseKind.EXPENSE,
-                SplitMode.EQUAL, List.of(new Share("alice", 0)), Instant.EPOCH, null, 0L);
+                SplitMode.EQUAL, List.of(new Share("alice", 0)), Instant.EPOCH, null, null, 0L);
 
         StepVerifier.create(service.signReceipts(List.of(withReceipt, without)))
                 .assertNext(urls -> assertThat(urls.urlOf("events/ev/receipts/x1-a.jpg")).isEqualTo("https://media/r"))

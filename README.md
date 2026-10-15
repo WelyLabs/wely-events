@@ -201,6 +201,7 @@ Sur le modèle d'un groupe de messagerie : les **membres** sont l'organisateur e
 | L'organisateur, seul | `deleteIfLast: true` obligatoire (`EVT-BUS-022`, 409), puis suppression de l'événement, de ses dépenses et de ses photos, y compris pour un événement passé |
 
 - **Chaque écriture est conditionnée à ce qui a été lu.** La passation ne passe que si le successeur participe encore et l'organisateur l'est toujours ; sinon la réponse est `EVT-BUS-021` si le successeur est parti, `EVT-BUS-020` autrement. La suppression du dernier membre filtre sur `participantIds` vide ou réduit à l'organisateur : si quelqu'un vient de rejoindre, rien n'est supprimé et la réponse est `EVT-BUS-020`.
+- **A deleted account does not count.** Left on a past event's list (see "Account deletion"), it cannot be named successor (`EVT-BUS-021`), and the last-member deletion also matches a list holding only the organizer and deleted accounts.
 - **Un client périmé ne supprime jamais par accident** : sans `deleteIfLast`, le dernier départ est refusé.
 - **Un participant nommé organisateur pendant sa demande** n'est pas retiré : sa demande est réévaluée comme celle d'un organisateur.
 
@@ -209,6 +210,28 @@ Sur le modèle d'un groupe de messagerie : les **membres** sont l'organisateur e
 Supprimer un événement (par `DELETE` ou par le dernier départ) emporte son document, donc son outbox de groupe. La suppression laisse une **pierre tombale** dans la collection `event_deletions` (`{_id: eventId, title, version, deletedAt}`), avec `version` = la dernière `groupVersion` + 1, lue sur le document effectivement supprimé (`findAndRemove`).
 
 `EventDeletionRelay` l'envoie sur le **même topic** `EVENT_GROUP_CHANGED`, avec la même clé `eventId`, donc après les listes de membres précédentes sur la même partition : `{deleted: true, memberIds: [], organizerId: null, version}`. La pierre tombale est effacée une fois l'envoi confirmé. Un échec d'écriture de la pierre tombale est journalisé sans faire échouer la suppression, déjà faite. Les messages de groupe ordinaires portent `deleted: false`.
+
+---
+
+## Account deletion
+
+`wely-users` publishes `USER_DELETED` (`{userId, deletedAt}`) when an account is deleted. This service consumes it (group `events-service-group`; a new group starts from the earliest retained record) and erases what it holds of that account. The consumer is a `Function<Flux<Message<byte[]>>, Mono<Void>>`: Spring Cloud Stream subscribes to it itself, and the code never calls `subscribe()`. A record that cannot be read, or whose `userId` is not a canonical UUID, is logged and skipped; a failing erasure is retried 5 times (1 s to 30 s), then logged, and the stream goes on.
+
+`AccountErasureService` runs these steps in order. Each one is conditioned on the state it changes, so a replay changes nothing:
+
+1. **Marker** in `deleted_users` (`{_id: businessId, deletedAt, erasedAt}`), kept forever. The first recorded `deletedAt` is the reference for every later step: a replay a week later classifies the events the same way. An older record without `deletedAt` uses the processing time.
+2. **The user's poll SSE streams** are closed.
+3. **Ballots withdrawn from open polls**, one event at a time, with the new tally published. This runs before any hand-over, so a date fixed by the successor cannot subscribe the account again. Ballots on closed polls are kept.
+4. **Events the user organizes** go to the earliest participant who is neither deleted nor a demo account. A **past** event (over before `deletedAt`, poll closed) keeps the account among its participants; an **upcoming or ongoing** event (or one with an open poll) removes it. With no possible successor, the event is **deleted with its usual cascade** (tombstone, expenses, cover, receipts). Each write is a compare-and-set, decided again up to 3 times (`EVT-TEC-006` beyond).
+5. **Upcoming participations** removed in one write, which flags each group for the relay.
+6. **Maybe / No answers** to upcoming community events removed.
+7. **Receipts the user attached to their own expenses** deleted: the file in `wely-media` first, then the expense's key, only if it has not changed. Each expense records who attached its receipt (`receiptAddedBy`), so a receipt someone else attached, such as the organizer after the erasure, is never dropped, not even by a replay. A receipt attached before that field existed counts as the author's. Amounts and ids stay.
+8. **`erasedAt`** set last: a failed step leaves it empty.
+
+- **Pseudonym.** Past events, closed-poll ballots, past answers and expenses keep the `businessId`, which the web app labels as a deleted user. Balances stay exact.
+- **Propagation.** Hand-overs and departures go through `EVENT_GROUP_CHANGED` (version bumped, `groupSynced: false`): wely-chat and wely-notifications follow without any extra call. The successor is not notified.
+- **After the marker**, every write (`POST`, `PUT`, `PATCH`, `DELETE`) carried by the deleted account's still-valid token answers `EVT-BUS-025` (410), from a filter in the security chain; reads go through. The poll stream cannot be reopened either (`EVT-BUS-025`), and a stream checks the marker again once it listens, so an erasure landing between the check and the subscription still ends it. A "Yes" vote that outlived the erasure never subscribes the account when the date is fixed.
+- **Demo accounts** (`ACCOUNT_DELETION_PROTECTED_USER_IDS`) are never erased, and never made successor automatically, since anyone can sign in to them.
 
 ---
 
@@ -277,6 +300,7 @@ Un « Tricount » attaché à chaque événement : ses membres (organisateur et 
 - **Soldes et remboursements** (`Ledger`) : chacun a payé moins ce qu'il doit. Les remboursements proposés apparient le plus gros débiteur et le plus gros créancier jusqu'à épuisement — au plus n−1 virements, et toujours les mêmes pour les mêmes dépenses.
 - **Un remboursement est une dépense** de type `SETTLEMENT` : payée par le débiteur, entièrement pour le créancier. Les soldes se mettent à jour par le même calcul, sans cas particulier, et le total de l'événement ne le compte pas.
 - **Droits.** Hors membres, l'événement répond 404, comme partout. Payeur et bénéficiaires doivent être membres (`EVT-BUS-008`). Seul l'auteur d'une dépense ou l'organisateur la modifie ou la supprime (`EVT-BUS-009`) ; un remboursement ne se modifie pas, il se supprime.
+- **Deleted accounts.** A deleted account already named in the event's expenses stays a valid party when an expense is updated or a settlement recorded, so its balance can still be settled. A new expense cannot name it (`EVT-BUS-008`).
 - **Chaque requête nomme l'événement** (`findByIdAndEventId`) : l'identifiant d'une dépense d'un autre événement ne trouve rien, même pour un membre.
 - **Concurrence.** `@Version` sur le document : une modification faite sur une version déjà dépassée est refusée (`EVT-BUS-010`, 409) au lieu d'écraser celle d'un autre.
 - **Justificatif.** Une photo du ticket peut être jointe à une dépense (voir « Photos ») ; `ExpenseRequest` ne la porte pas, une modification la conserve.
@@ -322,9 +346,12 @@ La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /soci
 | `EVT-BUS-020` | 409 | L'organisateur part en laissant des participants : il doit nommer son successeur (ou quelqu'un vient de rejoindre) |
 | `EVT-BUS-021` | 400 | Successeur invalide : ce doit être un autre participant de l'événement |
 | `EVT-BUS-022` | 409 | Dernier membre : partir supprime l'événement, à confirmer avec `deleteIfLast` |
+| `EVT-BUS-025` | 410 | Account deleted: no more writes, and no reopening of a poll stream |
 | `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
 | `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
 | `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |
+| `EVT-TEC-005` | 502 | Deleted-accounts register cannot be read or written |
+| `EVT-TEC-006` | 503 | Account erasure incomplete: an event kept changing (background only, retried) |
 | `EVT-VAL-001` | 400 | Validation du corps de requête, détail par champ |
 | `EVT-REQ-000` | *repris* | Chemin inconnu, méthode non autorisée |
 | `EVT-TEC-000` | 500 | Erreur inattendue |
@@ -368,6 +395,8 @@ client peut tester et un `timestamp` :
 | `EVENT_DATE_FIXED_TOPIC` | Topic des dates fixées, `EVENT_DATE_FIXED` par défaut |
 | `EVENT_DELETION_RELAY_ENABLED` | Relais des suppressions vers wely-chat, `true` par défaut |
 | `MEDIA_API_SECRET` | Secret partagé envoyé dans `X-Internal-Secret`. Vide par défaut : le service démarre, mais les envois répondent `EVT-TEC-003` et les images sortent sans URL |
+| `USER_DELETED_CONSUMER_ENABLED` | Consumes `USER_DELETED`, `true` by default |
+| `ACCOUNT_DELETION_PROTECTED_USER_IDS` | Comma-separated `businessId`s of the demo accounts, never erased nor made successor. Empty by default |
 
 ---
 

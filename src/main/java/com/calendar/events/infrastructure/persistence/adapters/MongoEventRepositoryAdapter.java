@@ -15,8 +15,10 @@ import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 @Component
@@ -54,9 +56,17 @@ public class MongoEventRepositoryAdapter implements EventRepository {
         return mongoRepository.deleteByOrganizer(eventId, organizerId).map(mapper::toDomain);
     }
 
+    /** The organizer counts among those allowed to remain. */
     @Override
-    public Mono<Event> deleteIfAlone(String eventId, String organizerId) {
-        return mongoRepository.deleteIfAlone(eventId, organizerId).map(mapper::toDomain);
+    public Mono<Event> deleteIfAlone(String eventId, String organizerId, Collection<String> formerMemberIds) {
+        Set<String> allowed = new LinkedHashSet<>(formerMemberIds);
+        allowed.add(organizerId);
+        return mongoRepository.deleteIfOnlyAmong(eventId, organizerId, allowed).map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Event> findOrganizedBy(String organizerId) {
+        return mongoRepository.findOrganizedBy(organizerId).map(mapper::toDomain);
     }
 
     @Override
@@ -91,6 +101,26 @@ public class MongoEventRepositoryAdapter implements EventRepository {
         return mongoRepository.handOver(eventId, organizerId, newOrganizerId)
                 .filter(modified -> modified > 0)
                 .flatMap(modified -> findById(eventId));
+    }
+
+    @Override
+    public Mono<Event> handOverKeepingFormer(String eventId, String organizerId, String newOrganizerId) {
+        return mongoRepository.handOverKeepingFormer(eventId, organizerId, newOrganizerId)
+                .filter(modified -> modified > 0)
+                .flatMap(modified -> findById(eventId));
+    }
+
+    @Override
+    public Mono<Long> leaveUpcoming(String userId, Instant at) {
+        return mongoRepository.leaveUpcoming(userId, at, at.minus(Event.DEFAULT_DURATION));
+    }
+
+    @Override
+    public Mono<Long> clearUpcomingResponses(String userId, Instant at) {
+        if (!FIELD_SAFE_ID.matcher(userId).matches()) {
+            return Mono.error(new IllegalArgumentException("User id is not usable as a field name"));
+        }
+        return mongoRepository.clearUpcomingResponses(userId, at, at.minus(Event.DEFAULT_DURATION));
     }
 
     @Override

@@ -38,6 +38,8 @@ public class ExpenseEntity {
     private Instant spentAt;
     /** wely-media key of the receipt's photo; absent without one. */
     private String receiptKey;
+    /** Who attached the receipt; absent on receipts attached before it was recorded. */
+    private String receiptAddedBy;
     /** Optimistic locking: a save carrying an older version is refused instead of overwriting. */
     @Version
     private Long version;

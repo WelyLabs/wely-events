@@ -10,29 +10,13 @@ import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
 
-import java.net.URI;
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/**
- * Turns every failure into an RFC 7807 {@code application/problem+json} response.
- *
- * <p>The three services that had error handling each answered in a different shape — a
- * custom record here, a bare {@code Map} in events, nothing at all in chat — so a client
- * had to know which service it was talking to before it could read an error. RFC 7807 is
- * the standard for this and {@link ProblemDetail} ships with Spring, so there is no reason
- * to invent a fourth shape.
- *
- * <p>Two properties are added beyond the standard fields: {@code code}, the stable
- * identifier a client branches on, and {@code timestamp}, to correlate with logs.
- */
+/** Turns every failure into an RFC 7807 {@code application/problem+json} response, built by {@link Problems}. */
 @Slf4j
 @RestControllerAdvice
 public class GlobalErrorHandler {
-
-    /** Namespace for the {@code type} URI. Not dereferenced; it identifies, it does not serve. */
-    private static final String PROBLEM_TYPE_BASE = "https://welylabs.app/problems/";
 
     @ExceptionHandler(EventException.class)
     public ProblemDetail handleEventException(EventException ex, ServerWebExchange exchange) {
@@ -100,13 +84,6 @@ public class GlobalErrorHandler {
 
     private ProblemDetail problem(HttpStatus status, String code, String title, String detail,
                                   ServerWebExchange exchange) {
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
-        problem.setType(URI.create(PROBLEM_TYPE_BASE + code.toLowerCase()));
-        problem.setTitle(title);
-        problem.setInstance(URI.create(exchange.getRequest().getPath().value()));
-        problem.setProperty("code", code);
-        problem.setProperty("timestamp", Instant.now().toString());
-
-        return problem;
+        return Problems.of(status, code, title, detail, exchange.getRequest().getPath().value());
     }
 }

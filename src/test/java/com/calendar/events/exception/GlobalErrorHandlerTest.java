@@ -44,6 +44,11 @@ class GlobalErrorHandlerTest {
             return Mono.error(new DataBufferLimitException("Part exceeded the limit"));
         }
 
+        @GetMapping("/account-deleted")
+        Mono<Void> accountDeleted() {
+            return Mono.error(new EventException(EventErrorCode.ACCOUNT_DELETED));
+        }
+
         @GetMapping("/media-down")
         Mono<Void> mediaDown() {
             return Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE));
@@ -92,6 +97,17 @@ class GlobalErrorHandlerTest {
                 .expectBody()
                 .jsonPath("$.code").isEqualTo("EVT-BUS-002")
                 .jsonPath("$.title").isEqualTo("Not the organizer");
+    }
+
+    @Test
+    @DisplayName("a deleted account answers 410, under its own code")
+    void handleEventException_shouldAnswerGoneForADeletedAccount() {
+        client.get().uri("/account-deleted")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.GONE)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("EVT-BUS-025")
+                .jsonPath("$.title").isEqualTo("Account deleted");
     }
 
     @Test

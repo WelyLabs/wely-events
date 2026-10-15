@@ -104,19 +104,43 @@ class MongoExpenseRepositoryAdapterTest {
 
     @Test
     void setReceipt_shouldReadTheExpenseBack_whenTheUpdateMatched() {
-        when(mongoRepository.setReceiptKey("x1", "ev-1", "events/ev-1/receipts/r.jpg")).thenReturn(Mono.just(1L));
+        when(mongoRepository.setReceiptKey("x1", "ev-1", "events/ev-1/receipts/r.jpg", "alice")).thenReturn(Mono.just(1L));
         when(mongoRepository.findByIdAndEventId("x1", "ev-1")).thenReturn(Mono.just(entity));
         when(mapper.toDomain(entity)).thenReturn(expense);
 
-        StepVerifier.create(adapter.setReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg")).expectNext(expense).verifyComplete();
+        StepVerifier.create(adapter.setReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg", "alice"))
+                .expectNext(expense)
+                .verifyComplete();
     }
 
     @Test
     void setReceipt_shouldBeEmpty_whenNoExpenseOfTheEventMatched() {
-        when(mongoRepository.setReceiptKey("x1", "ev-1", null)).thenReturn(Mono.just(0L));
+        when(mongoRepository.setReceiptKey("x1", "ev-1", null, null)).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(adapter.setReceipt("ev-1", "x1", null)).verifyComplete();
+        StepVerifier.create(adapter.setReceipt("ev-1", "x1", null, null)).verifyComplete();
 
         verify(mongoRepository, never()).findByIdAndEventId("x1", "ev-1");
+    }
+
+    @Test
+    void findWithReceiptRecordedBy_shouldMapEveryExpense() {
+        when(mongoRepository.findWithReceiptRecordedBy("gone")).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(expense);
+
+        StepVerifier.create(adapter.findWithReceiptRecordedBy("gone")).expectNext(expense).verifyComplete();
+    }
+
+    @Test
+    void clearReceipt_shouldAnswerTrue_whenTheKeyWasStillThere() {
+        when(mongoRepository.clearReceiptKey("x1", "ev-1", "events/ev-1/receipts/r.jpg")).thenReturn(Mono.just(1L));
+
+        StepVerifier.create(adapter.clearReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg")).expectNext(true).verifyComplete();
+    }
+
+    @Test
+    void clearReceipt_shouldAnswerFalse_whenTheReceiptChangedMeanwhile() {
+        when(mongoRepository.clearReceiptKey("x1", "ev-1", "events/ev-1/receipts/r.jpg")).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.clearReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg")).expectNext(false).verifyComplete();
     }
 }

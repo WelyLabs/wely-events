@@ -16,26 +16,24 @@ import reactor.core.publisher.Mono;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
-/**
- * An event's shared expenses: who paid what, for whom, and how to settle up.
- *
- * <p>Only the event's members see or add expenses; to anyone else the event answers as missing,
- * as it does everywhere else. An expense is changed or deleted by whoever recorded it, or by the
- * organizer.
- */
+/** An event's shared expenses, seen and added by its members, changed by their author or the organizer. */
 public class ExpenseService {
 
     private final EventRepository eventRepository;
     private final ExpenseRepository expenseRepository;
     private final PictureService pictureService;
+    private final AccountGuard accountGuard;
     private final Clock clock;
 
     public ExpenseService(EventRepository eventRepository, ExpenseRepository expenseRepository,
-                          PictureService pictureService, Clock clock) {
+                          PictureService pictureService, AccountGuard accountGuard, Clock clock) {
         this.eventRepository = eventRepository;
         this.expenseRepository = expenseRepository;
         this.pictureService = pictureService;
+        this.accountGuard = accountGuard;
         this.clock = clock;
     }
 
@@ -47,7 +45,7 @@ public class ExpenseService {
         return requireMember(eventId, requesterId)
                 .map(event -> requireMembers(event, new Expense(null, eventId, draft.title(), draft.amountCents(),
                         Expense.CURRENCY, draft.paidBy(), requesterId, ExpenseKind.EXPENSE, draft.split(),
-                        draft.shares(), spentAt(draft), null, null)))
+                        draft.shares(), spentAt(draft), null, null, null)))
                 .flatMap(expenseRepository::save);
     }
 
@@ -55,10 +53,10 @@ public class ExpenseService {
     public Mono<Expense> update(String eventId, String expenseId, String requesterId, ExpenseDraft draft) {
         return requireMember(eventId, requesterId)
                 .flatMap(event -> requireEditable(event, eventId, expenseId, requesterId)
-                        .map(current -> requireMembers(event, new Expense(current.id(), eventId, draft.title(),
+                        .flatMap(current -> requireParties(event, new Expense(current.id(), eventId, draft.title(),
                                 draft.amountCents(), current.currency(), draft.paidBy(), current.createdBy(),
                                 current.kind(), draft.split(), draft.shares(), spentAt(draft), current.receiptKey(),
-                                draft.version() != null ? draft.version() : current.version()))))
+                                current.receiptAddedBy(), draft.version() != null ? draft.version() : current.version()))))
                 .flatMap(expenseRepository::save);
     }
 
@@ -69,17 +67,13 @@ public class ExpenseService {
                         .then(Mono.defer(() -> pictureService.discard(expense.receiptKey()))));
     }
 
-    /**
-     * Attaches a photo of the receipt, by the same people and on the same expenses as an edit.
-     * Stored first; if the expense cannot take the key, the object is removed again. The previous
-     * receipt goes last, best effort.
-     */
+    /** Attaches a receipt photo, recording who attached it; a key the expense cannot take is removed again. */
     public Mono<Expense> attachReceipt(String eventId, String expenseId, String requesterId, byte[] content) {
         return requireMember(eventId, requesterId)
                 .flatMap(event -> requireEditable(event, eventId, expenseId, requesterId))
                 .flatMap(current -> pictureService.store(Expense.newReceiptKey(eventId, current.id()), content,
                                 MediaProfile.RECEIPT)
-                        .flatMap(stored -> expenseRepository.setReceipt(eventId, current.id(), stored.key())
+                        .flatMap(stored -> expenseRepository.setReceipt(eventId, current.id(), stored.key(), requesterId)
                                 .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EXPENSE_NOT_FOUND)))
                                 .onErrorResume(error -> pictureService.discard(stored.key()).then(Mono.error(error))))
                         .flatMap(updated -> pictureService.discard(current.receiptKey()).thenReturn(updated)));
@@ -90,7 +84,7 @@ public class ExpenseService {
         return requireMember(eventId, requesterId)
                 .flatMap(event -> requireEditable(event, eventId, expenseId, requesterId))
                 .filter(current -> current.receiptKey() != null)
-                .flatMap(current -> expenseRepository.setReceipt(eventId, current.id(), null)
+                .flatMap(current -> expenseRepository.setReceipt(eventId, current.id(), null, null)
                         .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EXPENSE_NOT_FOUND)))
                         .flatMap(cleared -> pictureService.discard(current.receiptKey())));
     }
@@ -108,8 +102,8 @@ public class ExpenseService {
                     if (!requesterId.equals(fromUserId) && !requesterId.equals(toUserId)) {
                         return Mono.error(new EventException(EventErrorCode.EXPENSE_ACCESS_DENIED));
                     }
-                    return Mono.just(requireMembers(event, Expense.settlement(eventId, fromUserId, toUserId,
-                            amountCents, requesterId, clock.instant())));
+                    return requireParties(event, Expense.settlement(eventId, fromUserId, toUserId,
+                            amountCents, requesterId, clock.instant()));
                 })
                 .flatMap(expenseRepository::save);
     }
@@ -143,6 +137,24 @@ public class ExpenseService {
             throw new EventException(EventErrorCode.EXPENSE_INVALID);
         }
         return expense;
+    }
+
+    /** As {@link #requireMembers}, but a deleted account already in the event's expenses stays a valid party. */
+    private Mono<Expense> requireParties(Event event, Expense expense) {
+        Set<String> outsiders = expense.people().stream()
+                .filter(person -> !event.involves(person))
+                .collect(Collectors.toSet());
+        if (outsiders.isEmpty()) {
+            return Mono.just(expense);
+        }
+        return accountGuard.deletedAmong(outsiders)
+                .filter(deleted -> deleted.containsAll(outsiders))
+                .flatMap(deleted -> expenseRepository.findByEvent(event.getId())
+                        .flatMapIterable(Expense::people)
+                        .collect(Collectors.toSet()))
+                .filter(parties -> parties.containsAll(outsiders))
+                .map(parties -> expense)
+                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EXPENSE_INVALID)));
     }
 
     private Instant spentAt(ExpenseDraft draft) {

@@ -6,7 +6,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.Collection;
 
-/** An event's expenses. Every lookup names the event too, so an id from another event finds nothing. */
+/** An event's expenses; a lookup by expense id also names the event, so an id from another event finds nothing. */
 public interface ExpenseRepository {
 
     /** Newest first. */
@@ -21,9 +21,15 @@ public interface ExpenseRepository {
 
     Mono<Void> deleteByEvent(String eventId);
 
-    /** Sets the receipt key (null clears it) and bumps the version; empty when the event has no such expense. */
-    Mono<Expense> setReceipt(String eventId, String expenseId, String receiptKey);
+    /** Sets the receipt key and its attacher (nulls clear both) and bumps the version; empty without such an expense. */
+    Mono<Expense> setReceipt(String eventId, String expenseId, String receiptKey, String addedBy);
 
     /** The expenses of several events at once, in no particular order. */
     Flux<Expense> findByEvents(Collection<String> eventIds);
+
+    /** Every expense this user recorded whose receipt they attached, or whose attacher is unknown (legacy). */
+    Flux<Expense> findWithReceiptRecordedBy(String userId);
+
+    /** Detaches the receipt and bumps the version only while it is still {@code receiptKey}; whether it did. */
+    Mono<Boolean> clearReceipt(String eventId, String expenseId, String receiptKey);
 }
