@@ -10,6 +10,7 @@ import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.dtos.LeaveRequest;
 import com.calendar.events.application.dtos.LeaveResponse;
 import com.calendar.events.application.dtos.ParticipantsResponse;
+import com.calendar.events.application.dtos.ResponseRequest;
 import com.calendar.events.application.mappers.EventRestMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -59,6 +60,24 @@ public class EventController {
         String userId = jwt.getClaimAsString("businessId");
         return respond(Mono.fromCallable(() -> new GeoBox(south, west, north, east))
                 .flatMapMany(box -> eventService.getMapEvents(userId, box)));
+    }
+
+    /** A community's upcoming events, soonest first; 403 EVT-BUS-024 for anyone but its members. */
+    @GetMapping("/community/{communityId}")
+    public Flux<EventResponse> getCommunityEvents(@PathVariable String communityId, @AuthenticationPrincipal Jwt jwt) {
+        String userId = jwt.getClaimAsString("businessId");
+        return respond(eventService.getCommunityEvents(communityId, userId));
+    }
+
+    /**
+     * A member's answer to a community event, which they may change at any time; 409 EVT-BUS-023 for
+     * an event outside any community. YES takes part, MAYBE and NO do not.
+     */
+    @PutMapping("/{id}/response")
+    public Mono<EventResponse> respondTo(@PathVariable String id, @Valid @RequestBody ResponseRequest request,
+                                         @AuthenticationPrincipal Jwt jwt) {
+        String userId = jwt.getClaimAsString("businessId");
+        return respond(eventService.respond(id, userId, request.answer()));
     }
 
     @GetMapping("/{id}")

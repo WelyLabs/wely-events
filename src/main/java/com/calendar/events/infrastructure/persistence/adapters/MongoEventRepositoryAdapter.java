@@ -169,6 +169,34 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
+    public Flux<Event> findUpcomingInCommunity(String communityId, Instant now) {
+        return mongoRepository.findUpcomingInCommunity(communityId, now, now.minus(Event.DEFAULT_DURATION))
+                .map(mapper::toDomain);
+    }
+
+    /**
+     * Three conditional writes, of which at most one matches the event as it stands: the answer is
+     * a field named after the member, so it is checked like a voter id. Nothing modified is fine
+     * when the answer was already the one stored; the event is read back either way, and empty
+     * only when it is gone or the organizer tried to step out.
+     */
+    @Override
+    public Mono<Event> respond(String eventId, String userId, PollAnswer answer) {
+        if (!FIELD_SAFE_ID.matcher(userId).matches()) {
+            return Mono.error(new IllegalArgumentException("User id is not usable as a field name"));
+        }
+        Mono<Long> write = answer == PollAnswer.YES
+                ? mongoRepository.respondYes(eventId, userId)
+                : mongoRepository.respondAndLeave(eventId, userId, answer.name())
+                        .flatMap(modified -> modified > 0
+                                ? Mono.just(modified)
+                                : mongoRepository.respondFromOutside(eventId, userId, answer.name()));
+        return write.then(findById(eventId))
+                .filter(event -> event.isCommunityEvent()
+                        && (answer == PollAnswer.YES || !userId.equals(event.getOrganizerId())));
+    }
+
+    @Override
     public Flux<Event> findOpenPollsInvolving(String userId) {
         if (!FIELD_SAFE_ID.matcher(userId).matches()) {
             return Flux.error(new IllegalArgumentException("User id is not usable as a field name"));

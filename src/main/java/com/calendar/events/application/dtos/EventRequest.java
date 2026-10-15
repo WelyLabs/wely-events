@@ -30,8 +30,10 @@ public class EventRequest {
     @Valid
     private CoordinatesDto coordinates;
     private String description;
-    /** Optional: FRIENDS when left out. */
+    /** Optional: FRIENDS when left out. Ignored when the event is published in a community. */
     private Visibility visibility;
+    /** Optional: publishes the event in this community, for its members only; the caller must be one. */
+    private String communityId;
     /**
      * Optional: 2 to 5 dates to vote on instead of a fixed one. The event then sits on the
      * earliest, and startDate/endDate are overridden.

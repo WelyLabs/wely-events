@@ -1,5 +1,6 @@
 package com.calendar.events.domain.services;
 
+import com.calendar.events.domain.models.CommunityRole;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventDeletion;
 import com.calendar.events.domain.models.Expense;
@@ -9,12 +10,14 @@ import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Poll;
+import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.Share;
 import com.calendar.events.domain.models.SplitMode;
 import com.calendar.events.domain.models.StoredMedia;
 import com.calendar.events.domain.models.Visibility;
+import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -64,6 +67,9 @@ class EventServiceTest {
     @Mock
     private EventDeletionOutbox deletionOutbox;
 
+    @Mock
+    private CommunityDirectory communityDirectory;
+
     private EventService eventService;
 
     private static final Instant NOW = Instant.parse("2026-10-11T16:00:00Z");
@@ -72,7 +78,7 @@ class EventServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, socialGraph, expenseRepository, new PictureService(mediaStore),
-                deletionOutbox, Clock.fixed(NOW, ZoneOffset.UTC));
+                deletionOutbox, communityDirectory, Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(deletionOutbox.record(any())).thenReturn(Mono.empty());
     }
 
@@ -1002,5 +1008,198 @@ class EventServiceTest {
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(mediaStore, never()).delete(anyString());
+    }
+
+    // --- Communities ------------------------------------------------------------------------------
+
+    private static Event inCommunity(String organizer, String... participants) {
+        Event event = withParticipants(organizer, Visibility.COMMUNITY, participants);
+        event.setCommunityId("c1");
+        return event;
+    }
+
+    @Test
+    void createEvent_shouldPublishInACommunity_forAMember_withTheCommunitysVisibility() {
+        Event event = Event.builder().title("Balade").organizerId("alice").communityId("c1").visibility(Visibility.PUBLIC).build();
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.createEvent(event, null)).expectNext(event).verifyComplete();
+
+        assertThat(event.getVisibility()).isEqualTo(Visibility.COMMUNITY);
+        assertThat(event.getParticipantIds()).containsExactly("alice");
+        assertThat(event.getResponses()).isEmpty();
+    }
+
+    @Test
+    void createEvent_shouldRefuseANonMember_withoutSaving() {
+        Event event = Event.builder().title("Intrus").organizerId("alice").communityId("c1").build();
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.createEvent(event, null))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.COMMUNITY_MEMBERS_ONLY))
+                .verify();
+        verify(eventRepository, never()).save(any());
+    }
+
+    @Test
+    void createEvent_shouldNotLetTheClientChooseTheCommunityVisibility_withoutACommunity() {
+        Event event = Event.builder().title("Pirate").organizerId("alice").visibility(Visibility.COMMUNITY).build();
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        eventService.createEvent(event, null).block();
+
+        assertThat(event.getVisibility()).isEqualTo(Visibility.FRIENDS);
+    }
+
+    @Test
+    void getEventById_shouldShowACommunityEventToAMember() {
+        Event event = inCommunity("bob", "bob");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
+
+        StepVerifier.create(eventService.getEventById("1", "alice")).expectNext(event).verifyComplete();
+    }
+
+    @Test
+    void getEventById_shouldHideACommunityEventFromANonMember() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(inCommunity("bob", "bob")));
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.getEventById("1", "alice"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    @Test
+    void getEventById_shouldHideACommunityVisibilityWithoutACommunity() {
+        // Never written by the domain; read defensively all the same.
+        when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("bob", Visibility.COMMUNITY, "bob")));
+
+        StepVerifier.create(eventService.getEventById("1", "alice"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+        verify(communityDirectory, never()).roleOf(anyString(), anyString());
+    }
+
+    @Test
+    void getCommunityEvents_shouldListTheUpcomingOnes_forAMember() {
+        Event event = inCommunity("bob", "bob");
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
+        when(eventRepository.findUpcomingInCommunity("c1", NOW)).thenReturn(Flux.just(event));
+
+        StepVerifier.create(eventService.getCommunityEvents("c1", "alice")).expectNext(event).verifyComplete();
+    }
+
+    @Test
+    void getCommunityEvents_shouldBeMembersOnly() {
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.getCommunityEvents("c1", "alice"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.COMMUNITY_MEMBERS_ONLY))
+                .verify();
+        verify(eventRepository, never()).findUpcomingInCommunity(anyString(), any());
+    }
+
+    @Test
+    void deleteEvent_shouldLetACommunityAdminModerate() {
+        Event event = inCommunity("bob", "bob");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(communityDirectory.roleOf("c1", "admin")).thenReturn(Mono.just(CommunityRole.ADMIN));
+        when(eventRepository.deleteByOrganizer("1", "bob")).thenReturn(Mono.just(event));
+        when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
+        when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("1", "admin")).verifyComplete();
+        verify(eventRepository).deleteByOrganizer("1", "bob");
+    }
+
+    @Test
+    void deleteEvent_shouldRefuseAPlainMemberOfTheCommunity() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(inCommunity("bob", "bob")));
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
+
+        StepVerifier.create(eventService.deleteEvent("1", "alice"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .verify();
+        verify(eventRepository, never()).deleteByOrganizer(anyString(), anyString());
+    }
+
+    @Test
+    void deleteEvent_shouldRefuseSomeoneWhoLeftTheCommunity() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(inCommunity("bob", "bob")));
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.deleteEvent("1", "alice"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .verify();
+    }
+
+    @Test
+    void respond_shouldRecordAMembersAnswer() {
+        Event event = inCommunity("bob", "bob");
+        Event answered = inCommunity("bob", "bob", "alice");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
+        when(eventRepository.respond("1", "alice", PollAnswer.YES)).thenReturn(Mono.just(answered));
+
+        StepVerifier.create(eventService.respond("1", "alice", PollAnswer.YES)).expectNext(answered).verifyComplete();
+    }
+
+    @Test
+    void respond_shouldAnswerNotFound_whenTheEventWentMeanwhile() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(inCommunity("bob", "bob", "alice")));
+        when(eventRepository.respond("1", "alice", PollAnswer.NO)).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.respond("1", "alice", PollAnswer.NO))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
+
+    @Test
+    void respond_shouldRefuseAnEventOutsideAnyCommunity() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("bob", Visibility.PUBLIC, "bob")));
+
+        StepVerifier.create(eventService.respond("1", "alice", PollAnswer.YES))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NOT_A_COMMUNITY_EVENT))
+                .verify();
+        verify(eventRepository, never()).respond(anyString(), anyString(), any());
+    }
+
+    @Test
+    void respond_shouldLetTheOrganizerSayYes_whichChangesNothing() {
+        Event event = inCommunity("bob", "bob");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.respond("1", "bob", PollAnswer.YES)).expectNext(event).verifyComplete();
+        verify(eventRepository, never()).respond(anyString(), anyString(), any());
+    }
+
+    @Test
+    void respond_shouldSendTheOrganizerToAHandOver_forAnythingButYes() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(inCommunity("bob", "bob")));
+
+        StepVerifier.create(eventService.respond("1", "bob", PollAnswer.MAYBE))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .verify();
+    }
+
+    @Test
+    void toggleSubscription_shouldAnswerYes_toACommunityEventNotTakenPartIn() {
+        Event event = inCommunity("bob", "bob");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
+        when(eventRepository.respond("1", "alice", PollAnswer.YES)).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "alice")).expectNext(event).verifyComplete();
+    }
+
+    @Test
+    void toggleSubscription_shouldAnswerNo_toACommunityEventTakenPartIn() {
+        Event event = inCommunity("bob", "bob", "alice");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.respond("1", "alice", PollAnswer.NO)).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "alice")).expectNext(event).verifyComplete();
     }
 }

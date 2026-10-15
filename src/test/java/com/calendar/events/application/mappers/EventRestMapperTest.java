@@ -15,6 +15,7 @@ import com.calendar.events.application.dtos.CalendarEntryResponse;
 import com.calendar.events.application.dtos.CoordinatesDto;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.application.dtos.EventResponsesResponse;
 import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.Participants;
@@ -85,6 +86,33 @@ class EventRestMapperTest {
         EventRequest request = EventRequest.builder().title("t").visibility(Visibility.PUBLIC).build();
 
         assertEquals(Visibility.PUBLIC, mapper.toDomain(request).getVisibility());
+    }
+
+    @Test
+    void toResponse_shouldGiveACommunityEventsAnswers() {
+        Event domain = Event.builder().id("1").organizerId("org").communityId("c1").visibility(Visibility.COMMUNITY)
+                .participantIds(new java.util.ArrayList<>(List.of("org", "lea")))
+                .responses(new java.util.LinkedHashMap<>(java.util.Map.of("bob", PollAnswer.MAYBE))).build();
+
+        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE);
+
+        assertEquals("c1", response.getCommunityId());
+        assertEquals(new EventResponsesResponse(List.of("org", "lea"), List.of("bob"), List.of()), response.getResponses());
+    }
+
+    @Test
+    void toResponse_shouldGiveNoAnswers_forAnEventOutsideAnyCommunity() {
+        EventResponse response = mapper.toResponse(Event.builder().id("1").build(), SignedUrls.NONE);
+
+        assertNull(response.getResponses());
+        assertNull(response.getCommunityId());
+    }
+
+    @Test
+    void toDomain_shouldKeepTheCommunity_andNoAnswers() {
+        Event event = mapper.toDomain(EventRequest.builder().title("t").location("l").communityId("c1").build());
+
+        assertEquals("c1", event.getCommunityId());
     }
 
     @Test

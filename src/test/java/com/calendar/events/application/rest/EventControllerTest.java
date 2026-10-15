@@ -8,6 +8,8 @@ import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.dtos.SlotRequest;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.PollAnswer;
+import com.calendar.events.application.dtos.ResponseRequest;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.Participants;
@@ -390,6 +392,30 @@ class EventControllerTest {
 
         StepVerifier.create(withRealMapping().leave("1", new LeaveRequest("lea", false), jwt))
                 .expectNextMatches(response -> !response.deleted() && "https://media/a".equals(response.event().getImage()))
+                .verifyComplete();
+    }
+
+    @Test
+    void getCommunityEvents_shouldAskOnBehalfOfTheCaller() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        Event event = Event.builder().id("1").communityId("c1").build();
+        EventResponse response = EventResponse.builder().id("1").communityId("c1").build();
+        when(eventService.getCommunityEvents("c1", "user1")).thenReturn(Flux.just(event));
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+
+        StepVerifier.create(controller.getCommunityEvents("c1", jwt)).expectNext(response).verifyComplete();
+    }
+
+    @Test
+    void respondTo_shouldRecordTheCallersAnswer() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        Event event = Event.builder().id("1").communityId("c1").build();
+        EventResponse response = EventResponse.builder().id("1").build();
+        when(eventService.respond("1", "user1", PollAnswer.MAYBE)).thenReturn(Mono.just(event));
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+
+        StepVerifier.create(controller.respondTo("1", new ResponseRequest(PollAnswer.MAYBE), jwt))
+                .expectNext(response)
                 .verifyComplete();
     }
 }

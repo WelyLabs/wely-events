@@ -6,6 +6,7 @@ import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.Visibility;
+import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -64,7 +65,8 @@ class PollServiceTest {
     @BeforeEach
     void setUp() {
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
-                new PictureService(mediaStore), mock(EventDeletionOutbox.class), Clock.fixed(NOW, ZoneOffset.UTC));
+                new PictureService(mediaStore), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
+                Clock.fixed(NOW, ZoneOffset.UTC));
         pollService = new PollService(eventRepository, eventService, pollUpdates);
     }
 

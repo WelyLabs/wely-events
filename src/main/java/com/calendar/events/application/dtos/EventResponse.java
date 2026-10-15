@@ -29,4 +29,8 @@ public class EventResponse {
     private Visibility visibility;
     /** Null unless the event's date was put to a poll. */
     private PollResponse poll;
+    /** The community the event was published in, or null. */
+    private String communityId;
+    /** Who answered what, for an event published in a community only; null otherwise. */
+    private EventResponsesResponse responses;
 }

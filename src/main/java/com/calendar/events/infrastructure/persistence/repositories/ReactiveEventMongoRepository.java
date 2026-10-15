@@ -157,6 +157,30 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
             ] }""", count = true)
     Mono<Long> countPastInvolvingBoth(String userId, String otherId, Instant now, Instant startedBefore);
 
+    /** A community's events not over yet, as {@link #findOccupying} counts it: without an end, one hour. */
+    @Query(value = """
+            { communityId: ?0,
+              $or: [ { endDate: { $gt: ?1 } }, { endDate: null, startDate: { $gt: ?2 } } ] }""",
+            sort = "{ startDate: 1 }")
+    Flux<EventEntity> findUpcomingInCommunity(String communityId, Instant endingAfter, Instant startedAfter);
+
+    // A YES is taking part: the answer field goes, the participant comes, and the group follows in
+    // the same update, as for a subscription. Matching on the absent participant keeps a repeated
+    // YES from bumping the version.
+    @Query("{ '_id': ?0, 'communityId': { $ne: null }, 'participantIds': { $ne: ?1 } }")
+    @Update("{ '$unset': { 'responses.?1': '' }, '$addToSet': { 'participantIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
+    Mono<Long> respondYes(String eventId, String userId);
+
+    // MAYBE or NO from someone taking part: out of the participants, answer kept, group told.
+    @Query("{ '_id': ?0, 'communityId': { $ne: null }, 'participantIds': ?1, 'organizerId': { $ne: ?1 } }")
+    @Update("{ '$set': { 'responses.?1': ?2, 'groupSynced': false }, '$pull': { 'participantIds': ?1 }, '$inc': { 'groupVersion': 1 } }")
+    Mono<Long> respondAndLeave(String eventId, String userId, String answer);
+
+    // MAYBE or NO from someone not taking part: only the answer changes, the group has nothing to hear.
+    @Query("{ '_id': ?0, 'communityId': { $ne: null }, 'participantIds': { $ne: ?1 } }")
+    @Update("{ '$set': { 'responses.?1': ?2 } }")
+    Mono<Long> respondFromOutside(String eventId, String userId, String answer);
+
     // The voter's id is a field name: one ballot is one $set, and two voters never touch the same field.
     @Query("{ '_id': ?0, 'poll.status': 'OPEN' }")
     @Update("{ '$set': { 'poll.ballots.?1': ?2 } }")
