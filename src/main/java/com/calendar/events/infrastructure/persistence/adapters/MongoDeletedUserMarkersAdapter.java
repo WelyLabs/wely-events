@@ -59,6 +59,17 @@ public class MongoDeletedUserMarkersAdapter implements DeletedUserMarkers {
     }
 
     @Override
+    public Mono<Set<String>> erasedAmong(Collection<String> userIds) {
+        if (userIds.isEmpty()) {
+            return Mono.just(Set.of());
+        }
+        return mongoRepository.findErasedAmong(userIds)
+                .map(DeletedUserEntity::getId)
+                .collect(Collectors.toUnmodifiableSet())
+                .onErrorMap(DataAccessException.class, error -> unavailable("read", error));
+    }
+
+    @Override
     public Mono<Void> markErased(String userId, Instant erasedAt) {
         return mongoRepository.markErased(userId, erasedAt)
                 .then()

@@ -20,4 +20,7 @@ public interface DeletedUserMarkers {
 
     /** Records that the erasure completed, keeping the latest time. */
     Mono<Void> markErased(String userId, Instant erasedAt);
+
+    /** The ones among {@code userIds} whose erasure completed; no query for an empty input. */
+    Mono<Set<String>> erasedAmong(Collection<String> userIds);
 }

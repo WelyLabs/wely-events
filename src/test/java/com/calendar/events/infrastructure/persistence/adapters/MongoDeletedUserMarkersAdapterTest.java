@@ -132,6 +132,31 @@ class MongoDeletedUserMarkersAdapterTest {
     }
 
     @Test
+    void erasedAmong_shouldReturnOnlyErasedIds() {
+        DeletedUserEntity erased = new DeletedUserEntity();
+        erased.setId("u1");
+        when(mongoRepository.findErasedAmong(List.of("u1", "u2"))).thenReturn(Flux.just(erased));
+
+        StepVerifier.create(adapter.erasedAmong(List.of("u1", "u2"))).expectNext(Set.of("u1")).verifyComplete();
+    }
+
+    @Test
+    void erasedAmong_shouldNotQuery_whenGivenNoIds() {
+        StepVerifier.create(adapter.erasedAmong(List.of())).expectNext(Set.of()).verifyComplete();
+        verify(mongoRepository, never()).findErasedAmong(any());
+    }
+
+    @Test
+    void erasedAmong_shouldTranslateAStoreFailure() {
+        when(mongoRepository.findErasedAmong(List.of("u1")))
+                .thenReturn(Flux.error(new DataAccessResourceFailureException("down")));
+
+        StepVerifier.create(adapter.erasedAmong(List.of("u1")))
+                .expectErrorMatches(MongoDeletedUserMarkersAdapterTest::storeUnavailable)
+                .verify();
+    }
+
+    @Test
     void markErased_shouldSetTheErasureTime() {
         when(mongoRepository.markErased("u1", LATER)).thenReturn(Mono.just(1L));
 

@@ -179,7 +179,12 @@ public enum EventErrorCode {
             "The picture could not be stored; try again shortly.",
             HttpStatus.BAD_GATEWAY),
 
-    // EVT-TEC-004 is reserved for the wely-users client of the reconciliation.
+    /** Raised by the reconciliation in the background: no request waits on it, the next pass retries. */
+    USERS_UNAVAILABLE(
+            "EVT-TEC-004",
+            "Users service unavailable",
+            "Deleted accounts could not be listed from wely-users; the next reconciliation pass retries.",
+            HttpStatus.BAD_GATEWAY),
 
     STORE_UNAVAILABLE(
             "EVT-TEC-005",
