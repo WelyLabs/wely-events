@@ -18,6 +18,10 @@ public interface ReactiveDeletedUserMongoRepository extends ReactiveMongoReposit
     @Query(value = "{ '_id': { $in: ?0 } }", fields = "{ '_id': 1 }")
     Flux<DeletedUserEntity> findDeletedAmong(Collection<String> userIds);
 
+    /** The markers among these ids whose erasure completed, by _id in one query; only the id is read. */
+    @Query(value = "{ '_id': { $in: ?0 }, 'erasedAt': { $ne: null } }", fields = "{ '_id': 1 }")
+    Flux<DeletedUserEntity> findErasedAmong(Collection<String> userIds);
+
     // $max keeps the latest erasure time, whichever run finishes last.
     @Query("{ '_id': ?0 }")
     @Update("{ '$max': { 'erasedAt': ?1 } }")

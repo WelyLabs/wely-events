@@ -233,6 +233,10 @@ Supprimer un événement (par `DELETE` ou par le dernier départ) emporte son do
 - **After the marker**, every write (`POST`, `PUT`, `PATCH`, `DELETE`) carried by the deleted account's still-valid token answers `EVT-BUS-025` (410), from a filter in the security chain; reads go through. The poll stream cannot be reopened either (`EVT-BUS-025`), and a stream checks the marker again once it listens, so an erasure landing between the check and the subscription still ends it. A "Yes" vote that outlived the erasure never subscribes the account when the date is fixed.
 - **Demo accounts** (`ACCOUNT_DELETION_PROTECTED_USER_IDS`) are never erased, and never made successor automatically, since anyone can sign in to them.
 
+### Reconciliation
+
+Kafka is not the only path to an erasure. `DeletedUsersReconciliationLoop` pages wely-users' tombstones (`GET /user-service/internal/deleted-users`, 500 per page, header `X-Internal-Secret` from `DELETED_USERS_READER_SECRET`), on the wely-users Service directly: the gateway answers 404 for `/api/v1/*/internal/**`. The first pass runs 1 min after startup; the next one 24 h after a clean pass, or 1 h after a pass that failed or counted a failed erasure. A pass reads the next page only once the current one is reconciled, so a failed read never cuts an erasure short; a pass still running after 24 h (a hung query) is cut and retried 1 h later. Each pass runs the same `AccountErasureService` for every tombstone whose marker is missing or has no `erasedAt`, and for every tombstone deleted less than 48 h ago, even if erased, which sweeps a write that raced the marker. The tombstone's `deletedAt` is passed on, so the past/upcoming split is the one Kafka would have given. This repairs a `USER_DELETED` lost by a crash, skipped after its retries, or expired from the topic before it was read. Each pass logs one INFO line with its counts, and a failed erasure logs only the `businessId`. With a blank `USERS_API_URL` or `DELETED_USERS_READER_SECRET`, every pass fails without any call and the service runs on; `ACCOUNT_ERASURE_RECONCILIATION_ENABLED=false` turns the loop off.
+
 ---
 
 ## Photos : couvertures et justificatifs
@@ -350,6 +354,7 @@ La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /soci
 | `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
 | `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
 | `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |
+| `EVT-TEC-004` | 502 | `wely-users` unreachable, or refusing the deleted-accounts listing (background only, retried at the next pass) |
 | `EVT-TEC-005` | 502 | Deleted-accounts register cannot be read or written |
 | `EVT-TEC-006` | 503 | Account erasure incomplete: an event kept changing (background only, retried) |
 | `EVT-VAL-001` | 400 | Validation du corps de requête, détail par champ |
@@ -397,6 +402,9 @@ client peut tester et un `timestamp` :
 | `MEDIA_API_SECRET` | Secret partagé envoyé dans `X-Internal-Secret`. Vide par défaut : le service démarre, mais les envois répondent `EVT-TEC-003` et les images sortent sans URL |
 | `USER_DELETED_CONSUMER_ENABLED` | Consumes `USER_DELETED`, `true` by default |
 | `ACCOUNT_DELETION_PROTECTED_USER_IDS` | Comma-separated `businessId`s of the demo accounts, never erased nor made successor. Empty by default |
+| `USERS_API_URL` | In-cluster URL of wely-users, read by the reconciliation (`http://localhost:8082` in the `dev` profile). Empty by default: every pass then fails without a call |
+| `DELETED_USERS_READER_SECRET` | Sent as `X-Internal-Secret` to wely-users' deleted-accounts listing. Empty by default: every pass then fails without a call |
+| `ACCOUNT_ERASURE_RECONCILIATION_ENABLED` | Runs the reconciliation loop, `true` by default |
 
 ---
 

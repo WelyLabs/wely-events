@@ -2,6 +2,7 @@ package com.calendar.events.configuration;
 
 import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
+import com.calendar.events.domain.ports.DeletedUsersSource;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -20,6 +21,8 @@ import com.calendar.events.domain.services.PollService;
 import com.calendar.events.domain.services.ProfileSummaryService;
 import com.calendar.events.domain.services.ScheduleService;
 import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -127,6 +130,12 @@ class EventApplicationConfigTest {
                 mock(PollUpdates.class), "89a380b8-f66a-44d0-b9d9-616241080430");
 
         assertThat(service).isNotNull();
+    }
+
+    @Test
+    void accountReconciliationService_shouldBuildTheDomainServiceFromItsPorts() {
+        assertThat(config.accountReconciliationService(mock(DeletedUsersSource.class), mock(DeletedUserMarkers.class),
+                mock(AccountErasureService.class), 500, Duration.ofHours(48))).isNotNull();
     }
 
     @Test

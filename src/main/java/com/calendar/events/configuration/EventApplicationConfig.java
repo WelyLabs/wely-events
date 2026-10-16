@@ -2,6 +2,7 @@ package com.calendar.events.configuration;
 
 import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
+import com.calendar.events.domain.ports.DeletedUsersSource;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
@@ -10,6 +11,7 @@ import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.domain.services.AccountErasureService;
 import com.calendar.events.domain.services.AccountGuard;
+import com.calendar.events.domain.services.AccountReconciliationService;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
@@ -25,6 +27,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Locale;
@@ -73,6 +76,16 @@ public class EventApplicationConfig {
         log.info("Account erasure: {} protected account(s)", protectedIds.size());
         return new AccountErasureService(eventRepository, eventService, expenseRepository, mediaStore, markers,
                 pollUpdates, protectedIds, Clock.systemUTC());
+    }
+
+    @Bean
+    public AccountReconciliationService accountReconciliationService(
+            DeletedUsersSource deletedUsersSource, DeletedUserMarkers markers,
+            AccountErasureService accountErasureService,
+            @Value("${app.account-erasure.reconciliation.page-size:500}") int pageSize,
+            @Value("${app.account-erasure.reconciliation.recent-window:48h}") Duration recentWindow) {
+        return new AccountReconciliationService(deletedUsersSource, markers, accountErasureService, Clock.systemUTC(),
+                pageSize, recentWindow);
     }
 
     /** A comma-separated list of ids, trimmed and lowercased like the businessIds in tokens; blanks dropped. */

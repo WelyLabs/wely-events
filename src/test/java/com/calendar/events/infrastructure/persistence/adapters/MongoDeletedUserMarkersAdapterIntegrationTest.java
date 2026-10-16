@@ -88,6 +88,19 @@ class MongoDeletedUserMarkersAdapterIntegrationTest {
     }
 
     @Test
+    void erasedAmong_shouldFindOnlyTheMarkersWhoseErasureCompleted() {
+        adapter.markDeleted("erased", FIRST).block();
+        adapter.markErased("erased", LATER).block();
+        adapter.markDeleted("in-flight", FIRST).block();
+        adapter.markDeleted("not-asked", FIRST).block();
+        adapter.markErased("not-asked", LATER).block();
+
+        StepVerifier.create(adapter.erasedAmong(List.of("erased", "in-flight", "unknown")))
+                .expectNext(Set.of("erased"))
+                .verifyComplete();
+    }
+
+    @Test
     void isDeleted_shouldAnswerFromTheMarker() {
         adapter.markDeleted("u1", FIRST).block();
 
