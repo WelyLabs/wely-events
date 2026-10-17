@@ -54,7 +54,7 @@ public class FriendOverviewService {
                 eventRepository.findUpcomingInvolvingBoth(viewerId, friendId, now, UPCOMING_TOGETHER_SIZE).collectList(),
                 eventRepository.findPastInvolvingBoth(viewerId, friendId, now, MEMORIES_TOGETHER_SIZE).collectList(),
                 // Read soonest first and stopped at the fifth match: the rest of the friend's agenda is never loaded.
-                eventRepository.findUpcomingInvolving(friendId, now)
+                eventRepository.findUpcomingInvolving(friendId, viewerId, now)
                         .filter(event -> !event.involves(viewerId) && event.isVisibleTo(viewerId, viewerFriends))
                         .take(FRIEND_UPCOMING_SIZE)
                         .collectList())

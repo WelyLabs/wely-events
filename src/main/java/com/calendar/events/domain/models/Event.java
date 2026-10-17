@@ -8,6 +8,10 @@ import lombok.Setter;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.MonthDay;
+import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -53,6 +57,24 @@ public class Event {
      */
     @Builder.Default
     private Map<String, PollAnswer> responses = new LinkedHashMap<>();
+    /** Whole days: start at 00:00Z of the first day, end at 00:00Z of the day after the last. */
+    private boolean allDay;
+    /** Null for events stored before kinds existed; read through {@link #effectiveKind()}. */
+    private EventKind kind;
+    /** Whose birthday a BIRTHDAY or a SURPRISE celebrates; null on a standard event. */
+    private String honoreeId;
+    /** Users every query keeps the event from, as if it did not exist: a surprise's honoree. */
+    @Builder.Default
+    private List<String> hiddenFrom = new ArrayList<>();
+    /** A BIRTHDAY's day and month; its dates are a placeholder year, never the year of birth. */
+    private Integer birthMonth;
+    private Integer birthDay;
+    /** The name a BIRTHDAY's or a SURPRISE's notices and occurrences show. */
+    private String honoreeName;
+    /** A SURPRISE's organizer as named in its notices, from the creator's token. */
+    private String organizerName;
+    /** A SURPRISE's {@code honoreeId:year} of the birthday it celebrates: unique, one surprise per birthday. */
+    private String occurrenceKey;
 
     /** When the event stops keeping its people busy. */
     public Instant effectiveEnd() {
@@ -62,6 +84,46 @@ public class Event {
     /** Whether the date is still being voted on: then startDate/endDate are only the earliest proposal. */
     public boolean isPolling() {
         return poll != null && poll.isOpen();
+    }
+
+    public EventKind effectiveKind() {
+        return kind != null ? kind : EventKind.STANDARD;
+    }
+
+    public boolean isBirthday() {
+        return effectiveKind() == EventKind.BIRTHDAY;
+    }
+
+    public boolean isSurprise() {
+        return effectiveKind() == EventKind.SURPRISE;
+    }
+
+    public boolean isHiddenFrom(String userId) {
+        return hiddenFrom != null && hiddenFrom.contains(userId);
+    }
+
+    /** A BIRTHDAY's day and month; null on any other event. */
+    public MonthDay birthMonthDay() {
+        return birthMonth == null || birthDay == null ? null : MonthDay.of(birthMonth, birthDay);
+    }
+
+    /** The year of the birthday nearest to the event's start, by UTC date: the birthday a surprise celebrates. */
+    public static int nearestOccurrenceYear(MonthDay birthday, Instant start) {
+        LocalDate day = LocalDate.ofInstant(start, ZoneOffset.UTC);
+        int best = day.getYear();
+        long bestGap = Long.MAX_VALUE;
+        for (int year = day.getYear() - 1; year <= day.getYear() + 1; year++) {
+            long gap = Math.abs(ChronoUnit.DAYS.between(day, birthday.atYear(year)));
+            if (gap < bestGap) {
+                bestGap = gap;
+                best = year;
+            }
+        }
+        return best;
+    }
+
+    public static String occurrenceKeyOf(String honoreeId, int year) {
+        return honoreeId + ":" + year;
     }
 
     public boolean isCommunityEvent() {
@@ -90,12 +152,20 @@ public class Event {
     }
 
     /**
-     * Whether the user may see this event, given who the user's friends are. Those taking part
-     * always can; otherwise it depends on the visibility.
+     * Whether the user may see this event, given who the user's friends are. Never whoever it is
+     * hidden from; those taking part always can; a surprise, the honoree's friends; otherwise it
+     * depends on the visibility.
      */
     public boolean isVisibleTo(String userId, Set<String> friendIdsOfUser) {
+        if (isHiddenFrom(userId)) {
+            return false;
+        }
         if (involves(userId)) {
             return true;
+        }
+        if (isSurprise()) {
+            // The honoree's friends, whoever organizes it.
+            return friendIdsOfUser.contains(honoreeId);
         }
         return switch (effectiveVisibility()) {
             case PUBLIC -> true;

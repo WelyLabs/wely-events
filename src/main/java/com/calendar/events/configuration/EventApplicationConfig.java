@@ -1,6 +1,8 @@
 package com.calendar.events.configuration;
 
+import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
 import com.calendar.events.domain.ports.CalendarLinks;
+import com.calendar.events.domain.ports.FriendLists;
 import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.DeletedUsersSource;
@@ -13,6 +15,10 @@ import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.domain.services.AccountErasureService;
 import com.calendar.events.domain.services.AccountGuard;
 import com.calendar.events.domain.services.AccountReconciliationService;
+import com.calendar.events.domain.services.BirthdayReminderService;
+import com.calendar.events.domain.services.BirthdayService;
+import com.calendar.events.domain.services.FriendDirectory;
+import com.calendar.events.domain.services.SurpriseService;
 import com.calendar.events.domain.services.CalendarExportService;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
@@ -43,6 +49,12 @@ public class EventApplicationConfig {
 
     /** Wely's users are in France: "this year" and "this month" on a profile start at midnight there. */
     static final ZoneId USERS_ZONE = ZoneId.of("Europe/Paris");
+
+    /** The time the birthday features read, a bean so tests can fix it. */
+    @Bean
+    public Clock clock() {
+        return Clock.systemUTC();
+    }
 
     @Bean
     public PictureService pictureService(MediaStore mediaStore) {
@@ -78,12 +90,13 @@ public class EventApplicationConfig {
     /** {@code protectedUserIds}: the demo accounts, comma-separated, never erased nor handed an event. */
     @Bean
     public AccountErasureService accountErasureService(EventRepository eventRepository, EventService eventService,
+                                                       BirthdayService birthdayService,
                                                        ExpenseRepository expenseRepository, MediaStore mediaStore,
                                                        DeletedUserMarkers markers, PollUpdates pollUpdates,
                                                        @Value("${app.account-deletion.protected-user-ids:}") String protectedUserIds) {
         Set<String> protectedIds = parseIds(protectedUserIds);
         log.info("Account erasure: {} protected account(s)", protectedIds.size());
-        return new AccountErasureService(eventRepository, eventService, expenseRepository, mediaStore, markers,
+        return new AccountErasureService(eventRepository, eventService, birthdayService, expenseRepository, mediaStore, markers,
                 pollUpdates, protectedIds, Clock.systemUTC());
     }
 
@@ -138,5 +151,35 @@ public class EventApplicationConfig {
     @Bean
     public ProfileSummaryService profileSummaryService(EventRepository eventRepository, ExpenseRepository expenseRepository) {
         return new ProfileSummaryService(eventRepository, expenseRepository, Clock.systemUTC(), USERS_ZONE);
+    }
+
+    @Bean
+    public FriendDirectory friendDirectory(SocialGraph socialGraph, FriendLists friendLists, Clock clock) {
+        return new FriendDirectory(socialGraph, friendLists, clock);
+    }
+
+    @Bean
+    public BirthdayService birthdayService(EventRepository eventRepository, EventService eventService,
+                                           FriendDirectory friendDirectory, BirthdayNoticeOutbox noticeOutbox,
+                                           AccountGuard accountGuard) {
+        return new BirthdayService(eventRepository, eventService, friendDirectory, noticeOutbox, accountGuard);
+    }
+
+    @Bean
+    public SurpriseService surpriseService(EventService eventService, EventRepository eventRepository,
+                                           SocialGraph socialGraph, FriendDirectory friendDirectory,
+                                           BirthdayNoticeOutbox noticeOutbox, Clock clock) {
+        return new SurpriseService(eventService, eventRepository, socialGraph, friendDirectory, noticeOutbox, clock,
+                USERS_ZONE);
+    }
+
+    /** Days until a birthday count in France, where Wely's users are, as the 08:00 run does. */
+    @Bean
+    public BirthdayReminderService birthdayReminderService(EventRepository eventRepository,
+                                                           FriendDirectory friendDirectory,
+                                                           BirthdayNoticeOutbox noticeOutbox,
+                                                           AccountGuard accountGuard, Clock clock) {
+        return new BirthdayReminderService(eventRepository, friendDirectory, noticeOutbox, accountGuard, clock,
+                USERS_ZONE);
     }
 }

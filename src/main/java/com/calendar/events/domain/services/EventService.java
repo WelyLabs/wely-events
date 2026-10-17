@@ -5,6 +5,7 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.EventCover;
 import com.calendar.events.domain.models.EventDeletion;
+import com.calendar.events.domain.models.EventKind;
 import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.LeaveOutcome;
@@ -26,6 +27,10 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -55,7 +60,7 @@ public class EventService {
 
     /** An event the viewer may not see answers as missing: its existence is not theirs to know. */
     public Mono<Event> getEventById(String id, String viewerId) {
-        return eventRepository.findById(id)
+        return eventRepository.findShownTo(id, viewerId)
                 .flatMap(event -> requireVisible(event, viewerId))
                 .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
     }
@@ -77,8 +82,21 @@ public class EventService {
     /**
      * As {@link #createEvent(Event)}; with candidate slots (null for none), the event opens a date
      * poll on them and sits on the earliest until the organizer fixes one. The organizer always takes part.
+     * A standard event only: a surprise goes through {@link SurpriseService}, a birthday through
+     * {@link BirthdayService}.
      */
     public Mono<Event> createEvent(Event event, List<PollSlot> candidateSlots) {
+        if (event.getKind() != null && event.getKind() != EventKind.STANDARD) {
+            return Mono.error(new EventException(EventErrorCode.EVENT_KIND_INVALID));
+        }
+        event.setKind(EventKind.STANDARD);
+        event.setHonoreeId(null);
+        event.setHiddenFrom(new ArrayList<>());
+        event.setBirthMonth(null);
+        event.setBirthDay(null);
+        event.setHonoreeName(null);
+        event.setOrganizerName(null);
+        event.setOccurrenceKey(null);
         if (event.getCommunityId() != null) {
             // Published in a community: by one of its members, for its members only.
             return requireMember(event.getCommunityId(), event.getOrganizerId())
@@ -95,6 +113,14 @@ public class EventService {
     }
 
     private Mono<Event> createOwnEvent(Event event, List<PollSlot> candidateSlots) {
+        return prepare(event, candidateSlots).flatMap(eventRepository::save);
+    }
+
+    /** A new event as it is stored: no cover, the organizer among the participants, the poll opened, all-day checked. */
+    Mono<Event> prepare(Event event, List<PollSlot> candidateSlots) {
+        if (!normalizeAllDay(event, candidateSlots)) {
+            return Mono.error(new EventException(EventErrorCode.ALL_DAY_INVALID));
+        }
         return Mono.fromCallable(() -> {
             event.setImage(null);
             List<String> participantIds = new ArrayList<>(event.getParticipantIds() != null ? event.getParticipantIds() : List.of());
@@ -114,7 +140,26 @@ public class EventService {
                 event.setEndDate(poll.earliest().end());
             }
             return event;
-        }).flatMap(eventRepository::save);
+        });
+    }
+
+    /** Whole days from midnight to midnight UTC; a missing end makes it one day. False when not whole days. */
+    private static boolean normalizeAllDay(Event event, List<PollSlot> candidateSlots) {
+        if (!event.isAllDay()) {
+            return true;
+        }
+        Instant start = event.getStartDate();
+        if (candidateSlots != null || start == null || !isMidnightUtc(start)) {
+            return false;
+        }
+        if (event.getEndDate() == null) {
+            event.setEndDate(start.plus(Duration.ofDays(1)));
+        }
+        return isMidnightUtc(event.getEndDate()) && event.getEndDate().isAfter(start);
+    }
+
+    private static boolean isMidnightUtc(Instant instant) {
+        return instant.atOffset(ZoneOffset.UTC).toLocalTime().equals(LocalTime.MIDNIGHT);
     }
 
     /**
@@ -124,7 +169,7 @@ public class EventService {
      * rather than in the controller so the rule holds for every caller.
      */
     public Mono<Void> deleteEvent(String id, String requesterId) {
-        return eventRepository.findById(id)
+        return eventRepository.findShownTo(id, requesterId)
                 .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
                 .flatMap(event -> mayDelete(event, requesterId)
                         .filter(Boolean::booleanValue)
@@ -243,12 +288,17 @@ public class EventService {
     /**
      * Rewrites what the event is, for its organizer only: title, place, description, and who may see
      * it — the date moves through {@link ScheduleService}. A community event stays its community's,
-     * and COMMUNITY is never chosen, as at creation. A new title renames the event's group in wely-chat.
+     * and COMMUNITY is never chosen, as at creation. A surprise stays for the honoree's friends and may
+     * have no place yet; any other event needs one. A new title renames the event's group in wely-chat.
      */
     public Mono<Event> updateDetails(String id, String requesterId, EventDetails details) {
         return requireOrganizer(id, requesterId)
                 .flatMap(event -> {
+                    if (!event.isSurprise() && (details.location() == null || details.location().isBlank())) {
+                        return Mono.error(new EventException(EventErrorCode.LOCATION_REQUIRED));
+                    }
                     Visibility visibility = event.isCommunityEvent() ? Visibility.COMMUNITY
+                            : event.isSurprise() ? Visibility.FRIENDS
                             : details.visibility() == null || details.visibility() == Visibility.COMMUNITY
                             ? event.effectiveVisibility()
                             : details.visibility();
@@ -275,7 +325,7 @@ public class EventService {
      * {@link #leave}, which picks a successor.
      */
     public Mono<Event> toggleSubscription(String id, String userId) {
-        return eventRepository.findById(id)
+        return eventRepository.findShownTo(id, userId)
                 .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)))
                 .flatMap(event -> event.isCommunityEvent()
                         // In a community, joining is answering yes, and leaving answering no.
@@ -322,7 +372,7 @@ public class EventService {
     /** What a community publishes and has not happened yet, soonest first; for its members only. */
     public Flux<Event> getCommunityEvents(String communityId, String userId) {
         return requireMember(communityId, userId)
-                .thenMany(Flux.defer(() -> eventRepository.findUpcomingInCommunity(communityId, clock.instant())));
+                .thenMany(Flux.defer(() -> eventRepository.findUpcomingInCommunity(communityId, userId, clock.instant())));
     }
 
     private Mono<CommunityRole> requireMember(String communityId, String userId) {

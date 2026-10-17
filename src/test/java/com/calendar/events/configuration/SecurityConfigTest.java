@@ -110,7 +110,7 @@ class SecurityConfigTest {
                 .expectBody()
                 .jsonPath("$.code").isEqualTo("EVT-BUS-025")
                 .jsonPath("$.instance").isEqualTo("/events-service/events/e1/subscribe");
-        verify(eventRepository, never()).findById(any(String.class));
+        verify(eventRepository, never()).findShownTo(any(String.class), any(String.class));
     }
 
     @Test
@@ -128,7 +128,7 @@ class SecurityConfigTest {
     @Test
     void springSecurityFilterChain_shouldLetWritesThrough_forALiveAccount() {
         when(markers.isDeleted("lea")).thenReturn(Mono.just(false));
-        when(eventRepository.findById("e1")).thenReturn(Mono.empty());
+        when(eventRepository.findShownTo("e1", "lea")).thenReturn(Mono.empty());
 
         client().mutateWith(mockJwt().jwt(jwt -> jwt.claim("businessId", "lea")))
                 .post().uri("/events-service/events/e1/subscribe")

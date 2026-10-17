@@ -29,17 +29,18 @@ final class CalendarDisclosure {
         }
         // A community's events are its members' business, whatever the closeness.
         if (event.effectiveVisibility() == Visibility.PRIVATE || event.effectiveVisibility() == Visibility.COMMUNITY) {
-            return CalendarEntry.busy(event.getStartDate(), event.effectiveEnd());
+            return CalendarEntry.busy(event.getStartDate(), event.effectiveEnd(), event.isAllDay());
         }
         return switch (closeness) {
-            case FRIEND -> CalendarEntry.busy(event.getStartDate(), event.effectiveEnd());
-            case CLOSE -> new CalendarEntry(event.getStartDate(), event.effectiveEnd(), null, event.getTitle(), null, null);
+            case FRIEND -> CalendarEntry.busy(event.getStartDate(), event.effectiveEnd(), event.isAllDay());
+            case CLOSE -> new CalendarEntry(event.getStartDate(), event.effectiveEnd(), null, event.getTitle(), null, null,
+                    event.isAllDay());
             case INTIMATE -> full(event);
         };
     }
 
     private static CalendarEntry full(Event event) {
         return new CalendarEntry(event.getStartDate(), event.effectiveEnd(), event.getId(),
-                event.getTitle(), event.getLocation(), event.getDescription());
+                event.getTitle(), event.getLocation(), event.getDescription(), event.isAllDay());
     }
 }

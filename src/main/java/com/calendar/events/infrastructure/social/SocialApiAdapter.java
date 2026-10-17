@@ -14,6 +14,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -28,6 +29,7 @@ public class SocialApiAdapter implements SocialGraph {
 
     static final String FRIENDS_PATH = "/social-service/users?friendshipStatus=FRIENDS";
     static final String FRIENDSHIP_PATH = "/social-service/relationships/{friendId}";
+    static final String FRIENDSHIPS_PATH = "/social-service/relationships";
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
     private final WebClient webClient;
@@ -73,6 +75,22 @@ public class SocialApiAdapter implements SocialGraph {
                         error -> unavailable("the friendship between " + userId + " and " + friendId, error));
     }
 
+    /** Every friendship of the token's owner, with its closeness; absent counts as FRIEND, as wely-social reads it. */
+    @Override
+    public Mono<Map<String, Closeness>> friendsOf(String userId) {
+        return bearerToken()
+                .flatMap(token -> webClient.get()
+                        .uri(FRIENDSHIPS_PATH)
+                        .header(HttpHeaders.AUTHORIZATION, token)
+                        .retrieve()
+                        .bodyToFlux(SocialFriendSummaryResponse.class)
+                        .collectMap(SocialFriendSummaryResponse::userId,
+                                friend -> friend.closeness() == null ? Closeness.FRIEND : Closeness.valueOf(friend.closeness()))
+                        .timeout(TIMEOUT))
+                .onErrorMap(error -> !(error instanceof EventException),
+                        error -> unavailable("the friendships of " + userId, error));
+    }
+
     /** The caller's own token, relayed: no token means no way to ask, so refuse rather than skip the check. */
     private static Mono<String> bearerToken() {
         return ReactiveSecurityContextHolder.getContext()
@@ -92,5 +110,9 @@ public class SocialApiAdapter implements SocialGraph {
 
     /** The only field this service needs from a wely-social friendship. */
     record SocialFriendshipResponse(String closeness) {
+    }
+
+    /** The fields this service needs from wely-social's friendship list. */
+    record SocialFriendSummaryResponse(String userId, String closeness) {
     }
 }

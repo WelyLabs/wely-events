@@ -63,7 +63,7 @@ class FriendCalendarServiceTest {
     void getFriendCalendar_shouldDiscloseEachEventAndSortThemByStart() {
         when(socialGraph.closenessBetween("alice", "bob")).thenReturn(Mono.just(Closeness.FRIEND));
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of("bob")));
-        when(eventRepository.findOccupying(Set.of("bob"), WEEK.start(), WEEK.end())).thenReturn(Flux.just(
+        when(eventRepository.findOccupying(Set.of("bob"), WEEK.start(), WEEK.end(), "alice")).thenReturn(Flux.just(
                 event("stranger's party", "carol", Visibility.FRIENDS, 3),
                 event("bob's dinner", "bob", Visibility.FRIENDS, 1)));
 
@@ -77,7 +77,7 @@ class FriendCalendarServiceTest {
     void getFriendCalendar_shouldRevealMore_toACloserFriend() {
         when(socialGraph.closenessBetween("alice", "bob")).thenReturn(Mono.just(Closeness.CLOSE));
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of("bob")));
-        when(eventRepository.findOccupying(any(), any(), any()))
+        when(eventRepository.findOccupying(any(), any(), any(), any()))
                 .thenReturn(Flux.just(event("stranger's party", "carol", Visibility.FRIENDS, 3)));
 
         StepVerifier.create(service.getFriendCalendar("alice", "bob", WEEK).map(CalendarEntry::title))
@@ -93,7 +93,7 @@ class FriendCalendarServiceTest {
         StepVerifier.create(service.getFriendCalendar("alice", "carol", WEEK))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.NOT_A_FRIEND))
                 .verify();
-        verify(eventRepository, never()).findOccupying(any(), any(), any());
+        verify(eventRepository, never()).findOccupying(any(), any(), any(), any());
     }
 
     @Test

@@ -18,6 +18,12 @@ public interface EventRepository {
 
     Mono<Event> findById(String id);
 
+    /**
+     * The event as an API caller may reach it: never a BIRTHDAY, which only the birthday listing
+     * serves, nor an event hidden from this viewer. Empty otherwise.
+     */
+    Mono<Event> findShownTo(String id, String viewerId);
+
     Mono<Event> save(Event event);
 
     /** Deletes the event if this user organizes it, and returns it as it was; empty when nothing matched. */
@@ -76,9 +82,10 @@ public interface EventRepository {
     /**
      * Events that keep one of these users busy between {@code from} and {@code to}: those they
      * take part in or organize, overlapping the window. An event without an end lasts
-     * {@link Event#DEFAULT_DURATION}. An event whose date poll is open keeps nobody busy.
+     * {@link Event#DEFAULT_DURATION}. An event whose date poll is open keeps nobody busy. A birthday
+     * keeps nobody busy either, and an event hidden from {@code viewerId} is left out, not even busy.
      */
-    Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to);
+    Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to, String viewerId);
 
     /** Sets the event's cover reference (null clears it); empty when no event by this organizer has this id. */
     Mono<Event> setImage(String eventId, String organizerId, String image);
@@ -94,10 +101,10 @@ public interface EventRepository {
     Flux<Event> findInvolving(String userId);
 
     /**
-     * Events not over yet at {@code now} that the user organizes or takes part in, soonest first.
-     * An event without an end lasts {@link Event#DEFAULT_DURATION}.
+     * Events not over yet at {@code now} that the user organizes or takes part in, soonest first,
+     * leaving out those hidden from {@code viewerId}. An event without an end lasts {@link Event#DEFAULT_DURATION}.
      */
-    Flux<Event> findUpcomingInvolving(String userId, Instant now);
+    Flux<Event> findUpcomingInvolving(String userId, String viewerId, Instant now);
 
     /** Events not over yet at {@code now} that both users are on, soonest first, at most {@code limit}. */
     Flux<Event> findUpcomingInvolvingBoth(String userId, String otherId, Instant now, int limit);
@@ -129,8 +136,8 @@ public interface EventRepository {
      */
     Mono<Event> reschedule(Event read, TimeRange range, boolean announce);
 
-    /** The community's events not over yet at {@code now}, soonest first. */
-    Flux<Event> findUpcomingInCommunity(String communityId, Instant now);
+    /** The community's events not over yet at {@code now}, soonest first, but those hidden from the viewer. */
+    Flux<Event> findUpcomingInCommunity(String communityId, String viewerId, Instant now);
 
     /**
      * Records a member's answer to a community event in one write: YES makes them a participant,
@@ -141,4 +148,36 @@ public interface EventRepository {
 
     /** Events with an open poll that the user organizes, takes part in or voted on. */
     Flux<Event> findOpenPollsInvolving(String userId);
+
+    /** Creates or replaces the user's one BIRTHDAY event, which {@code birthday.organizerId} names. */
+    Mono<Event> upsertBirthday(Event birthday);
+
+    Mono<Event> findBirthdayOf(String userId);
+
+    /** The BIRTHDAY events of these users. */
+    Flux<Event> findBirthdaysOf(Collection<String> userIds);
+
+    /** Every BIRTHDAY event, for the daily reminders. */
+    Flux<Event> findAllBirthdays();
+
+    /** Deletes the user's BIRTHDAY event, if any; returns how many went. */
+    Mono<Long> deleteBirthdayOf(String userId);
+
+    /**
+     * Saves a new SURPRISE unless one already celebrates the same birthday (same occurrence key):
+     * empty then, as two organizers can race past any check made before the write.
+     */
+    Mono<Event> insertSurprise(Event surprise);
+
+    /** The surprises for these birthday occurrences, but those hidden from the viewer. */
+    Flux<Event> findSurprisesFor(Collection<String> occurrenceKeys, String viewerId);
+
+    /** The surprise for this birthday occurrence; for the reminders, which show it to no one. */
+    Mono<Event> findSurpriseByOccurrence(String occurrenceKey);
+
+    /** A surprise for the honoree starting in [from, to), if any. */
+    Mono<Event> findSurpriseStartingBetween(String honoreeId, Instant from, Instant to);
+
+    /** Every SURPRISE for this honoree. */
+    Flux<Event> findSurprisesHonoring(String honoreeId);
 }

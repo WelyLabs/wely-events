@@ -636,4 +636,15 @@ class ExpenseServiceTest {
                 .verify();
         verify(mediaStore, never()).delete(anyString());
     }
+
+    @Test
+    void list_shouldAnswerNotFound_onABirthday_evenToItsHonoree() {
+        Event birthday = BirthdayService.birthdayEvent("alice", "Alice", java.time.MonthDay.of(3, 12));
+        birthday.setId(EVENT);
+        when(eventRepository.findById(EVENT)).thenReturn(Mono.just(birthday));
+
+        StepVerifier.create(service.list(EVENT, "alice"))
+                .expectErrorMatches(error -> failsWith(error, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+    }
 }

@@ -52,7 +52,7 @@ public class ScheduleService {
         if (range.duration().compareTo(MAX_RANGE) > 0) {
             return Flux.error(new EventException(EventErrorCode.SCHEDULE_INVALID));
         }
-        return eventRepository.findOccupying(Set.of(userId), range.start(), range.end())
+        return eventRepository.findOccupying(Set.of(userId), range.start(), range.end(), userId)
                 .filter(event -> !Objects.equals(event.getId(), excludedEventId));
     }
 
@@ -80,7 +80,7 @@ public class ScheduleService {
                     TimeRange window = new TimeRange(from, to);
                     Set<String> everyone = new HashSet<>(event.getParticipantIds());
                     everyone.add(event.getOrganizerId());
-                    return eventRepository.findOccupying(everyone, window.start(), window.end())
+                    return eventRepository.findOccupying(everyone, window.start(), window.end(), organizerId)
                             .filter(other -> !Objects.equals(other.getId(), event.getId()))
                             .map(ScheduleService::rangeOf)
                             .collectList()

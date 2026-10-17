@@ -82,4 +82,23 @@ public class EventEntity {
     /** The dates before the last move, for its announcement. Null after a poll fix, which has none. */
     private Instant rescheduledFromStart;
     private Instant rescheduledFromEnd;
+    /** Whole days, midnight to midnight UTC. Absent, so false, on events stored before it existed. */
+    private boolean allDay;
+    /** STANDARD, BIRTHDAY or SURPRISE. Absent on events stored before kinds existed, which count as STANDARD. */
+    @Indexed
+    private String kind;
+    /** Whose birthday a BIRTHDAY (its organizer) or a SURPRISE celebrates. */
+    @Indexed(sparse = true)
+    private String honoreeId;
+    /** Users every read query leaves the event out for: a surprise's honoree. */
+    private List<String> hiddenFrom;
+    /** A BIRTHDAY's month (1-12) and day; its dates sit in the placeholder year 2000. */
+    private Integer birthMonth;
+    private Integer birthDay;
+    private String honoreeName;
+    /** A SURPRISE's organizer as its notices name them. */
+    private String organizerName;
+    /** A SURPRISE's {@code honoreeId:year}: unique, so two organizers racing cannot both create one. */
+    @Indexed(unique = true, sparse = true)
+    private String occurrenceKey;
 }

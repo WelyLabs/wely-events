@@ -181,6 +181,7 @@ class PollControllerTest {
     private WebTestClient client(String userId) {
         // EventController too, so /events/me/polls is shown not to be taken for /events/{id}.
         EventController events = new EventController(org.mockito.Mockito.mock(EventService.class),
+                org.mockito.Mockito.mock(com.calendar.events.domain.services.SurpriseService.class),
                 new PictureService(mediaStore), mapper);
         return WebTestClient.bindToController(controller, events)
                 .argumentResolvers(resolvers -> resolvers.addCustomResolver(

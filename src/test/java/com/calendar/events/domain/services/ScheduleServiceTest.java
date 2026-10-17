@@ -36,6 +36,8 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -71,6 +73,10 @@ class ScheduleServiceTest {
                 new PictureService(mediaStore), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
                 new AccountGuard(mock(DeletedUserMarkers.class)), clock);
         scheduleService = new ScheduleService(eventRepository, eventService, clock, PARIS);
+        // The birthday and hidden-from filter is the database's (see the adapter's integration test):
+        // here an event reached by an API caller is whatever findById holds.
+        lenient().when(eventRepository.findShownTo(anyString(), anyString()))
+                .thenAnswer(call -> eventRepository.findById(call.<String>getArgument(0)));
     }
 
     private static Event bowling(String organizer, String... participants) {
@@ -98,7 +104,7 @@ class ScheduleServiceTest {
     @Test
     void conflictsWith_shouldReturnTheUsersOverlappingEvents_leavingOutTheExcludedOne() {
         Event bowling = bowling("me");
-        when(eventRepository.findOccupying(Set.of("me"), BOWLING_START, BOWLING_END))
+        when(eventRepository.findOccupying(Set.of("me"), BOWLING_START, BOWLING_END, "me"))
                 .thenReturn(Flux.just(bowling, appointment()));
 
         StepVerifier.create(scheduleService.conflictsWith("me", new TimeRange(BOWLING_START, BOWLING_END), "doctor"))
@@ -108,7 +114,7 @@ class ScheduleServiceTest {
 
     @Test
     void conflictsWith_shouldKeepEverything_whenNothingIsExcluded() {
-        when(eventRepository.findOccupying(Set.of("me"), BOWLING_START, BOWLING_END))
+        when(eventRepository.findOccupying(Set.of("me"), BOWLING_START, BOWLING_END, "me"))
                 .thenReturn(Flux.just(appointment()));
 
         StepVerifier.create(scheduleService.conflictsWith("me", new TimeRange(BOWLING_START, BOWLING_END), null))
@@ -131,7 +137,7 @@ class ScheduleServiceTest {
         Event bowling = bowling("lea", "hugo");
         Event doctor = appointment();
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(bowling));
-        when(eventRepository.findOccupying(Set.of("me"), BOWLING_START, BOWLING_END)).thenReturn(Flux.just(doctor));
+        when(eventRepository.findOccupying(Set.of("me"), BOWLING_START, BOWLING_END, "me")).thenReturn(Flux.just(doctor));
 
         StepVerifier.create(scheduleService.conflictsOf("bowling", "me")).expectNext(doctor).verifyComplete();
     }
@@ -141,7 +147,7 @@ class ScheduleServiceTest {
         Event noEnd = bowling("me");
         noEnd.setEndDate(null);
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(noEnd));
-        when(eventRepository.findOccupying(Set.of("me"), BOWLING_START, BOWLING_START.plus(Event.DEFAULT_DURATION)))
+        when(eventRepository.findOccupying(Set.of("me"), BOWLING_START, BOWLING_START.plus(Event.DEFAULT_DURATION), "me"))
                 .thenReturn(Flux.just(noEnd));
 
         // The event itself is never its own conflict.
@@ -155,7 +161,7 @@ class ScheduleServiceTest {
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(polling));
 
         StepVerifier.create(scheduleService.conflictsOf("bowling", "me")).verifyComplete();
-        verify(eventRepository, never()).findOccupying(any(), any(), any());
+        verify(eventRepository, never()).findOccupying(any(), any(), any(), any());
     }
 
     @Test
@@ -176,7 +182,7 @@ class ScheduleServiceTest {
         Event leaBusy = Event.builder().id("lea-busy").startDate(Instant.parse("2026-10-16T12:30:00Z"))
                 .endDate(Instant.parse("2026-10-16T13:30:00Z")).build();
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(bowling));
-        when(eventRepository.findOccupying(any(), any(), any())).thenReturn(Flux.just(bowling, appointment(), leaBusy));
+        when(eventRepository.findOccupying(any(), any(), any(), any())).thenReturn(Flux.just(bowling, appointment(), leaBusy));
 
         List<TimeRange> proposals = scheduleService.proposalsFor("bowling", "me").collectList().block();
 
@@ -187,7 +193,7 @@ class ScheduleServiceTest {
         assertThat(proposals.getFirst()).isEqualTo(new TimeRange(Instant.parse("2026-10-16T13:30:00Z"),
                 Instant.parse("2026-10-16T15:30:00Z")));
         verify(eventRepository).findOccupying(Set.of("me", "lea"), BOWLING_START.minus(ScheduleService.LOOK_BEHIND),
-                BOWLING_START.plus(ScheduleService.LOOK_AHEAD).plus(Duration.ofHours(2)));
+                BOWLING_START.plus(ScheduleService.LOOK_AHEAD).plus(Duration.ofHours(2)), "me");
     }
 
     @Test
@@ -196,13 +202,13 @@ class ScheduleServiceTest {
         tomorrowMorning.setStartDate(NOW.plus(Duration.ofHours(2)));
         tomorrowMorning.setEndDate(NOW.plus(Duration.ofHours(3)));
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(tomorrowMorning));
-        when(eventRepository.findOccupying(any(), any(), any())).thenReturn(Flux.empty());
+        when(eventRepository.findOccupying(any(), any(), any(), any())).thenReturn(Flux.empty());
 
         StepVerifier.create(scheduleService.proposalsFor("bowling", "me"))
                 .thenConsumeWhile(proposal -> !proposal.start().isBefore(NOW))
                 .verifyComplete();
         verify(eventRepository).findOccupying(Set.of("me"), NOW,
-                tomorrowMorning.getStartDate().plus(ScheduleService.LOOK_AHEAD).plus(Duration.ofHours(1)));
+                tomorrowMorning.getStartDate().plus(ScheduleService.LOOK_AHEAD).plus(Duration.ofHours(1)), "me");
     }
 
     @Test
@@ -212,7 +218,7 @@ class ScheduleServiceTest {
         StepVerifier.create(scheduleService.proposalsFor("bowling", "me"))
                 .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
-        verify(eventRepository, never()).findOccupying(any(), any(), any());
+        verify(eventRepository, never()).findOccupying(any(), any(), any(), any());
     }
 
     @Test

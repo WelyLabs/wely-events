@@ -126,7 +126,7 @@ class EventApplicationConfigTest {
                 guard());
 
         AccountErasureService service = config.accountErasureService(repository, eventService,
-                mock(ExpenseRepository.class), mock(MediaStore.class), mock(DeletedUserMarkers.class),
+                mock(com.calendar.events.domain.services.BirthdayService.class), mock(ExpenseRepository.class), mock(MediaStore.class), mock(DeletedUserMarkers.class),
                 mock(PollUpdates.class), "89a380b8-f66a-44d0-b9d9-616241080430");
 
         assertThat(service).isNotNull();
@@ -153,5 +153,28 @@ class EventApplicationConfigTest {
 
     private static AccountGuard guard() {
         return new AccountGuard(mock(DeletedUserMarkers.class));
+    }
+
+    @Test
+    void clock_shouldBeTheUtcSystemClock() {
+        assertThat(config.clock().getZone()).isEqualTo(java.time.ZoneOffset.UTC);
+    }
+
+    @Test
+    void birthdayServices_shouldBuildTheDomainServicesFromTheirPorts() {
+        EventRepository repository = mock(EventRepository.class);
+        SocialGraph socialGraph = mock(SocialGraph.class);
+        java.time.Clock clock = config.clock();
+        EventService eventService = config.eventService(repository, socialGraph, mock(ExpenseRepository.class),
+                config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
+                guard());
+        com.calendar.events.domain.ports.BirthdayNoticeOutbox outbox = mock(com.calendar.events.domain.ports.BirthdayNoticeOutbox.class);
+        com.calendar.events.domain.services.FriendDirectory directory = config.friendDirectory(socialGraph,
+                mock(com.calendar.events.domain.ports.FriendLists.class), clock);
+
+        assertThat(directory).isNotNull();
+        assertThat(config.birthdayService(repository, eventService, directory, outbox, guard())).isNotNull();
+        assertThat(config.surpriseService(eventService, repository, socialGraph, directory, outbox, clock)).isNotNull();
+        assertThat(config.birthdayReminderService(repository, directory, outbox, guard(), clock)).isNotNull();
     }
 }

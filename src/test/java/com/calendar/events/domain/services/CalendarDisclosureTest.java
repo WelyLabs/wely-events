@@ -28,9 +28,9 @@ class CalendarDisclosureTest {
                 .participantIds(new ArrayList<>(List.of(participants))).build();
     }
 
-    private static final CalendarEntry FULL = new CalendarEntry(START, END, "e1", "Dinner", "Lyon", "At 8");
-    private static final CalendarEntry TITLE = new CalendarEntry(START, END, null, "Dinner", null, null);
-    private static final CalendarEntry BUSY = CalendarEntry.busy(START, END);
+    private static final CalendarEntry FULL = new CalendarEntry(START, END, "e1", "Dinner", "Lyon", "At 8", false);
+    private static final CalendarEntry TITLE = new CalendarEntry(START, END, null, "Dinner", null, null, false);
+    private static final CalendarEntry BUSY = CalendarEntry.busy(START, END, false);
 
     private static CalendarEntry seenBy(Event event, Closeness closeness) {
         return CalendarDisclosure.disclose(event, "alice", ALICE_FRIENDS, closeness);
@@ -85,5 +85,15 @@ class CalendarDisclosureTest {
         open.setEndDate(null);
 
         assertThat(seenBy(open, Closeness.FRIEND).end()).isEqualTo(START.plus(Event.DEFAULT_DURATION));
+    }
+
+    @Test
+    void disclose_shouldKeepAnEventAllDay_whateverIsDisclosed() {
+        Event allDay = event("carol", Visibility.FRIENDS, "bob");
+        allDay.setAllDay(true);
+
+        assertThat(seenBy(allDay, Closeness.FRIEND).allDay()).isTrue();
+        assertThat(seenBy(allDay, Closeness.CLOSE).allDay()).isTrue();
+        assertThat(seenBy(allDay, Closeness.INTIMATE).allDay()).isTrue();
     }
 }

@@ -221,7 +221,7 @@ class MongoEventRepositoryAdapterTest {
         EventEntity entity = new EventEntity();
         Event domain = Event.builder().build();
 
-        when(mongoRepository.findAllByParticipantIdsContains("user1")).thenReturn(Flux.just(entity));
+        when(mongoRepository.findSubscribed("user1")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
         Flux<Event> result = adapter.findByParticipantId("user1");
@@ -239,11 +239,11 @@ class MongoEventRepositoryAdapterTest {
         Instant to = Instant.parse("2026-10-16T20:00:00Z");
         List<String> users = List.of("user1", "user2");
 
-        when(mongoRepository.findOccupying(users, from, to, from.minus(Event.DEFAULT_DURATION)))
+        when(mongoRepository.findOccupying(users, from, to, from.minus(Event.DEFAULT_DURATION), "viewer"))
                 .thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findOccupying(users, from, to))
+        StepVerifier.create(adapter.findOccupying(users, from, to, "viewer"))
                 .expectNext(domain)
                 .verifyComplete();
     }
@@ -337,10 +337,10 @@ class MongoEventRepositoryAdapterTest {
     void findUpcomingInvolving_shouldLetEventsWithoutAnEndLastTheDefaultDuration() {
         EventEntity entity = new EventEntity();
         Event domain = Event.builder().build();
-        when(mongoRepository.findUpcomingInvolving("bob", NOW, AN_HOUR_AGO)).thenReturn(Flux.just(entity));
+        when(mongoRepository.findUpcomingInvolving("bob", NOW, AN_HOUR_AGO, "alice")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findUpcomingInvolving("bob", NOW)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findUpcomingInvolving("bob", "alice", NOW)).expectNext(domain).verifyComplete();
     }
 
     @Test
@@ -565,10 +565,10 @@ class MongoEventRepositoryAdapterTest {
         Instant now = Instant.parse("2026-10-15T10:00:00Z");
         EventEntity entity = new EventEntity();
         Event domain = communityEvent("bob");
-        when(mongoRepository.findUpcomingInCommunity("c1", now, now.minus(Event.DEFAULT_DURATION))).thenReturn(Flux.just(entity));
+        when(mongoRepository.findUpcomingInCommunity("c1", now, now.minus(Event.DEFAULT_DURATION), "alice")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findUpcomingInCommunity("c1", now)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findUpcomingInCommunity("c1", "alice", now)).expectNext(domain).verifyComplete();
     }
 
     @Test
@@ -623,5 +623,142 @@ class MongoEventRepositoryAdapterTest {
                 .expectError(IllegalArgumentException.class)
                 .verify();
         verify(mongoRepository, never()).respondAndLeave(any(), any(), any());
+    }
+
+    // --- Hidden events, birthdays and surprises ---------------------------------------------------
+
+    private Event mapped(EventEntity entity) {
+        Event domain = Event.builder().id(entity.getId()).build();
+        when(mapper.toDomain(entity)).thenReturn(domain);
+        return domain;
+    }
+
+    @Test
+    void findShownTo_shouldAskForTheEventAsTheViewerMaySeeIt() {
+        EventEntity entity = EventEntity.builder().id("1").build();
+        Event domain = mapped(entity);
+        when(mongoRepository.findShownTo("1", "lea")).thenReturn(Mono.just(entity));
+
+        StepVerifier.create(adapter.findShownTo("1", "lea")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void upsertBirthday_shouldSaveUnderTheUsersKnownBirthdayId() {
+        Event birthday = Event.builder().organizerId("lea").build();
+        EventEntity entity = new EventEntity();
+        when(mapper.toEntity(birthday)).thenReturn(entity);
+        when(mongoRepository.save(entity)).thenReturn(Mono.just(entity));
+        Event saved = Event.builder().build();
+        when(mapper.toDomain(entity)).thenReturn(saved);
+
+        StepVerifier.create(adapter.upsertBirthday(birthday)).expectNext(saved).verifyComplete();
+        org.assertj.core.api.Assertions.assertThat(entity.getId()).isEqualTo("birthday-lea");
+    }
+
+    @Test
+    void findBirthdayOf_shouldMapTheUsersBirthday() {
+        EventEntity entity = EventEntity.builder().id("birthday-lea").build();
+        Event domain = mapped(entity);
+        when(mongoRepository.findBirthdayOf("lea")).thenReturn(Mono.just(entity));
+
+        StepVerifier.create(adapter.findBirthdayOf("lea")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findBirthdaysOf_shouldMapTheirBirthdays() {
+        EventEntity entity = EventEntity.builder().id("birthday-lea").build();
+        Event domain = mapped(entity);
+        when(mongoRepository.findBirthdaysOf(java.util.List.of("lea", "bob"))).thenReturn(Flux.just(entity));
+
+        StepVerifier.create(adapter.findBirthdaysOf(java.util.List.of("lea", "bob"))).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findAllBirthdays_shouldMapEveryBirthday() {
+        EventEntity entity = EventEntity.builder().id("birthday-lea").build();
+        Event domain = mapped(entity);
+        when(mongoRepository.findAllBirthdays()).thenReturn(Flux.just(entity));
+
+        StepVerifier.create(adapter.findAllBirthdays()).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void deleteBirthdayOf_shouldCountWhatWent() {
+        when(mongoRepository.deleteBirthdayOf("lea")).thenReturn(Mono.just(1L));
+
+        StepVerifier.create(adapter.deleteBirthdayOf("lea")).expectNext(1L).verifyComplete();
+    }
+
+    @Test
+    void insertSurprise_shouldInsertTheSurprise() {
+        Event surprise = Event.builder().build();
+        EventEntity entity = EventEntity.builder().id("s1").build();
+        when(mapper.toEntity(surprise)).thenReturn(entity);
+        when(mongoRepository.insert(entity)).thenReturn(Mono.just(entity));
+        Event domain = mapped(entity);
+
+        StepVerifier.create(adapter.insertSurprise(surprise)).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void insertSurprise_shouldAnswerEmpty_whenTheBirthdayHasASurpriseAlready() {
+        Event surprise = Event.builder().build();
+        EventEntity entity = new EventEntity();
+        when(mapper.toEntity(surprise)).thenReturn(entity);
+        when(mongoRepository.insert(entity))
+                .thenReturn(Mono.error(new org.springframework.dao.DuplicateKeyException("occurrenceKey")));
+
+        StepVerifier.create(adapter.insertSurprise(surprise)).verifyComplete();
+    }
+
+    @Test
+    void insertSurprise_shouldPassAnyOtherFailureOn() {
+        Event surprise = Event.builder().build();
+        EventEntity entity = new EventEntity();
+        when(mapper.toEntity(surprise)).thenReturn(entity);
+        when(mongoRepository.insert(entity))
+                .thenReturn(Mono.error(new org.springframework.dao.DataAccessResourceFailureException("down")));
+
+        StepVerifier.create(adapter.insertSurprise(surprise))
+                .expectError(org.springframework.dao.DataAccessResourceFailureException.class).verify();
+    }
+
+    @Test
+    void findSurprisesFor_shouldAskOnBehalfOfTheViewer() {
+        EventEntity entity = EventEntity.builder().id("s1").build();
+        Event domain = mapped(entity);
+        when(mongoRepository.findSurprisesFor(java.util.List.of("lea:2027"), "bob")).thenReturn(Flux.just(entity));
+
+        StepVerifier.create(adapter.findSurprisesFor(java.util.List.of("lea:2027"), "bob")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findSurpriseByOccurrence_shouldMapTheSurprise() {
+        EventEntity entity = EventEntity.builder().id("s1").build();
+        Event domain = mapped(entity);
+        when(mongoRepository.findSurpriseByOccurrence("lea:2027")).thenReturn(Mono.just(entity));
+
+        StepVerifier.create(adapter.findSurpriseByOccurrence("lea:2027")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findSurpriseStartingBetween_shouldTakeTheFirstOnly() {
+        java.time.Instant from = java.time.Instant.parse("2027-01-11T18:00:00Z");
+        java.time.Instant to = java.time.Instant.parse("2027-05-11T18:00:00Z");
+        EventEntity entity = EventEntity.builder().id("s1").build();
+        Event domain = mapped(entity);
+        when(mongoRepository.findSurprisesStartingBetween("lea", from, to, org.springframework.data.domain.Limit.of(1)))
+                .thenReturn(Flux.just(entity));
+
+        StepVerifier.create(adapter.findSurpriseStartingBetween("lea", from, to)).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findSurprisesHonoring_shouldMapThem() {
+        EventEntity entity = EventEntity.builder().id("s1").build();
+        Event domain = mapped(entity);
+        when(mongoRepository.findSurprisesHonoring("lea")).thenReturn(Flux.just(entity));
+
+        StepVerifier.create(adapter.findSurprisesHonoring("lea")).expectNext(domain).verifyComplete();
     }
 }

@@ -54,7 +54,7 @@ class FreeSlotServiceTest {
         // Léa is busy 12:00-13:00; Hugo organizes an event with no end at 15:00, so 15:00-16:00.
         Event lea = Event.builder().startDate(TEN.plus(Duration.ofHours(2))).endDate(TEN.plus(Duration.ofHours(3))).build();
         Event hugo = Event.builder().startDate(TEN.plus(Duration.ofHours(5))).build();
-        when(eventRepository.findOccupying(Set.of("me", "lea", "hugo"), WINDOW.start(), WINDOW.end()))
+        when(eventRepository.findOccupying(Set.of("me", "lea", "hugo"), WINDOW.start(), WINDOW.end(), "me"))
                 .thenReturn(Flux.just(lea, hugo));
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea", "hugo"), WINDOW, HOUR))
@@ -72,7 +72,7 @@ class FreeSlotServiceTest {
                 .expectErrorMatches(e -> failsWith(e, EventErrorCode.NOT_A_FRIEND))
                 .verify();
 
-        verify(eventRepository, never()).findOccupying(anyCollection(), any(), any());
+        verify(eventRepository, never()).findOccupying(anyCollection(), any(), any(), any());
     }
 
     @Test
@@ -83,7 +83,7 @@ class FreeSlotServiceTest {
                 .expectErrorMatches(e -> failsWith(e, EventErrorCode.NOT_A_FRIEND))
                 .verify();
 
-        verify(eventRepository, never()).findOccupying(anyCollection(), any(), any());
+        verify(eventRepository, never()).findOccupying(anyCollection(), any(), any(), any());
     }
 
     @Test
@@ -116,14 +116,14 @@ class FreeSlotServiceTest {
         }
 
         verify(socialGraph, never()).friendIdsOf(any());
-        verify(eventRepository, never()).findOccupying(anyCollection(), any(), any());
+        verify(eventRepository, never()).findOccupying(anyCollection(), any(), any(), any());
     }
 
     @Test
     void findCommonFreeRanges_shouldAcceptAMonthGrid_ofSixWeeks() {
         TimeRange sixWeeks = new TimeRange(TEN, TEN.plus(Duration.ofDays(42)));
         when(socialGraph.friendIdsOf("me")).thenReturn(Mono.just(Set.of("lea")));
-        when(eventRepository.findOccupying(anyCollection(), any(), any())).thenReturn(Flux.empty());
+        when(eventRepository.findOccupying(anyCollection(), any(), any(), any())).thenReturn(Flux.empty());
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), sixWeeks, HOUR))
                 .expectNext(sixWeeks)

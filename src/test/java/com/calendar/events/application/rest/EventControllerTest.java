@@ -11,6 +11,7 @@ import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.dtos.SlotRequest;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.EventKind;
 import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.application.dtos.ResponseRequest;
 import com.calendar.events.domain.models.GeoBox;
@@ -20,6 +21,7 @@ import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.SignedUrls;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.PictureService;
+import com.calendar.events.domain.services.SurpriseService;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import com.calendar.events.domain.services.EventService;
@@ -39,6 +41,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -62,11 +65,14 @@ class EventControllerTest {
     @Mock
     private Jwt jwt;
 
+    @Mock
+    private SurpriseService surpriseService;
+
     private EventController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new EventController(eventService, new PictureService(mediaStore), mapper);
+        controller = new EventController(eventService, surpriseService, new PictureService(mediaStore), mapper);
     }
 
     @Test
@@ -248,7 +254,7 @@ class EventControllerTest {
 
     /** The real mapping, to see which image each event ends up with. */
     private EventController withRealMapping() {
-        return new EventController(eventService, new PictureService(mediaStore), Mappers.getMapper(EventRestMapper.class));
+        return new EventController(eventService, surpriseService, new PictureService(mediaStore), Mappers.getMapper(EventRestMapper.class));
     }
 
     private static Event coveredBy(String id, String image) {
@@ -434,5 +440,22 @@ class EventControllerTest {
         StepVerifier.create(controller.respondTo("1", new ResponseRequest(PollAnswer.MAYBE), jwt))
                 .expectNext(response)
                 .verifyComplete();
+    }
+
+    @Test
+    void createEvent_shouldHandASurpriseToTheSurpriseService_namingTheOrganizerFromTheToken() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("bob");
+        when(jwt.getClaimAsString(EventController.USERNAME_CLAIM)).thenReturn("bob_l");
+        EventRequest request = EventRequest.builder().title("Surprise").kind(EventKind.SURPRISE).honoreeId("lea").build();
+        Event event = Event.builder().title("Surprise").kind(EventKind.SURPRISE).honoreeId("lea")
+                .participantIds(new ArrayList<>()).build();
+        EventResponse response = EventResponse.builder().id("s1").build();
+        when(mapper.toDomain(request)).thenReturn(event);
+        when(surpriseService.createSurprise(eq(event), any(), eq("bob_l"))).thenReturn(Mono.just(event));
+        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+
+        StepVerifier.create(controller.createEvent(request, jwt)).expectNext(response).verifyComplete();
+        assertThat(event.getOrganizerId()).isEqualTo("bob");
+        verify(eventService, never()).createEvent(any(Event.class), any());
     }
 }

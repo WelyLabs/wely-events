@@ -78,6 +78,8 @@ class AccountErasureServiceTest {
     private PollUpdates pollUpdates;
     @Mock
     private EventDeletionOutbox deletionOutbox;
+    @Mock
+    private BirthdayService birthdayService;
 
     /** Accounts the register knows as deleted; the user being erased is one of them. */
     private final Set<String> deleted = new HashSet<>(Set.of(USER));
@@ -91,8 +93,9 @@ class AccountErasureServiceTest {
         EventService eventService = new EventService(eventRepository, mock(SocialGraph.class), expenseRepository,
                 new PictureService(mediaStore), deletionOutbox, mock(CommunityDirectory.class), new AccountGuard(markers),
                 clock);
-        service = new AccountErasureService(eventRepository, eventService, expenseRepository, mediaStore, markers,
-                pollUpdates, Set.of(DEMO), clock);
+        service = new AccountErasureService(eventRepository, eventService, birthdayService, expenseRepository, mediaStore,
+                markers, pollUpdates, Set.of(DEMO), clock);
+        lenient().when(birthdayService.forget(anyString())).thenReturn(Mono.just(0L));
 
         lenient().when(markers.markDeleted(anyString(), any()))
                 .thenAnswer(call -> Mono.just(new DeletedUserMarker(call.getArgument(0), call.getArgument(1), null)));
@@ -160,6 +163,24 @@ class AccountErasureServiceTest {
     }
 
     @Test
+    void erase_shouldForgetTheBirthdayAfterTheMarker_andBeforeTheOrganizedEvents() {
+        erase();
+
+        InOrder order = inOrder(markers, birthdayService, eventRepository);
+        order.verify(markers).markDeleted(USER, DELETED_AT);
+        order.verify(birthdayService).forget(USER);
+        order.verify(eventRepository).findOrganizedBy(USER);
+    }
+
+    @Test
+    void erase_shouldFailForARetry_whenTheBirthdayCannotBeForgotten() {
+        when(birthdayService.forget(USER)).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+
+        StepVerifier.create(service.erase(USER, DELETED_AT)).expectError(IllegalStateException.class).verify();
+        verify(markers, never()).markErased(anyString(), any());
+    }
+
+    @Test
     void erase_shouldClassifyEventsAgainstTheStoredDeletionTime_whenTheMarkerAlreadyExists() {
         Instant first = DELETED_AT.minusSeconds(3600);
         when(markers.markDeleted(USER, DELETED_AT)).thenReturn(Mono.just(new DeletedUserMarker(USER, first, null)));
@@ -189,7 +210,7 @@ class AccountErasureServiceTest {
     void erase_shouldLeaveAProtectedAccountAlone() {
         StepVerifier.create(service.erase(DEMO, DELETED_AT)).expectNext(ErasureReport.NONE).verifyComplete();
 
-        verifyNoInteractions(markers, eventRepository, expenseRepository, mediaStore, pollUpdates);
+        verifyNoInteractions(markers, eventRepository, expenseRepository, mediaStore, pollUpdates, birthdayService);
     }
 
     // --- Ballots ------------------------------------------------------------------------------------

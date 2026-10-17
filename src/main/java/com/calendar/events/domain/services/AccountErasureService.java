@@ -30,6 +30,7 @@ public class AccountErasureService {
 
     private final EventRepository eventRepository;
     private final EventService eventService;
+    private final BirthdayService birthdayService;
     private final ExpenseRepository expenseRepository;
     private final MediaStore mediaStore;
     private final DeletedUserMarkers markers;
@@ -39,11 +40,12 @@ public class AccountErasureService {
     private final Clock clock;
 
     public AccountErasureService(EventRepository eventRepository, EventService eventService,
-                                 ExpenseRepository expenseRepository, MediaStore mediaStore,
+                                 BirthdayService birthdayService, ExpenseRepository expenseRepository, MediaStore mediaStore,
                                  DeletedUserMarkers markers, PollUpdates pollUpdates,
                                  Set<String> protectedUserIds, Clock clock) {
         this.eventRepository = eventRepository;
         this.eventService = eventService;
+        this.birthdayService = birthdayService;
         this.expenseRepository = expenseRepository;
         this.mediaStore = mediaStore;
         this.markers = markers;
@@ -62,6 +64,8 @@ public class AccountErasureService {
         return Mono.defer(() -> markers.markDeleted(userId, deletedAt != null ? deletedAt : clock.instant()))
                 .map(DeletedUserMarker::deletedAt)
                 .flatMap(at -> Mono.fromRunnable(() -> pollUpdates.disconnect(userId))
+                        // Before the organized events: the birthday is the user's own, never handed over.
+                        .then(Mono.defer(() -> birthdayService.forget(userId)))
                         .then(Mono.defer(() -> withdrawBallots(userId))).map(ErasureReport.NONE::withBallotsWithdrawn)
                         .flatMap(report -> releaseOrganizedEvents(userId, at, report))
                         .flatMap(report -> eventRepository.leaveUpcoming(userId, at).map(report::withEventsLeft))

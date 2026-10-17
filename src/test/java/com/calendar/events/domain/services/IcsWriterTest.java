@@ -100,4 +100,19 @@ class IcsWriterTest {
         assertThat(lines[0] + Arrays.stream(lines).skip(1).map(part -> part.substring(1)).collect(Collectors.joining()))
                 .isEqualTo(line);
     }
+
+    @Test
+    void write_shouldGiveAnAllDayEventPlainDates_theEndExclusive() {
+        String ics = IcsWriter.write(event().allDay(true).startDate(java.time.Instant.parse("2026-10-24T00:00:00Z"))
+                .endDate(java.time.Instant.parse("2026-10-26T00:00:00Z")).build(), PAGE, NOW);
+
+        assertThat(ics).contains("\r\nDTSTART;VALUE=DATE:20261024\r\n");
+        assertThat(ics).contains("\r\nDTEND;VALUE=DATE:20261026\r\n");
+    }
+
+    @Test
+    void dateLine_shouldWriteAUtcTime_forAnEventWithTimes() {
+        assertThat(IcsWriter.dateLine("DTSTART", event().build(), java.time.Instant.parse("2026-10-24T17:30:00Z")))
+                .isEqualTo("DTSTART:20261024T173000Z");
+    }
 }

@@ -38,6 +38,13 @@ public interface EventRestMapper {
     // Read from storage only.
     @Mapping(target = "groupVersion", ignore = true)
     @Mapping(target = "responses", ignore = true)
+    // Set by the domain: who a surprise is hidden from, and what it is for.
+    @Mapping(target = "hiddenFrom", ignore = true)
+    @Mapping(target = "birthMonth", ignore = true)
+    @Mapping(target = "birthDay", ignore = true)
+    @Mapping(target = "honoreeName", ignore = true)
+    @Mapping(target = "organizerName", ignore = true)
+    @Mapping(target = "occurrenceKey", ignore = true)
     Event toDomain(EventRequest request);
 
     EventDetails toDetails(EventUpdateRequest request);
@@ -52,6 +59,7 @@ public interface EventRestMapper {
     @Mapping(target = "visibility", expression = "java(domain.effectiveVisibility())")
     @Mapping(target = "image", expression = "java(EventCover.of(domain).shownWith(urls))")
     @Mapping(target = "responses", expression = "java(toResponse(EventResponses.of(domain)))")
+    @Mapping(target = "kind", expression = "java(domain.effectiveKind())")
     EventResponse toResponse(Event domain, @Context SignedUrls urls);
 
     EventResponsesResponse toResponse(EventResponses responses);

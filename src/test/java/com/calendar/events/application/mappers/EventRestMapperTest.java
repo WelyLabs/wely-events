@@ -135,9 +135,9 @@ class EventRestMapperTest {
     @Test
     void toResponse_shouldMapACalendarEntryAsIs() {
         Instant start = Instant.parse("2026-10-17T18:00:00Z");
-        CalendarEntry entry = new CalendarEntry(start, start.plusSeconds(3600), null, "Dinner", null, null);
+        CalendarEntry entry = new CalendarEntry(start, start.plusSeconds(3600), null, "Dinner", null, null, false);
 
-        assertEquals(new CalendarEntryResponse(start, start.plusSeconds(3600), null, "Dinner", null, null),
+        assertEquals(new CalendarEntryResponse(start, start.plusSeconds(3600), null, "Dinner", null, null, false),
                 mapper.toResponse(entry));
     }
 
@@ -253,5 +253,33 @@ class EventRestMapperTest {
     @Test
     void toDomain_shouldNeverTakeAGroupVersion_fromTheRequest() {
         assertNull(mapper.toDomain(EventRequest.builder().title("t").build()).getGroupVersion());
+    }
+
+    @Test
+    void toDomain_shouldCarryAllDayTheKindAndTheHonoree_butNothingTheDomainSets() {
+        EventRequest request = EventRequest.builder().title("Surprise").allDay(true)
+                .kind(com.calendar.events.domain.models.EventKind.SURPRISE).honoreeId("lea").build();
+
+        Event event = mapper.toDomain(request);
+
+        assertTrue(event.isAllDay());
+        assertEquals(com.calendar.events.domain.models.EventKind.SURPRISE, event.getKind());
+        assertEquals("lea", event.getHonoreeId());
+        assertTrue(event.getHiddenFrom().isEmpty());
+        assertNull(event.getOccurrenceKey());
+    }
+
+    @Test
+    void toResponse_shouldGiveAllDayTheKindAndTheHonoree_aMissingKindAsStandard() {
+        Event surprise = Event.builder().id("s1").allDay(true).kind(com.calendar.events.domain.models.EventKind.SURPRISE)
+                .honoreeId("lea").hiddenFrom(new java.util.ArrayList<>(java.util.List.of("lea"))).build();
+
+        EventResponse response = mapper.toResponse(surprise, SignedUrls.NONE);
+
+        assertTrue(response.isAllDay());
+        assertEquals(com.calendar.events.domain.models.EventKind.SURPRISE, response.getKind());
+        assertEquals("lea", response.getHonoreeId());
+        assertEquals(com.calendar.events.domain.models.EventKind.STANDARD,
+                mapper.toResponse(Event.builder().id("e1").build(), SignedUrls.NONE).getKind());
     }
 }

@@ -5,6 +5,7 @@ import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.CommunityRole;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventDeletion;
+import com.calendar.events.domain.models.EventKind;
 import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.models.ExpenseKind;
 import com.calendar.events.domain.models.GeoBox;
@@ -88,6 +89,10 @@ class EventServiceTest {
                 deletionOutbox, communityDirectory, new AccountGuard(markers), Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(deletionOutbox.record(any())).thenReturn(Mono.empty());
         lenient().when(markers.deletedAmong(any())).thenReturn(Mono.just(Set.of()));
+        // The birthday and hidden-from filter is the database's (see the adapter's integration test):
+        // here an event reached by an API caller is whatever findById holds.
+        lenient().when(eventRepository.findShownTo(anyString(), anyString()))
+                .thenAnswer(call -> eventRepository.findById(call.<String>getArgument(0)));
     }
 
     @Test
@@ -1231,7 +1236,7 @@ class EventServiceTest {
     void getCommunityEvents_shouldListTheUpcomingOnes_forAMember() {
         Event event = inCommunity("bob", "bob");
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
-        when(eventRepository.findUpcomingInCommunity("c1", NOW)).thenReturn(Flux.just(event));
+        when(eventRepository.findUpcomingInCommunity("c1", "alice", NOW)).thenReturn(Flux.just(event));
 
         StepVerifier.create(eventService.getCommunityEvents("c1", "alice")).expectNext(event).verifyComplete();
     }
@@ -1243,7 +1248,7 @@ class EventServiceTest {
         StepVerifier.create(eventService.getCommunityEvents("c1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.COMMUNITY_MEMBERS_ONLY))
                 .verify();
-        verify(eventRepository, never()).findUpcomingInCommunity(anyString(), any());
+        verify(eventRepository, never()).findUpcomingInCommunity(anyString(), any(), any());
     }
 
     @Test
@@ -1346,5 +1351,112 @@ class EventServiceTest {
         when(eventRepository.respond("1", "alice", PollAnswer.NO)).thenReturn(Mono.just(event));
 
         StepVerifier.create(eventService.toggleSubscription("1", "alice")).expectNext(event).verifyComplete();
+    }
+
+    // --- Kinds, all-day events and hidden events --------------------------------------------------
+
+    @Test
+    void getEventById_shouldAskTheDatabaseForAnEventShownToTheViewer() {
+        // doReturn: when(...) would run the delegating answer, and so findById, while stubbing.
+        doReturn(Mono.empty()).when(eventRepository).findShownTo("1", "lea");
+
+        StepVerifier.create(eventService.getEventById("1", "lea"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .verify();
+        verify(eventRepository).findShownTo("1", "lea");
+        verify(eventRepository, never()).findById(anyString());
+    }
+
+    @Test
+    void createEvent_shouldRefuseABirthdayOrASurprise_whichHaveTheirOwnPaths() {
+        for (EventKind kind : List.of(EventKind.BIRTHDAY, EventKind.SURPRISE)) {
+            StepVerifier.create(eventService.createEvent(Event.builder().title("x").kind(kind).build(), null))
+                    .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_KIND_INVALID))
+                    .verify();
+        }
+        verify(eventRepository, never()).save(any());
+    }
+
+    @Test
+    void createEvent_shouldStoreAStandardEvent_withoutAnyBirthdayField() {
+        Event event = Event.builder().title("Quiz").honoreeId("lea").honoreeName("Léa").organizerName("bob")
+                .occurrenceKey("lea:2027").birthMonth(3).birthDay(12)
+                .hiddenFrom(new ArrayList<>(List.of("lea"))).build();
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        eventService.createEvent(event).block();
+
+        assertThat(event.getKind()).isEqualTo(EventKind.STANDARD);
+        assertThat(event.getHonoreeId()).isNull();
+        assertThat(event.getHiddenFrom()).isEmpty();
+        assertThat(event.getHonoreeName()).isNull();
+        assertThat(event.getOrganizerName()).isNull();
+        assertThat(event.getOccurrenceKey()).isNull();
+        assertThat(event.birthMonthDay()).isNull();
+    }
+
+    @Test
+    void createEvent_shouldMakeAnAllDayEventWithoutAnEndLastOneDay() {
+        Instant day = Instant.parse("2026-11-03T00:00:00Z");
+        Event event = Event.builder().title("Day off").allDay(true).startDate(day).build();
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        eventService.createEvent(event).block();
+
+        assertThat(event.getEndDate()).isEqualTo(Instant.parse("2026-11-04T00:00:00Z"));
+    }
+
+    @Test
+    void createEvent_shouldKeepAnAllDayEventOverSeveralDays() {
+        Event event = Event.builder().title("Holidays").allDay(true).startDate(Instant.parse("2026-11-03T00:00:00Z"))
+                .endDate(Instant.parse("2026-11-06T00:00:00Z")).build();
+        when(eventRepository.save(event)).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.createEvent(event)).expectNext(event).verifyComplete();
+    }
+
+    @Test
+    void createEvent_shouldRefuseAnAllDayEventNotOnWholeUtcDays_orWithAPoll() {
+        Instant midnight = Instant.parse("2026-11-03T00:00:00Z");
+        List<Event> invalid = List.of(
+                Event.builder().title("a").allDay(true).startDate(midnight.plusSeconds(3600)).build(),
+                Event.builder().title("b").allDay(true).startDate(midnight).endDate(midnight.plusSeconds(3600)).build(),
+                Event.builder().title("c").allDay(true).startDate(midnight).endDate(midnight).build(),
+                Event.builder().title("d").allDay(true).build());
+        for (Event event : invalid) {
+            StepVerifier.create(eventService.createEvent(event))
+                    .expectErrorMatches(e -> hasCode(e, EventErrorCode.ALL_DAY_INVALID))
+                    .verify();
+        }
+        List<PollSlot> slots = List.of(new PollSlot(null, NOW.plusSeconds(86_400), NOW.plusSeconds(90_000)),
+                new PollSlot(null, NOW.plusSeconds(172_800), NOW.plusSeconds(176_400)));
+        StepVerifier.create(eventService.createEvent(Event.builder().title("e").allDay(true).startDate(midnight).build(), slots))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.ALL_DAY_INVALID))
+                .verify();
+        verify(eventRepository, never()).save(any());
+    }
+
+    @Test
+    void updateDetails_shouldRequireALocation_onAnythingButASurprise() {
+        Event event = Event.builder().id("1").title("Afterwork").organizerId("organizer").build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.updateDetails("1", "organizer",
+                        new EventDetails("Afterwork", " ", null, null, Visibility.PUBLIC)))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.LOCATION_REQUIRED))
+                .verify();
+        verify(eventRepository, never()).updateDetails(anyString(), anyString(), any(), anyBoolean());
+    }
+
+    @Test
+    void updateDetails_shouldLetASurpriseHaveNoPlaceYet_andKeepItForTheHonoreesFriends() {
+        Event surprise = Event.builder().id("1").title("Surprise").organizerId("organizer").kind(EventKind.SURPRISE)
+                .honoreeId("lea").visibility(Visibility.FRIENDS).build();
+        EventDetails details = new EventDetails("Surprise", null, null, "Chut", Visibility.PUBLIC);
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surprise));
+        when(eventRepository.updateDetails("1", "organizer", details.withVisibility(Visibility.FRIENDS), false))
+                .thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(eventService.updateDetails("1", "organizer", details)).expectNext(surprise).verifyComplete();
     }
 }

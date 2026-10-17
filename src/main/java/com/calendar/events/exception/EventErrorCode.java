@@ -172,6 +172,49 @@ public enum EventErrorCode {
             "This calendar link does not exist or has expired; add the event again from Wely.",
             HttpStatus.NOT_FOUND),
 
+    SURPRISE_NOT_ALLOWED(
+            "EVT-BUS-028",
+            "Surprise not allowed",
+            "Only a close or intimate friend of the honoree may organize a surprise for them, and never the honoree.",
+            HttpStatus.FORBIDDEN),
+
+    NO_BIRTHDAY(
+            "EVT-BUS-029",
+            "No birthday",
+            "This person has not shared a birthday: there is no birthday to organize a surprise for.",
+            HttpStatus.CONFLICT),
+
+    /** Carries the existing surprise's id in the ProblemDetail property {@code eventId}. */
+    SURPRISE_EXISTS(
+            "EVT-BUS-030",
+            "Surprise already organized",
+            "A surprise is already organized for this birthday: join it instead.",
+            HttpStatus.CONFLICT),
+
+    EVENT_KIND_INVALID(
+            "EVT-BUS-031",
+            "Invalid event kind",
+            "Create a STANDARD event, or a SURPRISE naming its honoreeId; birthdays come from the signup.",
+            HttpStatus.BAD_REQUEST),
+
+    INVALID_BIRTHDAY_RANGE(
+            "EVT-BUS-032",
+            "Invalid birthday range",
+            "Ask for birthdays over a period of at most 400 days that ends after it starts.",
+            HttpStatus.BAD_REQUEST),
+
+    LOCATION_REQUIRED(
+            "EVT-BUS-033",
+            "Location required",
+            "Every event but a surprise needs a location.",
+            HttpStatus.BAD_REQUEST),
+
+    ALL_DAY_INVALID(
+            "EVT-BUS-034",
+            "Invalid all-day event",
+            "An all-day event starts at 00:00Z and ends at 00:00Z of the day after its last day, without a date poll.",
+            HttpStatus.BAD_REQUEST),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",

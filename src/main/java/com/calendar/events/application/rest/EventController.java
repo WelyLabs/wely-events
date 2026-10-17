@@ -4,7 +4,9 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.services.EventService;
+import com.calendar.events.domain.models.EventKind;
 import com.calendar.events.domain.services.PictureService;
+import com.calendar.events.domain.services.SurpriseService;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.dtos.EventUpdateRequest;
@@ -31,12 +33,18 @@ import java.util.List;
 @RequestMapping("events")
 public class EventController {
 
+    /** The organizer's name in a surprise's notices, as wely-chat names a call's caller. */
+    static final String USERNAME_CLAIM = "preferred_username";
+
     private final EventService eventService;
+    private final SurpriseService surpriseService;
     private final PictureService pictureService;
     private final EventRestMapper mapper;
 
-    public EventController(EventService eventService, PictureService pictureService, EventRestMapper mapper) {
+    public EventController(EventService eventService, SurpriseService surpriseService, PictureService pictureService,
+                           EventRestMapper mapper) {
         this.eventService = eventService;
+        this.surpriseService = surpriseService;
         this.pictureService = pictureService;
         this.mapper = mapper;
     }
@@ -94,13 +102,21 @@ public class EventController {
         return eventService.getParticipants(id, userId).map(mapper::toResponse);
     }
 
+    /**
+     * A standard event, or with {@code kind: SURPRISE} and {@code honoreeId} a surprise birthday, hidden
+     * from the honoree: 403 EVT-BUS-028 for anyone but a close friend, 409 EVT-BUS-029 without a
+     * birthday, 409 EVT-BUS-030 with the existing surprise's {@code eventId} when there is one already.
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Mono<EventResponse> createEvent(@Valid @RequestBody EventRequest request, @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         Event event = mapper.toDomain(request);
         event.setOrganizerId(userId);
-        return respond(eventService.createEvent(event, mapper.toCandidateSlots(request.getCandidateSlots())));
+        var candidateSlots = mapper.toCandidateSlots(request.getCandidateSlots());
+        return respond(request.getKind() == EventKind.SURPRISE
+                ? surpriseService.createSurprise(event, candidateSlots, jwt.getClaimAsString(USERNAME_CLAIM))
+                : eventService.createEvent(event, candidateSlots));
     }
 
     /**

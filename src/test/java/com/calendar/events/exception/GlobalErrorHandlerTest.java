@@ -59,6 +59,11 @@ class GlobalErrorHandlerTest {
             return Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND));
         }
 
+        @GetMapping("/surprise-exists")
+        Mono<Void> surpriseExists() {
+            return Mono.error(new EventException(EventErrorCode.SURPRISE_EXISTS, java.util.Map.of("eventId", "s1")));
+        }
+
         @GetMapping("/not-allowed")
         Mono<Void> notAllowed() {
             return Mono.error(new ResponseStatusException(HttpStatus.METHOD_NOT_ALLOWED));
@@ -183,5 +188,16 @@ class GlobalErrorHandlerTest {
                 .expectStatus().isEqualTo(HttpStatus.BAD_GATEWAY)
                 .expectBody()
                 .jsonPath("$.code").isEqualTo("EVT-TEC-003");
+    }
+
+    @Test
+    @DisplayName("a refusal's extra properties go into the problem, as a surprise's existing id does")
+    void handleEventException_shouldCarryTheExceptionsProperties() {
+        client.get().uri("/surprise-exists")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.CONFLICT)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("EVT-BUS-030")
+                .jsonPath("$.eventId").isEqualTo("s1");
     }
 }

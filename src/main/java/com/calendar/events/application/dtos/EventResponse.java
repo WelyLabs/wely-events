@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import com.calendar.events.domain.models.EventKind;
 import com.calendar.events.domain.models.Visibility;
 
 import java.time.Instant;
@@ -33,4 +34,9 @@ public class EventResponse {
     private String communityId;
     /** Who answered what, for an event published in a community only; null otherwise. */
     private EventResponsesResponse responses;
+    /** Whole UTC days, from startDate to the exclusive endDate. */
+    private boolean allDay;
+    private EventKind kind;
+    /** Whose birthday a SURPRISE celebrates; null on a standard event. */
+    private String honoreeId;
 }

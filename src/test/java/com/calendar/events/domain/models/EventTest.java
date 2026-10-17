@@ -3,6 +3,7 @@ package com.calendar.events.domain.models;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.time.MonthDay;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -148,5 +149,76 @@ class EventTest {
         assertThat(by("org", Visibility.FRIENDS, "org", "lea").successorExcluding(Set.of("lea"))).isEmpty();
         assertThat(by("org", Visibility.FRIENDS, "org").successorExcluding(Set.of())).isEmpty();
         assertThat(by("org", Visibility.FRIENDS).successorExcluding(Set.of())).isEmpty();
+    }
+
+    // --- Kinds, birthdays and surprises ---------------------------------------------------------
+
+    @Test
+    void effectiveKind_shouldTreatAMissingKindAsStandard() {
+        assertThat(Event.builder().build().effectiveKind()).isEqualTo(EventKind.STANDARD);
+        assertThat(Event.builder().kind(EventKind.SURPRISE).build().effectiveKind()).isEqualTo(EventKind.SURPRISE);
+    }
+
+    @Test
+    void isBirthday_shouldBeTrueForABirthdayOnly() {
+        assertThat(Event.builder().kind(EventKind.BIRTHDAY).build().isBirthday()).isTrue();
+        assertThat(Event.builder().build().isBirthday()).isFalse();
+    }
+
+    @Test
+    void isSurprise_shouldBeTrueForASurpriseOnly() {
+        assertThat(Event.builder().kind(EventKind.SURPRISE).build().isSurprise()).isTrue();
+        assertThat(Event.builder().kind(EventKind.BIRTHDAY).build().isSurprise()).isFalse();
+    }
+
+    @Test
+    void isHiddenFrom_shouldNameOnlyThoseListed_andToleratePreviouslyStoredEvents() {
+        Event surprise = Event.builder().hiddenFrom(new ArrayList<>(List.of("lea"))).build();
+
+        assertThat(surprise.isHiddenFrom("lea")).isTrue();
+        assertThat(surprise.isHiddenFrom("bob")).isFalse();
+        assertThat(Event.builder().hiddenFrom(null).build().isHiddenFrom("lea")).isFalse();
+    }
+
+    @Test
+    void birthMonthDay_shouldBeTheBirthdaysDayAndMonth_orNullWithoutOne() {
+        assertThat(Event.builder().birthMonth(2).birthDay(29).build().birthMonthDay()).isEqualTo(MonthDay.of(2, 29));
+        assertThat(Event.builder().birthMonth(2).build().birthMonthDay()).isNull();
+    }
+
+    @Test
+    void nearestOccurrenceYear_shouldPickTheBirthdayClosestToTheStart_acrossNewYear() {
+        MonthDay newYearsDay = MonthDay.of(1, 2);
+        MonthDay newYearsEve = MonthDay.of(12, 30);
+
+        assertThat(Event.nearestOccurrenceYear(newYearsDay, Instant.parse("2026-12-28T19:00:00Z"))).isEqualTo(2027);
+        assertThat(Event.nearestOccurrenceYear(newYearsEve, Instant.parse("2027-01-03T19:00:00Z"))).isEqualTo(2026);
+        assertThat(Event.nearestOccurrenceYear(MonthDay.of(3, 12), Instant.parse("2027-03-10T19:00:00Z"))).isEqualTo(2027);
+    }
+
+    @Test
+    void occurrenceKeyOf_shouldJoinTheHonoreeAndTheYear() {
+        assertThat(Event.occurrenceKeyOf("lea", 2027)).isEqualTo("lea:2027");
+    }
+
+    @Test
+    void isVisibleTo_shouldNeverShowAnEventToWhoeverItIsHiddenFrom_evenTakingPart() {
+        Event event = by("bob", Visibility.PUBLIC, "bob", "lea");
+        event.setHiddenFrom(new ArrayList<>(List.of("lea")));
+
+        assertThat(event.isVisibleTo("lea", Set.of("bob"))).isFalse();
+        assertThat(event.isVisibleTo("hugo", Set.of())).isTrue();
+    }
+
+    @Test
+    void isVisibleTo_shouldShowASurpriseToTheHonoreesFriends_notTheOrganizers() {
+        Event surprise = by("bob", Visibility.FRIENDS, "bob");
+        surprise.setKind(EventKind.SURPRISE);
+        surprise.setHonoreeId("lea");
+        surprise.setHiddenFrom(new ArrayList<>(List.of("lea")));
+
+        assertThat(surprise.isVisibleTo("hugo", Set.of("lea"))).isTrue();
+        assertThat(surprise.isVisibleTo("zoe", Set.of("bob"))).isFalse();
+        assertThat(surprise.isVisibleTo("bob", Set.of())).isTrue();
     }
 }

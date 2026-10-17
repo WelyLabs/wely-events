@@ -18,4 +18,13 @@ class EventRequestTest {
                 .build().isDateGiven()).isTrue();
         assertThat(EventRequest.builder().build().isDateGiven()).isFalse();
     }
+
+    @Test
+    void isLocationGiven_shouldRequireALocation_butOnASurprise() {
+        assertThat(EventRequest.builder().location("Lyon").build().isLocationGiven()).isTrue();
+        assertThat(EventRequest.builder().location(" ").build().isLocationGiven()).isFalse();
+        assertThat(EventRequest.builder().build().isLocationGiven()).isFalse();
+        assertThat(EventRequest.builder().kind(com.calendar.events.domain.models.EventKind.SURPRISE).build()
+                .isLocationGiven()).isTrue();
+    }
 }

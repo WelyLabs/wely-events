@@ -530,7 +530,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
     }
 
     private List<String> occupyingTitles(List<String> userIds, String from, String to) {
-        return adapter.findOccupying(userIds, Instant.parse(from), Instant.parse(to))
+        return adapter.findOccupying(userIds, Instant.parse(from), Instant.parse(to), "nobody")
                 .map(Event::getTitle).collectList().block();
     }
 
@@ -1008,7 +1008,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         saveAt("hugo, over", "hugo", List.of(), "2026-10-13T10:00:00Z", "2026-10-13T11:00:00Z");
         saveAt("someone else's", "zoe", List.of("lea"), "2026-10-16T10:00:00Z", null);
 
-        assertThat(titles(adapter.findUpcomingInvolving("hugo", OVERVIEW_NOW)))
+        assertThat(titles(adapter.findUpcomingInvolving("hugo", "nobody", OVERVIEW_NOW)))
                 .containsExactly("hugo organizes, tomorrow", "hugo joins, later");
     }
 
@@ -1031,7 +1031,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         aCommunityEvent("over", "c1", now.minusSeconds(7200), now.minusSeconds(3600));
         aCommunityEvent("elsewhere", "c2", now.plusSeconds(600), null);
 
-        assertThat(adapter.findUpcomingInCommunity("c1", now).map(Event::getTitle).collectList().block())
+        assertThat(adapter.findUpcomingInCommunity("c1", "nobody", now).map(Event::getTitle).collectList().block())
                 .containsExactly("started half an hour ago, no end", "soon", "later");
     }
 
@@ -1083,5 +1083,144 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.respond(event.getId(), "lea", PollAnswer.YES)).verifyComplete();
         assertThat(adapter.findById(event.getId()).block().getParticipantIds()).doesNotContain("lea");
+    }
+
+    // --- Birthdays and surprises: kept from the honoree, and out of every calendar read ----------
+
+    @Autowired
+    private org.springframework.data.mongodb.core.mapping.MongoMappingContext mappingContext;
+
+    private static final Instant PARTY = MAP_NOW.plus(java.time.Duration.ofDays(9));
+
+    /** Bob organizes Léa's surprise; Hugo is Léa's friend, Zoé only Bob's. */
+    private Event leasSurprise() {
+        return adapter.save(Event.builder()
+                .title("Léa's surprise")
+                .organizerId("bob")
+                .kind(com.calendar.events.domain.models.EventKind.SURPRISE)
+                .honoreeId("lea")
+                .hiddenFrom(new ArrayList<>(List.of("lea")))
+                .visibility(Visibility.FRIENDS)
+                .startDate(PARTY)
+                .endDate(PARTY.plusSeconds(4 * 3600))
+                .coordinates(new GeoPoint(45.764, 4.8357))
+                .occurrenceKey("lea:2026")
+                .participantIds(new ArrayList<>(List.of("bob")))
+                .build()).block();
+    }
+
+    private Event birthdayOf(String userId, String name) {
+        return adapter.upsertBirthday(com.calendar.events.domain.services.BirthdayService
+                .birthdayEvent(userId, name, java.time.MonthDay.of(10, 20))).block();
+    }
+
+    @Test
+    @DisplayName("a surprise is in its honoree's friends' feed and map, never in the honoree's nor a stranger's")
+    void findFeedAndFindOnMap_shouldKeepASurpriseFromItsHonoree() {
+        leasSurprise();
+
+        assertThat(adapter.findFeed("hugo", List.of("lea")).map(Event::getTitle).collectList().block())
+                .containsExactly("Léa's surprise");
+        assertThat(adapter.findFeed("lea", List.of("bob", "hugo")).collectList().block()).isEmpty();
+        assertThat(adapter.findFeed("zoe", List.of("bob")).collectList().block()).isEmpty();
+        assertThat(adapter.findOnMap("hugo", List.of("lea"), LYON, MAP_NOW, 10).collectList().block()).hasSize(1);
+        assertThat(adapter.findOnMap("lea", List.of("bob"), LYON, MAP_NOW, 10).collectList().block()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("the honoree cannot reach a surprise by id, nor see it busy in a calendar")
+    void findShownToAndFindOccupying_shouldKeepASurpriseFromItsHonoree() {
+        Event surprise = leasSurprise();
+        Instant from = PARTY.minusSeconds(3600);
+        Instant to = PARTY.plusSeconds(86_400);
+
+        StepVerifier.create(adapter.findShownTo(surprise.getId(), "lea")).verifyComplete();
+        StepVerifier.create(adapter.findShownTo(surprise.getId(), "hugo")).expectNextCount(1).verifyComplete();
+        assertThat(adapter.findOccupying(List.of("bob"), from, to, "lea").collectList().block()).isEmpty();
+        assertThat(adapter.findOccupying(List.of("bob"), from, to, "hugo").collectList().block()).hasSize(1);
+        assertThat(adapter.findUpcomingInvolving("bob", "lea", MAP_NOW).collectList().block()).isEmpty();
+        assertThat(adapter.findUpcomingInvolving("bob", "hugo", MAP_NOW).collectList().block()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("an event hidden from a member stays out of their community's listing")
+    void findUpcomingInCommunity_shouldLeaveOutWhatIsHiddenFromTheViewer() {
+        Event hidden = aCommunityEvent("hidden", "c1", MAP_NOW.plusSeconds(3600), null);
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(hidden.getId())),
+                new Update().set("hiddenFrom", List.of("lea")), "events").block();
+
+        assertThat(adapter.findUpcomingInCommunity("c1", "lea", MAP_NOW).collectList().block()).isEmpty();
+        assertThat(adapter.findUpcomingInCommunity("c1", "hugo", MAP_NOW).collectList().block()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("a birthday is one document per user, rewritten in place")
+    void upsertBirthday_shouldKeepOneBirthdayPerUser() {
+        birthdayOf("lea", "Léa");
+        birthdayOf("lea", "Léa M.");
+        birthdayOf("bob", "Bob");
+
+        assertThat(adapter.findBirthdaysOf(List.of("lea")).map(Event::getHonoreeName).collectList().block())
+                .containsExactly("Léa M.");
+        StepVerifier.create(adapter.findBirthdayOf("lea"))
+                .assertNext(birthday -> assertThat(birthday.getId()).isEqualTo("birthday-lea"))
+                .verifyComplete();
+        assertThat(adapter.findAllBirthdays().collectList().block()).hasSize(2);
+        StepVerifier.create(adapter.deleteBirthdayOf("lea")).expectNext(1L).verifyComplete();
+        StepVerifier.create(adapter.findBirthdayOf("lea")).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("a birthday is served by none of the calendar reads, even to its own user")
+    void calendarReads_shouldLeaveBirthdaysOut() {
+        Event birthday = birthdayOf("lea", "Léa");
+        Instant from = Instant.parse("2000-10-19T00:00:00Z");
+        Instant to = Instant.parse("2000-10-22T00:00:00Z");
+
+        assertThat(adapter.findFeed("hugo", List.of("lea")).collectList().block()).isEmpty();
+        assertThat(adapter.findFeed("lea", List.of()).collectList().block()).isEmpty();
+        StepVerifier.create(adapter.findShownTo(birthday.getId(), "lea")).verifyComplete();
+        assertThat(adapter.findOccupying(List.of("lea"), from, to, "hugo").collectList().block()).isEmpty();
+        assertThat(adapter.findInvolving("lea").collectList().block()).isEmpty();
+        assertThat(adapter.findByParticipantId("lea").collectList().block()).isEmpty();
+        assertThat(adapter.findUpcomingInvolving("lea", "hugo", from).collectList().block()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("a second surprise for the same birthday is refused by the unique occurrence key")
+    void insertSurprise_shouldRefuseASecondSurpriseForTheSameBirthday() {
+        org.springframework.data.mongodb.core.index.IndexResolver.create(mappingContext).resolveIndexFor(EventEntity.class)
+                .forEach(index -> mongoTemplate.indexOps(EventEntity.class).createIndex(index).block());
+        Event first = Event.builder().title("first").organizerId("bob").kind(com.calendar.events.domain.models.EventKind.SURPRISE)
+                .honoreeId("lea").hiddenFrom(new ArrayList<>(List.of("lea"))).occurrenceKey("lea:2027")
+                .startDate(PARTY).participantIds(new ArrayList<>(List.of("bob"))).build();
+        Event second = Event.builder().title("second").organizerId("zoe").kind(com.calendar.events.domain.models.EventKind.SURPRISE)
+                .honoreeId("lea").hiddenFrom(new ArrayList<>(List.of("lea"))).occurrenceKey("lea:2027")
+                .startDate(PARTY.plusSeconds(3600)).participantIds(new ArrayList<>(List.of("zoe"))).build();
+
+        StepVerifier.create(adapter.insertSurprise(first)).expectNextCount(1).verifyComplete();
+        StepVerifier.create(adapter.insertSurprise(second)).verifyComplete();
+        // A standard event has no occurrence key: the sparse index lets any number of them in.
+        anEvent("one");
+        anEvent("two");
+
+        StepVerifier.create(adapter.findSurpriseByOccurrence("lea:2027"))
+                .assertNext(found -> assertThat(found.getTitle()).isEqualTo("first"))
+                .verifyComplete();
+    }
+
+    @Test
+    @DisplayName("surprises are found by birthday, by date and by honoree, the listing hiding them from the honoree")
+    void surpriseQueries_shouldFindTheSurprise() {
+        leasSurprise();
+
+        assertThat(adapter.findSurprisesFor(List.of("lea:2026"), "hugo").collectList().block()).hasSize(1);
+        assertThat(adapter.findSurprisesFor(List.of("lea:2026"), "lea").collectList().block()).isEmpty();
+        StepVerifier.create(adapter.findSurpriseStartingBetween("lea", PARTY.minusSeconds(60), PARTY.plusSeconds(60)))
+                .expectNextCount(1).verifyComplete();
+        StepVerifier.create(adapter.findSurpriseStartingBetween("lea", PARTY.plusSeconds(60), PARTY.plusSeconds(120)))
+                .verifyComplete();
+        assertThat(adapter.findSurprisesHonoring("lea").collectList().block()).hasSize(1);
+        assertThat(adapter.findSurprisesHonoring("bob").collectList().block()).isEmpty();
     }
 }

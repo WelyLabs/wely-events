@@ -128,4 +128,12 @@ class MongoEventGroupOutboxAdapterIntegrationTest {
         assertThat(outbox.markPublished(id, read).block()).isFalse();
         assertThat(outbox.findPending(10).map(EventEntity::getId).collectList().block()).containsExactly(id);
     }
+
+    @Test
+    void findPending_shouldLeaveBirthdaysOut_whichHaveNoGroup() {
+        events.upsertBirthday(com.calendar.events.domain.services.BirthdayService.birthdayEvent("lea", "Léa",
+                java.time.MonthDay.of(3, 12))).block();
+
+        assertThat(outbox.findPending(10).collectList().block()).isEmpty();
+    }
 }

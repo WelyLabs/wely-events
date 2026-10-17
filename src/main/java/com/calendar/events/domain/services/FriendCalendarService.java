@@ -39,7 +39,7 @@ public class FriendCalendarService {
         Mono<Set<String>> viewerFriends = socialGraph.friendIdsOf(viewerId).defaultIfEmpty(Set.of());
 
         return Mono.zip(closeness, viewerFriends)
-                .flatMapMany(known -> eventRepository.findOccupying(Set.of(friendId), window.start(), window.end())
+                .flatMapMany(known -> eventRepository.findOccupying(Set.of(friendId), window.start(), window.end(), viewerId)
                         .map(event -> CalendarDisclosure.disclose(event, viewerId, known.getT2(), known.getT1())))
                 .sort(Comparator.comparing(CalendarEntry::start));
     }

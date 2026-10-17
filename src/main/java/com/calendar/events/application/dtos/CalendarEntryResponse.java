@@ -9,5 +9,6 @@ public record CalendarEntryResponse(
         String eventId,
         String title,
         String location,
-        String description
+        String description,
+        boolean allDay
 ) {}

@@ -120,4 +120,34 @@ class EventPersistenceMapperTest {
         assertNull(mapper.toDomain(new EventEntity()).getPoll());
         assertNull(mapper.toEntity(Event.builder().build()).getPoll());
     }
+
+    @Test
+    void toEntity_shouldKeepEveryBirthdayAndSurpriseField_andComeBackTheSame() {
+        Event surprise = Event.builder().id("s1").title("Surprise").organizerId("bob").allDay(true)
+                .kind(com.calendar.events.domain.models.EventKind.SURPRISE).honoreeId("lea")
+                .hiddenFrom(new java.util.ArrayList<>(java.util.List.of("lea"))).honoreeName("Léa").organizerName("bob_l")
+                .occurrenceKey("lea:2027").birthMonth(3).birthDay(12).build();
+
+        EventEntity entity = mapper.toEntity(surprise);
+
+        assertEquals("SURPRISE", entity.getKind());
+        assertEquals(java.util.List.of("lea"), entity.getHiddenFrom());
+        assertEquals("lea:2027", entity.getOccurrenceKey());
+        Event back = mapper.toDomain(entity);
+        assertEquals(com.calendar.events.domain.models.EventKind.SURPRISE, back.getKind());
+        assertEquals(true, back.isAllDay());
+        assertEquals("lea", back.getHonoreeId());
+        assertEquals(java.util.List.of("lea"), back.getHiddenFrom());
+        assertEquals("Léa", back.getHonoreeName());
+        assertEquals("bob_l", back.getOrganizerName());
+        assertEquals(java.time.MonthDay.of(3, 12), back.birthMonthDay());
+    }
+
+    @Test
+    void toDomain_shouldReadAnEventStoredBeforeKinds_asStandardAndHiddenFromNobody() {
+        Event back = mapper.toDomain(new EventEntity());
+
+        assertEquals(com.calendar.events.domain.models.EventKind.STANDARD, back.effectiveKind());
+        assertEquals(false, back.isHiddenFrom("lea"));
+    }
 }

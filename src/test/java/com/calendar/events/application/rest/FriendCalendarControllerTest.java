@@ -44,10 +44,10 @@ class FriendCalendarControllerTest {
     void getFriendCalendar_shouldAskOnBehalfOfTheCaller() {
         when(jwt.getClaimAsString("businessId")).thenReturn("alice");
         when(service.getFriendCalendar("alice", "bob", new TimeRange(FROM, TO)))
-                .thenReturn(Flux.just(CalendarEntry.busy(FROM, FROM.plusSeconds(3600))));
+                .thenReturn(Flux.just(CalendarEntry.busy(FROM, FROM.plusSeconds(3600), false)));
 
         StepVerifier.create(controller.getFriendCalendar("bob", FROM, TO, jwt))
-                .expectNext(new CalendarEntryResponse(FROM, FROM.plusSeconds(3600), null, null, null, null))
+                .expectNext(new CalendarEntryResponse(FROM, FROM.plusSeconds(3600), null, null, null, null, false))
                 .verifyComplete();
     }
 

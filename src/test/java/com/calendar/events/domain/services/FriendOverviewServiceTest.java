@@ -92,7 +92,7 @@ class FriendOverviewServiceTest {
         when(eventRepository.countPastInvolvingBoth("alice", "bob", NOW)).thenReturn(Mono.just(12L));
         when(eventRepository.findUpcomingInvolvingBoth("alice", "bob", NOW, 5)).thenReturn(Flux.just(next));
         when(eventRepository.findPastInvolvingBoth("alice", "bob", NOW, 6)).thenReturn(Flux.just(memory));
-        when(eventRepository.findUpcomingInvolving("bob", NOW)).thenReturn(Flux.empty());
+        when(eventRepository.findUpcomingInvolving("bob", "alice", NOW)).thenReturn(Flux.empty());
 
         StepVerifier.create(service.overviewOf("alice", "bob"))
                 .assertNext(overview -> {
@@ -110,7 +110,7 @@ class FriendOverviewServiceTest {
     void overviewOf_shouldKeepOnlyTheFriendsEventsTheCallerMaySee() {
         friends();
         nothingTogether();
-        when(eventRepository.findUpcomingInvolving("bob", NOW)).thenReturn(Flux.just(
+        when(eventRepository.findUpcomingInvolving("bob", "alice", NOW)).thenReturn(Flux.just(
                 event("bob's private dinner", "bob", Visibility.PRIVATE),
                 event("carol's friends-only party", "carol", Visibility.FRIENDS, "bob"),
                 event("carol's public concert", "carol", Visibility.PUBLIC, "bob"),
@@ -126,7 +126,7 @@ class FriendOverviewServiceTest {
     void overviewOf_shouldLeaveOutTheFriendsEventsTheCallerIsAlreadyOn() {
         friends();
         nothingTogether();
-        when(eventRepository.findUpcomingInvolving("bob", NOW)).thenReturn(Flux.just(
+        when(eventRepository.findUpcomingInvolving("bob", "alice", NOW)).thenReturn(Flux.just(
                 event("alice joined", "bob", Visibility.PUBLIC, "alice"),
                 event("alice organizes", "alice", Visibility.PUBLIC, "bob"),
                 event("open to alice", "bob", Visibility.PUBLIC)));
@@ -142,7 +142,7 @@ class FriendOverviewServiceTest {
         Event polling = event("when shall we meet?", "bob", Visibility.FRIENDS);
         polling.setPoll(Poll.open(List.of(new PollSlot(null, start, start.plusSeconds(3600)),
                 new PollSlot(null, start.plus(Duration.ofDays(1)), start.plus(Duration.ofDays(1)).plusSeconds(3600))), NOW));
-        when(eventRepository.findUpcomingInvolving("bob", NOW)).thenReturn(Flux.just(polling));
+        when(eventRepository.findUpcomingInvolving("bob", "alice", NOW)).thenReturn(Flux.just(polling));
 
         StepVerifier.create(service.overviewOf("alice", "bob"))
                 .assertNext(overview -> assertThat(overview.friendUpcoming()).singleElement()
@@ -158,7 +158,7 @@ class FriendOverviewServiceTest {
         List<Event> agenda = IntStream.range(0, 20)
                 .mapToObj(i -> event("event " + i, "bob", i % 2 == 0 ? Visibility.PUBLIC : Visibility.PRIVATE))
                 .toList();
-        when(eventRepository.findUpcomingInvolving("bob", NOW))
+        when(eventRepository.findUpcomingInvolving("bob", "alice", NOW))
                 .thenReturn(Flux.fromIterable(agenda).doOnNext(event -> read.incrementAndGet()));
 
         assertThat(friendUpcomingTitles()).containsExactly("event 0", "event 2", "event 4", "event 6", "event 8");
@@ -175,7 +175,7 @@ class FriendOverviewServiceTest {
         StepVerifier.create(service.overviewOf("alice", "carol"))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.NOT_A_FRIEND))
                 .verify();
-        verify(eventRepository, never()).findUpcomingInvolving(any(), any());
+        verify(eventRepository, never()).findUpcomingInvolving(any(), any(), any());
         verify(eventRepository, never()).countPastInvolvingBoth(any(), any(), any());
         verify(eventRepository, never()).findPastInvolvingBoth(any(), any(), any(), anyInt());
         verify(eventRepository, never()).findUpcomingInvolvingBoth(any(), any(), any(), anyInt());
@@ -205,7 +205,7 @@ class FriendOverviewServiceTest {
         when(socialGraph.closenessBetween("alice", "bob")).thenReturn(Mono.just(Closeness.FRIEND));
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.empty());
         nothingTogether();
-        when(eventRepository.findUpcomingInvolving("bob", NOW)).thenReturn(Flux.just(
+        when(eventRepository.findUpcomingInvolving("bob", "alice", NOW)).thenReturn(Flux.just(
                 event("bob's friends-only hike", "bob", Visibility.FRIENDS),
                 event("public", "bob", Visibility.PUBLIC)));
 

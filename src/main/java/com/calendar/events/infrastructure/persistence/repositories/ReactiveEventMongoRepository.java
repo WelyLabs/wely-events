@@ -16,19 +16,34 @@ import java.util.Map;
 
 @Repository
 public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<EventEntity, String> {
-    Flux<EventEntity> findAllByParticipantIdsContains(String userId);
+
+    // Every read below that an API caller reaches leaves out what is not theirs to see at all: a
+    // BIRTHDAY, which only the birthday listing serves, and an event hidden from them (a surprise's
+    // honoree). A missing kind or hiddenFrom matches both $ne, as events stored before them must.
+
+    /** The events the user takes part in. */
+    @Query("{ participantIds: ?0, kind: { $ne: 'BIRTHDAY' }, hiddenFrom: { $ne: ?0 } }")
+    Flux<EventEntity> findSubscribed(String userId);
+
+    /** One event, unless it is a BIRTHDAY or hidden from the viewer. */
+    @Query("{ '_id': ?0, kind: { $ne: 'BIRTHDAY' }, hiddenFrom: { $ne: ?1 } }")
+    Mono<EventEntity> findShownTo(String eventId, String viewerId);
 
     /**
      * The feed: not taken part in, and either mine, public, or shared with friends by one of
-     * mine. A missing visibility counts as FRIENDS, which {@code $in} with null matches.
+     * mine. A missing visibility counts as FRIENDS, which {@code $in} with null matches. A surprise
+     * is for the honoree's friends, whoever organizes it.
      */
     @Query("""
             { $and: [
                 { participantIds: { $ne: ?0 } },
+                { kind: { $ne: 'BIRTHDAY' } },
+                { hiddenFrom: { $ne: ?0 } },
                 { $or: [
                     { organizerId: ?0 },
-                    { visibility: 'PUBLIC' },
-                    { organizerId: { $in: ?1 }, visibility: { $in: [ 'FRIENDS', null ] } }
+                    { visibility: 'PUBLIC', kind: { $ne: 'SURPRISE' } },
+                    { organizerId: { $in: ?1 }, visibility: { $in: [ 'FRIENDS', null ] }, kind: { $ne: 'SURPRISE' } },
+                    { kind: 'SURPRISE', honoreeId: { $in: ?1 } }
                 ] }
             ] }""")
     Flux<EventEntity> findFeed(String userId, Collection<String> friendIds);
@@ -43,11 +58,14 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
                 { coordinates: { $geoWithin: { $geometry: { type: 'Polygon', coordinates:
                     [ [ [ ?3, ?2 ], [ ?5, ?2 ], [ ?5, ?4 ], [ ?3, ?4 ], [ ?3, ?2 ] ] ] } } } },
                 { $or: [ { endDate: { $gt: ?6 } }, { endDate: null, startDate: { $gt: ?7 } } ] },
+                { kind: { $ne: 'BIRTHDAY' } },
+                { hiddenFrom: { $ne: ?0 } },
                 { $or: [
                     { organizerId: ?0 },
                     { participantIds: ?0 },
-                    { visibility: 'PUBLIC' },
-                    { organizerId: { $in: ?1 }, visibility: { $in: [ 'FRIENDS', null ] } }
+                    { visibility: 'PUBLIC', kind: { $ne: 'SURPRISE' } },
+                    { organizerId: { $in: ?1 }, visibility: { $in: [ 'FRIENDS', null ] }, kind: { $ne: 'SURPRISE' } },
+                    { kind: 'SURPRISE', honoreeId: { $in: ?1 } }
                 ] }
             ] }""", sort = "{ startDate: 1 }")
     Flux<EventEntity> findOnMap(String userId, Collection<String> friendIds,
@@ -108,7 +126,8 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     Mono<EventEntity> deleteIfOnlyAmong(String eventId, String organizerId, Collection<String> allowedIds);
 
     /** Events whose member list wely-chat has not been sent yet, oldest first. Absent counts as not sent. */
-    @Query(value = "{ 'groupSynced': { $in: [ false, null ] } }", sort = "{ '_id': 1 }")
+    // A birthday has no group: nobody takes part in it.
+    @Query(value = "{ 'groupSynced': { $in: [ false, null ] }, kind: { $ne: 'BIRTHDAY' } }", sort = "{ '_id': 1 }")
     Flux<EventEntity> findGroupsToPublish(Limit limit);
 
     /**
@@ -122,16 +141,20 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     /**
      * Events the users take part in or organise that overlap [from, to). An event without an end
      * overlaps if it starts after {@code startedAfter}, i.e. from minus its default duration.
-     * An open poll only proposes dates: it keeps nobody busy.
+     * An open poll only proposes dates: it keeps nobody busy; nor does a birthday. An event hidden from
+     * {@code viewerId} is left out, not even shown as busy.
      */
     @Query("""
             { $and: [
                 { $or: [ { participantIds: { $in: ?0 } }, { organizerId: { $in: ?0 } } ] },
                 { 'poll.status': { $ne: 'OPEN' } },
+                { kind: { $ne: 'BIRTHDAY' } },
+                { hiddenFrom: { $ne: ?4 } },
                 { startDate: { $lt: ?2 } },
                 { $or: [ { endDate: { $gt: ?1 } }, { endDate: null, startDate: { $gt: ?3 } } ] }
             ] }""")
-    Flux<EventEntity> findOccupying(Collection<String> userIds, Instant from, Instant to, Instant startedAfter);
+    Flux<EventEntity> findOccupying(Collection<String> userIds, Instant from, Instant to, Instant startedAfter,
+                                    String viewerId);
 
     // Filtered on the organizer too: a cover is only ever changed by whoever organizes the event.
     @Query("{ '_id': ?0, 'organizerId': ?1 }")
@@ -154,25 +177,32 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
                                      GeoJsonPoint coordinates, String description, String visibility);
 
     /** Every event the user organizes or takes part in; both fields are indexed. */
-    @Query(value = "{ $or: [ { participantIds: ?0 }, { organizerId: ?0 } ] }", sort = "{ startDate: 1 }")
+    @Query(value = """
+            { $or: [ { participantIds: ?0 }, { organizerId: ?0 } ],
+              kind: { $ne: 'BIRTHDAY' }, hiddenFrom: { $ne: ?0 } }""", sort = "{ startDate: 1 }")
     Flux<EventEntity> findInvolving(String userId);
 
     /**
      * Not over yet: ends at or after {@code now}, or has no end and started at or after
-     * {@code startedFrom}, i.e. now minus the default duration. Organized or joined by the user.
+     * {@code startedFrom}, i.e. now minus the default duration. Organized or joined by the user, and
+     * not hidden from {@code viewerId}.
      */
     @Query(value = """
             { $and: [
                 { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
-                { $or: [ { endDate: { $gte: ?1 } }, { endDate: null, startDate: { $gte: ?2 } } ] }
+                { $or: [ { endDate: { $gte: ?1 } }, { endDate: null, startDate: { $gte: ?2 } } ] },
+                { kind: { $ne: 'BIRTHDAY' } },
+                { hiddenFrom: { $ne: ?3 } }
             ] }""", sort = "{ startDate: 1 }")
-    Flux<EventEntity> findUpcomingInvolving(String userId, Instant now, Instant startedFrom);
+    Flux<EventEntity> findUpcomingInvolving(String userId, Instant now, Instant startedFrom, String viewerId);
 
     /** Not over yet, as in {@link #findUpcomingInvolving}, and both users are on it. */
     @Query(value = """
             { $and: [
                 { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
                 { $or: [ { organizerId: ?1 }, { participantIds: ?1 } ] },
+                { kind: { $ne: 'BIRTHDAY' } },
+                { hiddenFrom: { $ne: ?0 } },
                 { $or: [ { endDate: { $gte: ?2 } }, { endDate: null, startDate: { $gte: ?3 } } ] }
             ] }""", sort = "{ startDate: 1 }")
     Flux<EventEntity> findUpcomingInvolvingBoth(String userId, String otherId, Instant now, Instant startedFrom,
@@ -183,6 +213,8 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
             { $and: [
                 { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
                 { $or: [ { organizerId: ?1 }, { participantIds: ?1 } ] },
+                { kind: { $ne: 'BIRTHDAY' } },
+                { hiddenFrom: { $ne: ?0 } },
                 { $or: [ { endDate: { $lt: ?2 } }, { endDate: null, startDate: { $lt: ?3 } } ] }
             ] }""", sort = "{ startDate: -1 }")
     Flux<EventEntity> findPastInvolvingBoth(String userId, String otherId, Instant now, Instant startedBefore,
@@ -192,16 +224,19 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
             { $and: [
                 { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
                 { $or: [ { organizerId: ?1 }, { participantIds: ?1 } ] },
+                { kind: { $ne: 'BIRTHDAY' } },
+                { hiddenFrom: { $ne: ?0 } },
                 { $or: [ { endDate: { $lt: ?2 } }, { endDate: null, startDate: { $lt: ?3 } } ] }
             ] }""", count = true)
     Mono<Long> countPastInvolvingBoth(String userId, String otherId, Instant now, Instant startedBefore);
 
     /** A community's events not over yet, as {@link #findOccupying} counts it: without an end, one hour. */
     @Query(value = """
-            { communityId: ?0,
+            { communityId: ?0, hiddenFrom: { $ne: ?3 },
               $or: [ { endDate: { $gt: ?1 } }, { endDate: null, startDate: { $gt: ?2 } } ] }""",
             sort = "{ startDate: 1 }")
-    Flux<EventEntity> findUpcomingInCommunity(String communityId, Instant endingAfter, Instant startedAfter);
+    Flux<EventEntity> findUpcomingInCommunity(String communityId, Instant endingAfter, Instant startedAfter,
+                                              String viewerId);
 
     // A YES is taking part: the answer field goes, the participant comes, and the group follows in
     // the same update, as for a subscription. Matching on the absent participant keeps a repeated
@@ -245,7 +280,7 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
 
     /** Open polls the user organizes, takes part in, or has a ballot in. */
     @Query(value = """
-            { 'poll.status': 'OPEN',
+            { 'poll.status': 'OPEN', hiddenFrom: { $ne: ?0 },
               $or: [ { organizerId: ?0 }, { participantIds: ?0 }, { 'poll.ballots.?0': { $exists: true } } ] }""",
             sort = "{ startDate: 1 }")
     Flux<EventEntity> findOpenPollsInvolving(String userId);
@@ -274,4 +309,30 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     @Query("{ '_id': ?0, 'dateFixSynced': false, 'dateFixVersion': ?1 }")
     @Update("{ '$set': { 'dateFixSynced': true } }")
     Mono<Long> markDateFixPublished(String eventId, Long dateFixVersion);
+
+    // --- Birthdays and surprises --------------------------------------------
+
+    @Query("{ kind: 'BIRTHDAY', organizerId: ?0 }")
+    Mono<EventEntity> findBirthdayOf(String userId);
+
+    @Query("{ kind: 'BIRTHDAY', organizerId: { $in: ?0 } }")
+    Flux<EventEntity> findBirthdaysOf(Collection<String> userIds);
+
+    @Query("{ kind: 'BIRTHDAY' }")
+    Flux<EventEntity> findAllBirthdays();
+
+    @Query(value = "{ kind: 'BIRTHDAY', organizerId: ?0 }", delete = true)
+    Mono<Long> deleteBirthdayOf(String userId);
+
+    @Query("{ kind: 'SURPRISE', occurrenceKey: { $in: ?0 }, hiddenFrom: { $ne: ?1 } }")
+    Flux<EventEntity> findSurprisesFor(Collection<String> occurrenceKeys, String viewerId);
+
+    @Query("{ kind: 'SURPRISE', occurrenceKey: ?0 }")
+    Mono<EventEntity> findSurpriseByOccurrence(String occurrenceKey);
+
+    @Query(value = "{ kind: 'SURPRISE', honoreeId: ?0, startDate: { $gte: ?1, $lt: ?2 } }", sort = "{ startDate: 1 }")
+    Flux<EventEntity> findSurprisesStartingBetween(String honoreeId, Instant from, Instant to, Limit limit);
+
+    @Query("{ kind: 'SURPRISE', honoreeId: ?0 }")
+    Flux<EventEntity> findSurprisesHonoring(String honoreeId);
 }

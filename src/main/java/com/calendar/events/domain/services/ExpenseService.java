@@ -111,7 +111,8 @@ public class ExpenseService {
     /** Missing, or not theirs to see: both answer as missing. */
     private Mono<Event> requireMember(String eventId, String userId) {
         return eventRepository.findById(eventId)
-                .filter(event -> event.involves(userId))
+                // A birthday is no outing: nothing is shared on it.
+                .filter(event -> event.involves(userId) && !event.isBirthday())
                 .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
     }
 

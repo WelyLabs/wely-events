@@ -39,8 +39,8 @@ public final class IcsWriter {
                 "BEGIN:VEVENT",
                 "UID:" + event.getId() + "@" + UID_DOMAIN,
                 "DTSTAMP:" + utcStamp(now),
-                "DTSTART:" + utcStamp(event.getStartDate()),
-                "DTEND:" + utcStamp(event.effectiveEnd()),
+                dateLine("DTSTART", event, event.getStartDate()),
+                dateLine("DTEND", event, event.effectiveEnd()),
                 "SUMMARY:" + escapeText(event.getTitle())));
         if (event.getLocation() != null && !event.getLocation().isBlank()) {
             lines.add("LOCATION:" + escapeText(event.getLocation()));
@@ -63,6 +63,13 @@ public final class IcsWriter {
     }
 
     /** 2026-10-17T18:30:00Z → « 20261017T183000Z ». */
+    /** An all-day event takes plain dates (its UTC days, the end exclusive, as in RFC 5545); any other, UTC times. */
+    static String dateLine(String property, Event event, Instant instant) {
+        return event.isAllDay()
+                ? property + ";VALUE=DATE:" + DateTimeFormatter.BASIC_ISO_DATE.format(instant.atZone(ZoneOffset.UTC).toLocalDate())
+                : property + ":" + utcStamp(instant);
+    }
+
     static String utcStamp(Instant instant) {
         return UTC_STAMP.format(instant);
     }

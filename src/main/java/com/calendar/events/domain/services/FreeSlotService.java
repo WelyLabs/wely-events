@@ -54,7 +54,7 @@ public class FreeSlotService {
                         : Mono.error(new EventException(EventErrorCode.NOT_A_FRIEND)))
                 // Deferred: passed directly, findOccupying would be called while the chain is
                 // assembled, before the friendship check had run.
-                .thenMany(Flux.defer(() -> eventRepository.findOccupying(everyone, window.start(), window.end())))
+                .thenMany(Flux.defer(() -> eventRepository.findOccupying(everyone, window.start(), window.end(), requesterId)))
                 .map(event -> new TimeRange(event.getStartDate(), event.effectiveEnd()))
                 .collectList()
                 .flatMapIterable(busy -> FreeSlotFinder.freeRanges(window, busy, duration, GRID));

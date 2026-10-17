@@ -131,4 +131,30 @@ class SocialApiAdapterTest {
                         && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
                 .verify();
     }
+
+    @Test
+    void friendsOf_shouldReadEveryFriendshipWithItsCloseness_onTheRequestersToken() {
+        body = "[{\"userId\":\"lea\",\"userName\":\"lea\",\"closeness\":\"INTIMATE\"},{\"userId\":\"hugo\",\"closeness\":null}]";
+
+        StepVerifier.create(adapter.friendsOf("me")
+                        .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("abc.def.ghi"))))
+                .expectNext(java.util.Map.of("lea", Closeness.INTIMATE, "hugo", Closeness.FRIEND))
+                .verifyComplete();
+
+        assertThat(requestedUri.get()).isEqualTo(SocialApiAdapter.FRIENDSHIPS_PATH);
+        assertThat(authorization.get()).isEqualTo("Bearer abc.def.ghi");
+    }
+
+    @Test
+    void friendsOf_shouldReportAnOutage_whenSocialFails_orWithoutAToken() {
+        status = 503;
+        StepVerifier.create(adapter.friendsOf("me")
+                        .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("t"))))
+                .expectErrorMatches(e -> e instanceof EventException ex && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
+                .verify();
+
+        StepVerifier.create(adapter.friendsOf("me"))
+                .expectErrorMatches(e -> e instanceof EventException ex && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
+                .verify();
+    }
 }

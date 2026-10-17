@@ -75,6 +75,10 @@ class PollServiceTest {
                 new PictureService(mediaStore), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
                 accountGuard, Clock.fixed(NOW, ZoneOffset.UTC));
         pollService = new PollService(eventRepository, eventService, pollUpdates, accountGuard);
+        // The birthday and hidden-from filter is the database's (see the adapter's integration test):
+        // here an event reached by an API caller is whatever findById holds.
+        lenient().when(eventRepository.findShownTo(anyString(), anyString()))
+                .thenAnswer(call -> eventRepository.findById(call.<String>getArgument(0)));
         lenient().when(markers.isDeleted(anyString())).thenReturn(Mono.just(false));
         lenient().when(markers.deletedAmong(any())).thenReturn(Mono.just(Set.of()));
     }

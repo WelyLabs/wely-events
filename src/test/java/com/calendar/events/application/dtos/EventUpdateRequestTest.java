@@ -20,12 +20,13 @@ class EventUpdateRequestTest {
     }
 
     @Test
-    void shouldRefuseABlankTitleOrLocation() {
+    void shouldRefuseABlankTitle_butLeaveTheLocationToTheDomain() {
+        // A surprise may have no place yet: only the domain knows the event's kind (EVT-BUS-033).
         Set<ConstraintViolation<EventUpdateRequest>> violations =
                 validator.validate(new EventUpdateRequest(" ", "", null, "d", Visibility.PUBLIC));
 
         assertThat(violations).extracting(ConstraintViolation::getMessage)
-                .containsExactlyInAnyOrder("Title is required", "Location is required");
+                .containsExactly("Title is required");
     }
 
     @Test

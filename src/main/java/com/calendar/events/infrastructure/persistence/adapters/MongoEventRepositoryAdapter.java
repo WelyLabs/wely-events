@@ -7,8 +7,10 @@ import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.infrastructure.persistence.entities.EventEntity;
 import com.calendar.events.infrastructure.persistence.mappers.EventPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveEventMongoRepository;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.mongodb.core.geo.GeoJsonPoint;
 import org.springframework.stereotype.Component;
@@ -25,6 +27,9 @@ import java.util.regex.Pattern;
 
 @Component
 public class MongoEventRepositoryAdapter implements EventRepository {
+
+    /** A user's one BIRTHDAY has a known id, so that writing it again replaces it. */
+    static final String BIRTHDAY_ID_PREFIX = "birthday-";
 
     /** A voter id becomes a field name: a dot or a dollar would change which field is written. */
     private static final Pattern FIELD_SAFE_ID = Pattern.compile("[A-Za-z0-9_-]+");
@@ -46,6 +51,11 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     @Override
     public Mono<Event> findById(String id) {
         return mongoRepository.findById(id).map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Event> findShownTo(String id, String viewerId) {
+        return mongoRepository.findShownTo(id, viewerId).map(mapper::toDomain);
     }
 
     @Override
@@ -73,7 +83,7 @@ public class MongoEventRepositoryAdapter implements EventRepository {
 
     @Override
     public Flux<Event> findByParticipantId(String userId) {
-        return mongoRepository.findAllByParticipantIdsContains(userId).map(mapper::toDomain);
+        return mongoRepository.findSubscribed(userId).map(mapper::toDomain);
     }
 
     @Override
@@ -126,8 +136,8 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
-    public Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to) {
-        return mongoRepository.findOccupying(userIds, from, to, from.minus(Event.DEFAULT_DURATION))
+    public Flux<Event> findOccupying(Collection<String> userIds, Instant from, Instant to, String viewerId) {
+        return mongoRepository.findOccupying(userIds, from, to, from.minus(Event.DEFAULT_DURATION), viewerId)
                 .map(mapper::toDomain);
     }
 
@@ -156,8 +166,8 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
-    public Flux<Event> findUpcomingInvolving(String userId, Instant now) {
-        return mongoRepository.findUpcomingInvolving(userId, now, now.minus(Event.DEFAULT_DURATION))
+    public Flux<Event> findUpcomingInvolving(String userId, String viewerId, Instant now) {
+        return mongoRepository.findUpcomingInvolving(userId, now, now.minus(Event.DEFAULT_DURATION), viewerId)
                 .map(mapper::toDomain);
     }
 
@@ -213,8 +223,8 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
-    public Flux<Event> findUpcomingInCommunity(String communityId, Instant now) {
-        return mongoRepository.findUpcomingInCommunity(communityId, now, now.minus(Event.DEFAULT_DURATION))
+    public Flux<Event> findUpcomingInCommunity(String communityId, String viewerId, Instant now) {
+        return mongoRepository.findUpcomingInCommunity(communityId, now, now.minus(Event.DEFAULT_DURATION), viewerId)
                 .map(mapper::toDomain);
     }
 
@@ -246,5 +256,61 @@ public class MongoEventRepositoryAdapter implements EventRepository {
             return Flux.error(new IllegalArgumentException("User id is not usable as a field name"));
         }
         return mongoRepository.findOpenPollsInvolving(userId).map(mapper::toDomain);
+    }
+
+    /** A save on the known id: inserted the first time, replaced after. */
+    @Override
+    public Mono<Event> upsertBirthday(Event birthday) {
+        EventEntity entity = mapper.toEntity(birthday);
+        entity.setId(BIRTHDAY_ID_PREFIX + birthday.getOrganizerId());
+        return mongoRepository.save(entity).map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Event> findBirthdayOf(String userId) {
+        return mongoRepository.findBirthdayOf(userId).map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Event> findBirthdaysOf(Collection<String> userIds) {
+        return mongoRepository.findBirthdaysOf(userIds).map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Event> findAllBirthdays() {
+        return mongoRepository.findAllBirthdays().map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Long> deleteBirthdayOf(String userId) {
+        return mongoRepository.deleteBirthdayOf(userId);
+    }
+
+    /** The unique occurrence key refuses a second surprise for the same birthday: empty then. */
+    @Override
+    public Mono<Event> insertSurprise(Event surprise) {
+        return mongoRepository.insert(mapper.toEntity(surprise))
+                .map(mapper::toDomain)
+                .onErrorResume(DuplicateKeyException.class, duplicate -> Mono.empty());
+    }
+
+    @Override
+    public Flux<Event> findSurprisesFor(Collection<String> occurrenceKeys, String viewerId) {
+        return mongoRepository.findSurprisesFor(occurrenceKeys, viewerId).map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Event> findSurpriseByOccurrence(String occurrenceKey) {
+        return mongoRepository.findSurpriseByOccurrence(occurrenceKey).map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Event> findSurpriseStartingBetween(String honoreeId, Instant from, Instant to) {
+        return mongoRepository.findSurprisesStartingBetween(honoreeId, from, to, Limit.of(1)).next().map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Event> findSurprisesHonoring(String honoreeId) {
+        return mongoRepository.findSurprisesHonoring(honoreeId).map(mapper::toDomain);
     }
 }

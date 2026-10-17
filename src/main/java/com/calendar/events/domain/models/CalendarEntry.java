@@ -12,10 +12,11 @@ public record CalendarEntry(
         String eventId,
         String title,
         String location,
-        String description
+        String description,
+        boolean allDay
 ) {
 
-    public static CalendarEntry busy(Instant start, Instant end) {
-        return new CalendarEntry(start, end, null, null, null, null);
+    public static CalendarEntry busy(Instant start, Instant end, boolean allDay) {
+        return new CalendarEntry(start, end, null, null, null, null, allDay);
     }
 }

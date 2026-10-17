@@ -25,8 +25,10 @@ public class GlobalErrorHandler {
         // Expected outcome, not an incident: logged at WARN, and without a stack trace.
         log.warn("Business failure {} on {}", error.getCode(), exchange.getRequest().getPath());
 
-        return problem(error.getHttpStatus(), error.getCode(), error.getTitle(), error.getDetail(),
+        ProblemDetail problem = problem(error.getHttpStatus(), error.getCode(), error.getTitle(), error.getDetail(),
                 exchange);
+        ex.getProperties().forEach(problem::setProperty);
+        return problem;
     }
 
     /** A multipart upload past the codec's limit, before any controller could cap it itself. */
