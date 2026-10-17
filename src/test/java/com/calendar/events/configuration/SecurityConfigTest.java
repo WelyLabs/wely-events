@@ -14,6 +14,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import com.calendar.events.domain.ports.CalendarLinks;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
@@ -57,6 +58,10 @@ class SecurityConfigTest {
     /** The deleted-accounts register, read on every write. */
     @MockitoBean
     private DeletedUserMarkers markers;
+
+    /** The calendar links, read when a calendar app opens one. */
+    @MockitoBean
+    private CalendarLinks calendarLinks;
 
     private WebTestClient client() {
         return WebTestClient.bindToApplicationContext(context)
@@ -156,6 +161,29 @@ class SecurityConfigTest {
         client().get().uri("/actuator/health/readiness")
                 .exchange()
                 .expectStatus().isOk();
+    }
+
+    @Test
+    @DisplayName("a calendar app reads an event's .ics without a token, through its link")
+    void springSecurityFilterChain_shouldServeCalendarFilesAnonymously() {
+        when(calendarLinks.findByToken("tok")).thenReturn(Mono.empty());
+
+        // Past security: the unknown link is the service's own 404, not a 401.
+        client().get().uri("/events-service/public/calendar/tok.ics")
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    @Test
+    @DisplayName("only reading a calendar file is opened, and asking for a link still needs a token")
+    void springSecurityFilterChain_shouldKeepTheRestOfCalendarClosed() {
+        client().post().uri("/events-service/public/calendar/tok.ics")
+                .exchange()
+                .expectStatus().isUnauthorized();
+
+        client().post().uri("/events-service/events/e1/calendar-link")
+                .exchange()
+                .expectStatus().isUnauthorized();
     }
 
     @Test

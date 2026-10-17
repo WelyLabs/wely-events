@@ -30,6 +30,9 @@ public class SecurityConfig {
                         // OpenAPI. These paths are not routed by the gateway — it forwards
                         // /api/v1/<service>/** and /rsocket only — so opening them here makes
                         // the documentation reachable in-cluster and in dev, and nowhere else.
+                        // A calendar app opens the .ics without the viewer's token: the unguessable,
+                        // short-lived link it carries stands for the check made when it was issued.
+                        .pathMatchers(HttpMethod.GET, "/events-service/public/calendar/*").permitAll()
                         .pathMatchers("/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**",
                                       "/swagger-ui.html", "/webjars/swagger-ui/**").permitAll()
                         .anyExchange().authenticated())

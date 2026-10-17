@@ -1,5 +1,6 @@
 package com.calendar.events.configuration;
 
+import com.calendar.events.domain.ports.CalendarLinks;
 import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.DeletedUsersSource;
@@ -12,6 +13,7 @@ import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.domain.services.AccountErasureService;
 import com.calendar.events.domain.services.AccountGuard;
 import com.calendar.events.domain.services.AccountReconciliationService;
+import com.calendar.events.domain.services.CalendarExportService;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.FreeSlotService;
@@ -26,6 +28,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneId;
@@ -58,6 +61,12 @@ public class EventApplicationConfig {
                                      AccountGuard accountGuard) {
         return new EventService(eventRepository, socialGraph, expenseRepository, pictureService, deletionOutbox,
                 communityDirectory, accountGuard, Clock.systemUTC());
+    }
+
+    @Bean
+    public CalendarExportService calendarExportService(EventRepository eventRepository, EventService eventService,
+                                                       CalendarLinks calendarLinks) {
+        return new CalendarExportService(eventService, eventRepository, calendarLinks, new SecureRandom(), Clock.systemUTC());
     }
 
     @Bean

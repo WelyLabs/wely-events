@@ -160,6 +160,18 @@ public enum EventErrorCode {
             "This account has been deleted: it can no longer change anything.",
             HttpStatus.GONE),
 
+    DATE_NOT_FIXED(
+            "EVT-BUS-026",
+            "Date not fixed",
+            "The date is still being voted on: the event cannot go into a calendar yet.",
+            HttpStatus.CONFLICT),
+
+    CALENDAR_LINK_EXPIRED(
+            "EVT-BUS-027",
+            "Calendar link expired",
+            "This calendar link does not exist or has expired; add the event again from Wely.",
+            HttpStatus.NOT_FOUND),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",
