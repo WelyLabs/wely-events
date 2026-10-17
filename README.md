@@ -110,6 +110,7 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `GET` | `/events/{id}/participants` | Participants d'un événement visible (404 sinon) : `count`, `friendsGoingIds` (les amis de l'appelant parmi eux) et `participantIds`, la liste complète, réservée à l'organisateur et aux participants (vide pour les autres) |
 | `GET` | `/events/map?south=&west=&north=&east=` | Événements à venir que l'appelant peut voir, dans la zone affichée par la carte « Explorer » : requête `$geoWithin` sur l'index `2dsphere`, 200 au plus, les plus proches dans le temps d'abord. Zone de 90° au plus de côté (400 sinon) |
 | `POST` | `/events` | Crée un événement (201), l'organisateur toujours inscrit. `visibility` facultatif, `FRIENDS` par défaut. Avec `candidateSlots` (2 à 5 `{start, end}`), ouvre un sondage de date (voir plus bas) |
+| `GET` | `/events/me/birthdays?from=&to=` | The caller's birthday and their friends' in the range (400 days at most, `EVT-BUS-032` otherwise), by UTC date: `{userId, name, date, mine, closeness, canOrganize, surprise}`. The only endpoint that serves birthdays (see "Birthdays and surprises") |
 | `GET` | `/events/me/polls` | Sondages ouverts que l'appelant organise, rejoint ou a votés |
 | `PUT` | `/events/{id}/poll/ballot` | Remplace le bulletin de l'appelant, `{"answers": {"<slotId>": "YES"\|"MAYBE"\|"NO"}}` ; vide, il le retire. Renvoie le `PollResponse` |
 | `POST` | `/events/{id}/poll/fix` | `{"slotId"}` : fixe la date, organisateur seulement. Inscrit les votants « Oui » de ce créneau |
@@ -324,6 +325,15 @@ Un « Tricount » attaché à chaque événement : ses membres (organisateur et 
 
 La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /social-service/relationships/{friendId}`), avec le jeton de l'appelant. Ce service n'en garde aucune copie : une baisse de niveau y prend effet à la requête suivante. Pas amis : `EVT-BUS-003` (403).
 
+## Birthdays and surprises
+
+- **All-day events.** `allDay: true` (in `EventRequest` and every response) means whole UTC days: `startDate` at 00:00Z of the first day, `endDate` at 00:00Z of the day after the last; a missing end makes it one day. Anything else is `EVT-BUS-034`. The `.ics` export writes them as `VALUE=DATE`.
+- **Kinds.** Every event has a `kind` (`STANDARD`, `BIRTHDAY`, `SURPRISE`; absent counts as `STANDARD`) and a `honoreeId`.
+- **BIRTHDAY.** One per user, `_id` `birthday-<userId>`, upserted from wely-users' `USER_BIRTHDAY` (`{userId, displayName, month, day}`, never the year): all day on the placeholder year 2000, `birthMonth`/`birthDay`, FRIENDS. It is excluded from every read query (feed, map, by id, subscribed, free slots, conflicts, friend calendar, overview, profile summary, group relay) and served only by `/me/birthdays`, so it cannot be joined, edited or deleted through the API. A 29 February falls on the 28th in common years.
+- **SURPRISE.** `POST /events` with `kind: SURPRISE` and `honoreeId`; the location is optional for it only. The organizer must be a close or intimate friend of the honoree and not the honoree (`EVT-BUS-028`), the honoree must have a birthday (`EVT-BUS-029`), and one surprise per birthday: a second within 60 days answers `EVT-BUS-030` (409) with the existing id in the ProblemDetail property `eventId`, and a unique `occurrenceKey` (`honoreeId:year`) settles two creations racing. It is stored with `hiddenFrom: [honoreeId]`, and **every query filters on it in the database**: the honoree never gets it from the feed, the map, a community, a friend's calendar (not even as busy), an overview, a profile summary, its participants or `GET /events/{id}` (404, as are subscribing and leaving). It is visible to its members and to the honoree's friends, any of whom may join.
+- **Notices.** A daily job (08:00 Paris time, plus an hourly catch-up from a minute after startup, never before 08:00) records `BIRTHDAY_NOTICES` for wely-notifications: `SURPRISE_PROPOSAL` to intimate friends from 21 days ahead and close friends from 14 (naming the surprise if one exists), `FRIEND_BIRTHDAY` to every friend and `BIRTHDAY_TODAY` to the honoree on the day; creating a surprise records `SURPRISE_CREATED` for the honoree's other close friends. The `birthday_notices` collection is both outbox and idempotency key (`_id` = `honoreeId:recipientId:year:type`, TTL 400 days); `BirthdayNoticeRelay` sends it, keyed by recipient.
+- **Friends without a token.** wely-social answers "my friends" to the token's owner only, so each `/me/birthdays` call (and each surprise creation) stores the caller's friends with their closeness in `friend_lists`; the job reads a user's friends back from every list naming them, the fresher of two lists deciding. A friendship neither side has looked up since is unknown to the job.
+
 ## Gestion des erreurs
 
 | Code | HTTP | Signification |
@@ -351,6 +361,13 @@ La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /soci
 | `EVT-BUS-021` | 400 | Successeur invalide : ce doit être un autre participant de l'événement |
 | `EVT-BUS-022` | 409 | Dernier membre : partir supprime l'événement, à confirmer avec `deleteIfLast` |
 | `EVT-BUS-025` | 410 | Account deleted: no more writes, and no reopening of a poll stream |
+| `EVT-BUS-028` | 403 | Surprise refused: not a close or intimate friend of the honoree, or the honoree themselves |
+| `EVT-BUS-029` | 409 | The honoree has no birthday |
+| `EVT-BUS-030` | 409 | A surprise already exists for this birthday; its id is in the property `eventId` |
+| `EVT-BUS-031` | 400 | Invalid kind: `BIRTHDAY` through the API, or a `SURPRISE` without `honoreeId` |
+| `EVT-BUS-032` | 400 | Birthday range backwards or longer than 400 days |
+| `EVT-BUS-033` | 400 | Update without a location, on anything but a surprise |
+| `EVT-BUS-034` | 400 | All-day event not on whole UTC days, or with a date poll |
 | `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
 | `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
 | `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |
@@ -401,6 +418,9 @@ client peut tester et un `timestamp` :
 | `EVENT_DELETION_RELAY_ENABLED` | Relais des suppressions vers wely-chat, `true` par défaut |
 | `MEDIA_API_SECRET` | Secret partagé envoyé dans `X-Internal-Secret`. Vide par défaut : le service démarre, mais les envois répondent `EVT-TEC-003` et les images sortent sans URL |
 | `USER_DELETED_CONSUMER_ENABLED` | Consumes `USER_DELETED`, `true` by default |
+| `USER_BIRTHDAY_TOPIC` | Birthdays from wely-users, `USER_BIRTHDAY` by default; `USER_BIRTHDAY_CONSUMER_ENABLED` turns the consumer off |
+| `BIRTHDAY_NOTICES_TOPIC` | Notices for wely-notifications, `BIRTHDAY_NOTICES` by default; `BIRTHDAY_NOTICES_RELAY_ENABLED` turns the relay off |
+| `BIRTHDAY_REMINDERS_ENABLED` | Runs the daily birthday job (and `@Scheduled`), `true` by default |
 | `ACCOUNT_DELETION_PROTECTED_USER_IDS` | Comma-separated `businessId`s of the demo accounts, never erased nor made successor. Empty by default |
 | `USERS_API_URL` | In-cluster URL of wely-users, read by the reconciliation (`http://localhost:8082` in the `dev` profile). Empty by default: every pass then fails without a call |
 | `DELETED_USERS_READER_SECRET` | Sent as `X-Internal-Secret` to wely-users' deleted-accounts listing. Empty by default: every pass then fails without a call |
