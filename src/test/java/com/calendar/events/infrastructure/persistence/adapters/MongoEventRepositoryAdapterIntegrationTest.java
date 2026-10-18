@@ -1223,4 +1223,23 @@ class MongoEventRepositoryAdapterIntegrationTest {
         assertThat(adapter.findSurprisesHonoring("lea").collectList().block()).hasSize(1);
         assertThat(adapter.findSurprisesHonoring("bob").collectList().block()).isEmpty();
     }
+
+    // --- Circle calendar ------------------------------------------------------
+
+    @Test
+    @DisplayName("the circle reads every intimate friend's busy events at once, but never one hidden from the viewer")
+    void findOccupying_shouldServeTheCircle_withoutWhatIsHiddenFromTheViewer() {
+        saveAt("bob's dinner", "bob", List.of("bob"), "2026-10-17T18:00:00Z", "2026-10-17T20:00:00Z");
+        saveAt("zoe joins", "max", List.of("max", "zoe"), "2026-10-18T18:00:00Z", "2026-10-18T20:00:00Z");
+        saveAt("max alone", "max", List.of("max"), "2026-10-18T10:00:00Z", "2026-10-18T11:00:00Z");
+        Event secret = saveAt("lea's surprise", "bob", List.of("bob", "zoe"), "2026-10-19T18:00:00Z", "2026-10-19T20:00:00Z");
+        secret.setKind(com.calendar.events.domain.models.EventKind.SURPRISE);
+        secret.setHonoreeId("lea");
+        secret.setHiddenFrom(new ArrayList<>(List.of("lea")));
+        adapter.save(secret).block();
+
+        assertThat(adapter.findOccupying(List.of("bob", "zoe"), Instant.parse("2026-10-17T00:00:00Z"),
+                        Instant.parse("2026-10-20T00:00:00Z"), "lea").map(Event::getTitle).collectList().block())
+                .containsExactlyInAnyOrder("bob's dinner", "zoe joins");
+    }
 }

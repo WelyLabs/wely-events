@@ -137,6 +137,7 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `DELETE` | `/events/{id}/cover` | Retire la couverture (204), organisateur seulement |
 | `POST` | `/events/me/free-slots` | Créneaux où l'utilisateur et des amis sont tous libres (voir plus bas) |
 | `GET` | `/events/users/{friendId}/calendar?from=&to=` | Calendrier d'un ami, dévoilé selon la proximité (voir plus bas) |
+| `GET` | `/events/me/circle?from=&to=` | "My circle": the busy and visible entries of all the caller's INTIMATE friends, 62 days at most (`EVT-BUS-037` otherwise), as a friend's calendar entry plus `userId` (see "A friend's calendar") |
 | `GET` | `/events/users/{friendId}/overview` | La page d'un ami : nombre de sorties passées ensemble, 5 prochains événements communs, 6 derniers souvenirs communs, et les 5 prochains événements de l'ami que l'appelant peut voir et où il n'est pas encore (sondages de date ouverts compris). Réservé aux amis (`EVT-BUS-003`, 403) ; sa propre page est refusée (`EVT-BUS-005`, 400) |
 | `GET` | `/events/{id}/expenses` | Dépenses partagées de l'événement, les plus récentes d'abord (membres seulement, 404 sinon) |
 | `POST` | `/events/{id}/expenses` | Ajoute une dépense (201) |
@@ -340,6 +341,10 @@ Un « Tricount » attaché à chaque événement : ses membres (organisateur et 
 « Complet » = titre, lieu, description et id ; « occupé » = début et fin seulement. Cacher dans le calendrier ce qu'Alice voit déjà dans son feed ne protégerait rien : la proximité ne joue que sur ce qu'elle ne pourrait pas voir autrement.
 
 The closeness (friend < close < intimate) is read from the `friendships` projection, so a downgrade takes effect once `FRIENDSHIP_CHANGED` has been consumed, a few seconds later. Not friends: `EVT-BUS-003` (403).
+
+### My circle
+
+`GET /events/me/circle?from=…&to=…` merges the calendars of every INTIMATE friend of the caller, read from the projection, in one `findOccupying` over all of them: `[{userId, start, end, allDay, eventId, title, location, description}]`, soonest first. Each event is disclosed as it would be in that friend's own calendar to an intimate friend (`CalendarDisclosure` with closeness INTIMATE): full, except private and community events, which stay busy. An event that keeps two intimate friends busy gives one entry per friend, so each lane is complete. Nothing hidden from the caller is ever read, not even as busy. Without an intimate friend, no event is read.
 
 ## Birthdays and surprises
 

@@ -1,7 +1,9 @@
 package com.calendar.events.application.mappers;
 
 import com.calendar.events.application.dtos.CalendarEntryResponse;
+import com.calendar.events.application.dtos.CircleEntryResponse;
 import com.calendar.events.domain.models.CalendarEntry;
+import com.calendar.events.domain.models.CircleEntry;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventCover;
 import com.calendar.events.domain.models.EventDetails;
@@ -79,6 +81,15 @@ public interface EventRestMapper {
     LeaveResponse toResponse(LeaveOutcome outcome, @Context SignedUrls urls, @Context ViewerFriends friends);
 
     CalendarEntryResponse toResponse(CalendarEntry entry);
+
+    @Mapping(target = "start", source = "entry.start")
+    @Mapping(target = "end", source = "entry.end")
+    @Mapping(target = "allDay", source = "entry.allDay")
+    @Mapping(target = "eventId", source = "entry.eventId")
+    @Mapping(target = "title", source = "entry.title")
+    @Mapping(target = "location", source = "entry.location")
+    @Mapping(target = "description", source = "entry.description")
+    CircleEntryResponse toResponse(CircleEntry circle);
 
     ParticipantsResponse toResponse(Participants participants);
 

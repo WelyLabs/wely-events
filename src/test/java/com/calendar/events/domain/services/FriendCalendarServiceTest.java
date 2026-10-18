@@ -22,8 +22,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -123,5 +125,61 @@ class FriendCalendarServiceTest {
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_CALENDAR_REQUEST))
                 .verify();
         verifyNoInteractions(socialGraph, eventRepository);
+    }
+
+    @Test
+    void getCircleCalendar_shouldShowEveryIntimateFriendsEntries_asAnIntimateSeesThem_soonestFirst() {
+        when(socialGraph.friendsOf("alice")).thenReturn(Mono.just(Map.of("bob", Closeness.INTIMATE,
+                "zoe", Closeness.INTIMATE, "max", Closeness.CLOSE)));
+        Event strangers = event("stranger's party", "carol", Visibility.FRIENDS, 3);
+        Event privateOne = event("bob's doctor", "bob", Visibility.PRIVATE, 2);
+        Event both = event("bob and zoe's dinner", "zoe", Visibility.FRIENDS, 1);
+        when(eventRepository.findOccupying(List.of("bob", "zoe"), WEEK.start(), WEEK.end(), "alice"))
+                .thenReturn(Flux.just(strangers, privateOne, both));
+
+        StepVerifier.create(service.getCircleCalendar("alice", WEEK))
+                .assertNext(circle -> {
+                    assertThat(circle.userId()).isEqualTo("bob");
+                    assertThat(circle.entry().title()).isEqualTo("bob and zoe's dinner");
+                })
+                .assertNext(circle -> {
+                    assertThat(circle.userId()).isEqualTo("zoe");
+                    assertThat(circle.entry().eventId()).isEqualTo("bob and zoe's dinner");
+                })
+                .assertNext(circle -> {
+                    // Private: busy only, even for an intimate friend.
+                    assertThat(circle.userId()).isEqualTo("bob");
+                    assertThat(circle.entry().title()).isNull();
+                })
+                .assertNext(circle -> {
+                    // Someone the viewer does not know: everything, as for an intimate friend.
+                    assertThat(circle.userId()).isEqualTo("bob");
+                    assertThat(circle.entry().title()).isEqualTo("stranger's party");
+                    assertThat(circle.entry().location()).isNull();
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void getCircleCalendar_shouldReadNoEvent_withoutAnIntimateFriend() {
+        when(socialGraph.friendsOf("alice")).thenReturn(Mono.just(Map.of("max", Closeness.CLOSE)));
+
+        StepVerifier.create(service.getCircleCalendar("alice", WEEK)).verifyComplete();
+        verify(eventRepository, never()).findOccupying(any(), any(), any(), any());
+    }
+
+    @Test
+    void getCircleCalendar_shouldRefuseAWindowOverSixtyTwoDays() {
+        StepVerifier.create(service.getCircleCalendar("alice", new TimeRange(FROM, FROM.plus(Duration.ofDays(63)))))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_CIRCLE_REQUEST))
+                .verify();
+        verifyNoInteractions(socialGraph);
+    }
+
+    @Test
+    void getCircleCalendar_shouldPassAReadFailureOn() {
+        when(socialGraph.friendsOf("alice")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+
+        StepVerifier.create(service.getCircleCalendar("alice", WEEK)).expectError(IllegalStateException.class).verify();
     }
 }

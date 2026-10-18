@@ -1,6 +1,7 @@
 package com.calendar.events.application.rest;
 
 import com.calendar.events.application.dtos.CalendarEntryResponse;
+import com.calendar.events.application.dtos.CircleEntryResponse;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.services.FriendCalendarService;
@@ -27,6 +28,20 @@ public class FriendCalendarController {
     public FriendCalendarController(FriendCalendarService friendCalendarService, EventRestMapper mapper) {
         this.friendCalendarService = friendCalendarService;
         this.mapper = mapper;
+    }
+
+    /**
+     * The busy and visible entries of all the caller's intimate friends between {@code from} and {@code to},
+     * 62 days at most (400 EVT-BUS-037 otherwise), each with whose it is.
+     */
+    @GetMapping("/me/circle")
+    public Flux<CircleEntryResponse> getCircleCalendar(@RequestParam Instant from, @RequestParam Instant to,
+                                                       @AuthenticationPrincipal Jwt jwt) {
+        if (!to.isAfter(from)) {
+            return Flux.error(new EventException(EventErrorCode.INVALID_CIRCLE_REQUEST));
+        }
+        String userId = jwt.getClaimAsString("businessId");
+        return friendCalendarService.getCircleCalendar(userId, new TimeRange(from, to)).map(mapper::toResponse);
     }
 
     /** A friend's events between {@code from} and {@code to}, as much as the closeness allows. */

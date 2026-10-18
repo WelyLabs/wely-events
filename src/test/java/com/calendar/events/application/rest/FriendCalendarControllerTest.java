@@ -1,6 +1,8 @@
 package com.calendar.events.application.rest;
 
 import com.calendar.events.application.dtos.CalendarEntryResponse;
+import com.calendar.events.application.dtos.CircleEntryResponse;
+import com.calendar.events.domain.models.CircleEntry;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.TimeRange;
@@ -56,6 +58,27 @@ class FriendCalendarControllerTest {
         StepVerifier.create(controller.getFriendCalendar("bob", TO, FROM, jwt))
                 .expectErrorMatches(e -> e instanceof EventException ex
                         && ex.getErrorCode() == EventErrorCode.INVALID_CALENDAR_REQUEST)
+                .verify();
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void getCircleCalendar_shouldAskOnBehalfOfTheCaller_andSayWhoseEachEntryIs() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("alice");
+        CalendarEntry dinner = new CalendarEntry(FROM, FROM.plusSeconds(3600), "e1", "Dinner", "Lyon", "…", false);
+        when(service.getCircleCalendar("alice", new TimeRange(FROM, TO)))
+                .thenReturn(Flux.just(new CircleEntry("bob", dinner)));
+
+        StepVerifier.create(controller.getCircleCalendar(FROM, TO, jwt))
+                .expectNext(new CircleEntryResponse("bob", FROM, FROM.plusSeconds(3600), false, "e1", "Dinner", "Lyon", "…"))
+                .verifyComplete();
+    }
+
+    @Test
+    void getCircleCalendar_shouldRejectAWindowEndingBeforeItStarts() {
+        StepVerifier.create(controller.getCircleCalendar(TO, FROM, jwt))
+                .expectErrorMatches(e -> e instanceof EventException ex
+                        && ex.getErrorCode() == EventErrorCode.INVALID_CIRCLE_REQUEST)
                 .verify();
         verifyNoInteractions(service);
     }
