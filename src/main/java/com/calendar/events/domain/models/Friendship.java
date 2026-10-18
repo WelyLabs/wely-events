@@ -43,6 +43,29 @@ public record Friendship(String userA, String userB, boolean friends, Closeness 
         return userA + PAIR_SEPARATOR + userB;
     }
 
+    /** The pair id of two users, in either order. */
+    public static String pairIdOf(String userId, String otherId) {
+        return userId.compareTo(otherId) <= 0
+                ? userId + PAIR_SEPARATOR + otherId
+                : otherId + PAIR_SEPARATOR + userId;
+    }
+
+    /** Whether the user is one of the two. */
+    public boolean involves(String userId) {
+        return userA.equals(userId) || userB.equals(userId);
+    }
+
+    /** The other side's id, seen from {@code userId}, who must be one of the two. */
+    public String otherThan(String userId) {
+        if (userId.equals(userA)) {
+            return userB;
+        }
+        if (userId.equals(userB)) {
+            return userA;
+        }
+        throw new IllegalArgumentException("Not part of the pair: " + userId);
+    }
+
     /** The other side, seen from {@code userId}, who must be one of the two. */
     public Friend friendOf(String userId) {
         if (userId.equals(userA)) {

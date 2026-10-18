@@ -72,4 +72,30 @@ class FriendshipTest {
 
         assertThatThrownBy(() -> friendship.friendOf("zoe")).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void pairIdOf_shouldGiveTheSameIdInEitherOrder() {
+        assertThat(Friendship.pairIdOf("bob", "alice")).isEqualTo("alice:bob");
+        assertThat(Friendship.pairIdOf("alice", "bob")).isEqualTo("alice:bob");
+        assertThat(Friendship.pairIdOf("bob", "alice"))
+                .isEqualTo(new Friendship("bob", "alice", true, Closeness.FRIEND, SINCE, 1).pairId());
+    }
+
+    @Test
+    void involves_shouldTellWhetherTheUserIsOneOfTheTwo() {
+        Friendship pair = new Friendship("alice", "bob", true, Closeness.FRIEND, SINCE, 1);
+
+        assertThat(pair.involves("alice")).isTrue();
+        assertThat(pair.involves("bob")).isTrue();
+        assertThat(pair.involves("zoe")).isFalse();
+    }
+
+    @Test
+    void otherThan_shouldNameTheOtherSide_andRefuseAStranger() {
+        Friendship pair = new Friendship("alice", "bob", true, Closeness.FRIEND, SINCE, 1);
+
+        assertThat(pair.otherThan("alice")).isEqualTo("bob");
+        assertThat(pair.otherThan("bob")).isEqualTo("alice");
+        assertThatThrownBy(() -> pair.otherThan("zoe")).isInstanceOf(IllegalArgumentException.class);
+    }
 }

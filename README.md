@@ -89,7 +89,7 @@ Un événement enregistré avant l'existence de ce champ n'en a pas : il compte 
         └────────────────────┘      └────────────────────┘
 ```
 
-Le filtre du feed est **dans la requête Mongo** (`ReactiveEventMongoRepository.findFeed`), avec la liste d'amis lue dans `wely-social` : rien n'est chargé puis trié en mémoire. Si `wely-social` est injoignable, le feed se réduit aux événements publics et aux siens plutôt que d'échouer — il ne montre rien que l'amitié aurait été nécessaire pour voir.
+The feed filter runs **in the Mongo query** (`ReactiveEventMongoRepository.findFeed`), with the friend list read from the local `friendships` projection (see "Friendships without a synchronous call"): nothing is loaded and then sorted in memory, and the feed keeps working while `wely-social` is down.
 
 La même règle (`Event.isVisibleTo`) protège `GET /events/{id}` et l'inscription : un événement qu'on ne peut pas voir répond **404**, pour ne pas révéler qu'il existe, et on ne peut pas s'y inscrire en devinant son id. Se désinscrire reste toujours possible.
 
@@ -274,7 +274,7 @@ et renvoie les plages, dans cette période, où l'utilisateur **et** tous ces am
 ```
 
 - **Occupé** = inscrit à un événement **ou** organisateur, même non inscrit. Un événement sans fin dure 1 h, comme dans le calendrier.
-- **Seulement des amis.** La liste vient de `wely-social`, interrogé avec le jeton de l'utilisateur : la réponse ne peut porter que sur ses propres amis. Un non-ami donne `EVT-BUS-003` (403), et aucun événement n'est lu.
+- **Friends only.** The caller's friends come from the `friendships` projection, keyed by the caller's own `businessId`: the answer can only be about their own friends. A non-friend gives `EVT-BUS-003` (403), and no event is read.
 - **Rien d'autre que des plages libres.** Ni titre, ni lieu, ni participants des événements qui occupent les autres.
 - Les plages commencent et finissent au quart d'heure, comme la sélection du calendrier. 1 à 20 amis, au moins 15 min, période de 62 jours au plus — six semaines, la grille du mois (`EVT-BUS-004`).
 - Le calcul (`FreeSlotFinder`) est du Java pur : fusion des plages occupées, puis trous de la période. Deux index `{participantIds, startDate}` et `{organizerId, startDate}` servent la recherche.
@@ -324,7 +324,7 @@ Un « Tricount » attaché à chaque événement : ses membres (organisateur et 
 
 « Complet » = titre, lieu, description et id ; « occupé » = début et fin seulement. Cacher dans le calendrier ce qu'Alice voit déjà dans son feed ne protégerait rien : la proximité ne joue que sur ce qu'elle ne pourrait pas voir autrement.
 
-La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /social-service/relationships/{friendId}`), avec le jeton de l'appelant. The `friendships` projection is not read here, so a downgrade takes effect on the next request. Pas amis : `EVT-BUS-003` (403).
+The closeness (friend < close < intimate) is read from the `friendships` projection, so a downgrade takes effect once `FRIENDSHIP_CHANGED` has been consumed, a few seconds later. Not friends: `EVT-BUS-003` (403).
 
 ## Birthdays and surprises
 
@@ -333,7 +333,7 @@ La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /soci
 - **BIRTHDAY.** One per user, `_id` `birthday-<userId>`, upserted from wely-users' `USER_BIRTHDAY` (`{userId, displayName, month, day}`, never the year): all day on the placeholder year 2000, `birthMonth`/`birthDay`, FRIENDS. It is excluded from every read query (feed, map, by id, subscribed, free slots, conflicts, friend calendar, overview, profile summary, group relay) and served only by `/me/birthdays`, so it cannot be joined, edited or deleted through the API. A 29 February falls on the 28th in common years.
 - **SURPRISE.** `POST /events` with `kind: SURPRISE` and `honoreeId`; the location is optional for it only. The organizer must be a close or intimate friend of the honoree and not the honoree (`EVT-BUS-028`), the honoree must have a birthday (`EVT-BUS-029`), and one surprise per birthday: a second within 60 days answers `EVT-BUS-030` (409) with the existing id in the ProblemDetail property `eventId`, and a unique `occurrenceKey` (`honoreeId:year`) settles two creations racing. It is stored with `hiddenFrom: [honoreeId]`, and **every query filters on it in the database**: the honoree never gets it from the feed, the map, a community, a friend's calendar (not even as busy), an overview, a profile summary, its participants or `GET /events/{id}` (404, as are subscribing and leaving). It is visible to its members and to the honoree's friends, any of whom may join.
 - **Notices.** A daily job (08:00 Paris time, plus an hourly catch-up from a minute after startup, never before 08:00) records `BIRTHDAY_NOTICES` for wely-notifications: `SURPRISE_PROPOSAL` to intimate friends from 21 days ahead and close friends from 14 (naming the surprise if one exists), `FRIEND_BIRTHDAY` to every friend and `BIRTHDAY_TODAY` to the honoree on the day; creating a surprise records `SURPRISE_CREATED` for the honoree's other close friends. The `birthday_notices` collection is both outbox and idempotency key (`_id` = `honoreeId:recipientId:year:type`, TTL 400 days); `BirthdayNoticeRelay` sends it, keyed by recipient.
-- **Friends without a token.** The reminder job and the `SURPRISE_CREATED` fan-out run on nobody's behalf, so they read the honoree's friends from the `friendships` projection (`FriendshipDirectory`), never from wely-social. User-facing paths (`/me/birthdays`, the closeness check on surprise creation, the feed…) still ask wely-social with the caller's token.
+- **Friends without a token.** The reminder job and the `SURPRISE_CREATED` fan-out run on nobody's behalf; like every user-facing path, they read the friends from the `friendships` projection, never from wely-social.
 
 ### The `friendships` projection
 
@@ -349,6 +349,13 @@ wely-social publishes every friendship change on `FRIENDSHIP_CHANGED` from a tra
 - **Deleted accounts.** A record naming an account in `deleted_users` is ignored, and the erasure deletes every pair involving the account, tombstones included, after the marker.
 - **Errors.** Each record is isolated: an unreadable one, an unknown type or closeness, ids that are not two distinct canonical UUIDs, a missing `version`, or friends without a closeness is logged and skipped; a failing write is retried 5 times (1 s to 30 s), then logged, and the stream goes on. That pair is then stale until its next change.
 - **Freshness.** The projection is eventually consistent with wely-social: it lags by the outbox relay and the consumer, and it is empty until wely-social's snapshot has been consumed.
+
+### Friendships without a synchronous call
+
+Every request path that needs friendships — the feed, the map, `GET /events/{id}` and its participants, a friend's calendar and overview, the circle, the profile summary, `/me/birthdays`, the closeness check on surprise creation, free slots — reads the `friendships` projection through the `SocialGraph` port (`MongoSocialGraphAdapter`). Nothing calls wely-social for a friendship any more.
+
+- **The trade-off.** A change made in wely-social reaches this service a few seconds later (outbox relay, then the consumer): a friend just accepted may not see a FRIENDS event for that long, and a friend just removed may still see one. In exchange, wely-social being down, slow or redeployed costs this service nothing: no timeout, no circuit breaker, no degraded feed.
+- **Still remote.** Community membership (`CommunityDirectory`) is still asked of wely-social, with the caller's token.
 
 ## Gestion des erreurs
 
@@ -384,7 +391,7 @@ wely-social publishes every friendship change on `FRIENDSHIP_CHANGED` from a tra
 | `EVT-BUS-032` | 400 | Birthday range backwards or longer than 400 days |
 | `EVT-BUS-033` | 400 | Update without a location, on anything but a surprise |
 | `EVT-BUS-034` | 400 | All-day event not on whole UTC days, or with a date poll |
-| `EVT-TEC-001` | 502 | `wely-social` injoignable : les amitiés ne peuvent pas être vérifiées |
+| `EVT-TEC-001` | 502 | `wely-social` unreachable: a community's membership cannot be checked (friendships never call it) |
 | `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
 | `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |
 | `EVT-TEC-004` | 502 | `wely-users` unreachable, or refusing the deleted-accounts listing (background only, retried at the next pass) |
@@ -428,7 +435,7 @@ client peut tester et un `timestamp` :
 | `MONGODB_URI` | URI de connexion MongoDB |
 | `KEYCLOAK_ISSUER_URI` | Issuer public — validation de l'émetteur |
 | `KEYCLOAK_INTERNAL_JWK_SET_URI` | JWKS interne — récupération des clés |
-| `SOCIAL_API_URL` | URL interne de `wely-social`, interrogé pour la liste d'amis |
+| `SOCIAL_API_URL` | In-cluster URL of `wely-social`, asked for community membership only; friendships come from the projection |
 | `MEDIA_API_URL` | URL interne de `wely-media` (`http://localhost:8085` en profil `dev`) |
 | `EVENT_DATE_FIXED_TOPIC` | Topic des dates fixées, `EVENT_DATE_FIXED` par défaut |
 | `EVENT_DELETION_RELAY_ENABLED` | Relais des suppressions vers wely-chat, `true` par défaut |
