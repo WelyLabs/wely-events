@@ -8,6 +8,7 @@ import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.application.mappers.FreeSlotRestMapper;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.TimeRange;
+import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.ScheduleService;
 import com.calendar.events.exception.EventErrorCode;
@@ -35,13 +36,16 @@ public class ScheduleController {
 
     private final ScheduleService scheduleService;
     private final PictureService pictureService;
+    private final FriendshipService friendshipService;
     private final EventRestMapper eventMapper;
     private final FreeSlotRestMapper rangeMapper;
 
     public ScheduleController(ScheduleService scheduleService, PictureService pictureService,
-                              EventRestMapper eventMapper, FreeSlotRestMapper rangeMapper) {
+                              FriendshipService friendshipService, EventRestMapper eventMapper,
+                              FreeSlotRestMapper rangeMapper) {
         this.scheduleService = scheduleService;
         this.pictureService = pictureService;
+        this.friendshipService = friendshipService;
         this.eventMapper = eventMapper;
         this.rangeMapper = rangeMapper;
     }
@@ -52,13 +56,14 @@ public class ScheduleController {
                                               @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         return Mono.fromCallable(() -> range(request.start(), request.end()))
-                .flatMapMany(range -> respond(scheduleService.conflictsWith(userId, range, request.excludedEventId())));
+                .flatMapMany(range -> respond(scheduleService.conflictsWith(userId, range, request.excludedEventId()), userId));
     }
 
     /** The caller's events that clash with this one, whether they take part in it or not. */
     @GetMapping("/{id}/conflicts")
     public Flux<EventResponse> getConflicts(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
-        return respond(scheduleService.conflictsOf(id, jwt.getClaimAsString("businessId")));
+        String userId = jwt.getClaimAsString("businessId");
+        return respond(scheduleService.conflictsOf(id, userId), userId);
     }
 
     /** Organizer only: times when everyone taking part is free, closest first. */
@@ -73,9 +78,8 @@ public class ScheduleController {
                                           @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         return Mono.fromCallable(() -> range(request.start(), request.end()))
-                .flatMap(range -> scheduleService.reschedule(id, userId, range))
-                .flatMap(event -> pictureService.signCovers(List.of(event))
-                        .map(urls -> eventMapper.toResponse(event, urls)));
+                .flatMapMany(range -> respond(scheduleService.reschedule(id, userId, range).flux(), userId))
+                .next();
     }
 
     /** An end at or before the start is the caller's mistake, not a server error. */
@@ -86,10 +90,12 @@ public class ScheduleController {
         return new TimeRange(start, end);
     }
 
-    /** One signing round for the whole list, as for the feed. */
-    private Flux<EventResponse> respond(Flux<Event> events) {
+    /** One signing round and one read of the caller's friends for the whole list, as for the feed. */
+    private Flux<EventResponse> respond(Flux<Event> events, String viewerId) {
         return events.collectList()
-                .flatMapMany(list -> pictureService.signCovers(list)
-                        .flatMapIterable(urls -> list.stream().map(event -> eventMapper.toResponse(event, urls)).toList()));
+                .flatMapMany(list -> Mono.zip(pictureService.signCovers(list), friendshipService.viewerFriends(viewerId))
+                        .flatMapIterable(known -> list.stream()
+                                .map(event -> eventMapper.toResponse(event, known.getT1(), known.getT2()))
+                                .toList()));
     }
 }

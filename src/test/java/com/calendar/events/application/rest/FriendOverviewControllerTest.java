@@ -1,10 +1,12 @@
 package com.calendar.events.application.rest;
 
+import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.application.dtos.FriendOverviewResponse;
 import com.calendar.events.application.mappers.FriendOverviewRestMapper;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.FriendOverview;
 import com.calendar.events.domain.models.SignedUrls;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.FriendOverviewService;
 import com.calendar.events.domain.services.PictureService;
@@ -22,6 +24,8 @@ import reactor.test.StepVerifier;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -30,6 +34,9 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class FriendOverviewControllerTest {
+
+    @Mock
+    private FriendshipService friendshipService;
 
     @Mock
     private FriendOverviewService service;
@@ -44,7 +51,8 @@ class FriendOverviewControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new FriendOverviewController(service, new PictureService(mediaStore), mapper);
+        lenient().when(friendshipService.viewerFriends(anyString())).thenReturn(Mono.just(ViewerFriends.NONE));
+        controller = new FriendOverviewController(service, new PictureService(mediaStore), friendshipService, mapper);
     }
 
     @Test
@@ -53,7 +61,7 @@ class FriendOverviewControllerTest {
         FriendOverviewResponse response = new FriendOverviewResponse(3, List.of(), List.of(), List.of());
         when(jwt.getClaimAsString("businessId")).thenReturn("alice");
         when(service.overviewOf("alice", "bob")).thenReturn(Mono.just(overview));
-        when(mapper.toResponse(overview, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(overview, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.getFriendOverview("bob", jwt)).expectNext(response).verifyComplete();
         verifyNoInteractions(mediaStore);
@@ -72,7 +80,7 @@ class FriendOverviewControllerTest {
         when(service.overviewOf("alice", "bob")).thenReturn(Mono.just(overview));
         when(mediaStore.urls(List.of("events/e1/cover-a.jpg", "events/e2/cover-b.jpg", "events/e3/cover-c.jpg")))
                 .thenReturn(Mono.just(urls.byKey()));
-        when(mapper.toResponse(overview, urls)).thenReturn(response);
+        when(mapper.toResponse(overview, urls, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.getFriendOverview("bob", jwt)).expectNext(response).verifyComplete();
         verify(mediaStore, times(1)).urls(any());

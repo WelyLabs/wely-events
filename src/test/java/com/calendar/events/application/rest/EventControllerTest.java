@@ -1,5 +1,6 @@
 package com.calendar.events.application.rest;
 
+import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.application.dtos.EventUpdateRequest;
@@ -19,6 +20,8 @@ import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.SignedUrls;
+import com.calendar.events.domain.models.ViewerFriends;
+import com.calendar.events.domain.models.FeedRank;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.SurpriseService;
@@ -41,6 +44,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -52,6 +57,9 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class EventControllerTest {
+
+    @Mock
+    private FriendshipService friendshipService;
 
     @Mock
     private EventService eventService;
@@ -72,7 +80,9 @@ class EventControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new EventController(eventService, surpriseService, new PictureService(mediaStore), mapper);
+        lenient().when(friendshipService.viewerFriends(anyString())).thenReturn(Mono.just(ViewerFriends.NONE));
+        controller = new EventController(eventService, surpriseService, new PictureService(mediaStore), friendshipService,
+                mapper);
     }
 
     @Test
@@ -82,7 +92,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("1").build();
 
         when(eventService.getSubscribedEvents("user1")).thenReturn(Flux.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         Flux<EventResponse> result = controller.getMySubscribedEvents(jwt);
 
@@ -97,14 +107,38 @@ class EventControllerTest {
         Event event = Event.builder().id("2").build();
         EventResponse response = EventResponse.builder().id("2").build();
 
-        when(eventService.getFeedEvents("user1")).thenReturn(Flux.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(eventService.getFeedEvents("user1", ViewerFriends.NONE, FeedRank.DEFAULT)).thenReturn(Flux.just(event));
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
-        Flux<EventResponse> result = controller.getMyFeedEvents(jwt);
+        Flux<EventResponse> result = controller.getMyFeedEvents(null, jwt);
 
         StepVerifier.create(result)
                 .expectNext(response)
                 .verifyComplete();
+    }
+
+    @Test
+    void getMyFeedEvents_shouldRankByAffinity_withTheCallersFriends() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        ViewerFriends friends = new ViewerFriends(Map.of("bob", com.calendar.events.domain.models.Closeness.CLOSE));
+        when(friendshipService.viewerFriends("user1")).thenReturn(Mono.just(friends));
+        Event event = Event.builder().id("2").build();
+        EventResponse response = EventResponse.builder().id("2").build();
+        when(eventService.getFeedEvents("user1", friends, FeedRank.AFFINITY)).thenReturn(Flux.just(event));
+        when(mapper.toResponse(event, SignedUrls.NONE, friends)).thenReturn(response);
+
+        StepVerifier.create(controller.getMyFeedEvents("Affinity", jwt)).expectNext(response).verifyComplete();
+    }
+
+    @Test
+    void getMyFeedEvents_shouldRefuseAnUnknownRank() {
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+
+        StepVerifier.create(controller.getMyFeedEvents("popularity", jwt))
+                .expectErrorMatches(error -> error instanceof EventException e
+                        && e.getErrorCode() == EventErrorCode.FEED_RANK_INVALID)
+                .verify();
+        verify(eventService, never()).getFeedEvents(any(), any(), any());
     }
 
     @Test
@@ -114,7 +148,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("1").build();
 
         when(eventService.getEventById("1", "user1")).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         Mono<EventResponse> result = controller.getEventById("1", jwt);
 
@@ -157,7 +191,7 @@ class EventControllerTest {
 
         when(mapper.toDomain(request)).thenReturn(event);
         when(eventService.createEvent(any(Event.class), any())).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         Mono<EventResponse> result = controller.createEvent(request, jwt);
 
@@ -181,7 +215,7 @@ class EventControllerTest {
         when(mapper.toDomain(request)).thenReturn(event);
         when(mapper.toCandidateSlots(slots)).thenReturn(candidates);
         when(eventService.createEvent(event, candidates)).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.createEvent(request, jwt))
                 .expectNext(response)
@@ -197,7 +231,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("1").title("Afterwork").build();
         when(mapper.toDetails(request)).thenReturn(details);
         when(eventService.updateDetails("1", "user1", details)).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.updateEvent("1", request, jwt)).expectNext(response).verifyComplete();
     }
@@ -220,7 +254,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("1").build();
 
         when(eventService.toggleSubscription("1", "user1")).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         Mono<EventResponse> result = controller.toggleSubscription("1", jwt);
 
@@ -235,7 +269,7 @@ class EventControllerTest {
         Event event = Event.builder().id("1").build();
         EventResponse response = EventResponse.builder().id("1").build();
         when(eventService.getMapEvents("user1", new GeoBox(45.70, 4.77, 45.81, 4.92))).thenReturn(Flux.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.getMapEvents(45.70, 4.77, 45.81, 4.92, jwt))
                 .expectNext(response)
@@ -254,7 +288,8 @@ class EventControllerTest {
 
     /** The real mapping, to see which image each event ends up with. */
     private EventController withRealMapping() {
-        return new EventController(eventService, surpriseService, new PictureService(mediaStore), Mappers.getMapper(EventRestMapper.class));
+        return new EventController(eventService, surpriseService, new PictureService(mediaStore), friendshipService,
+                Mappers.getMapper(EventRestMapper.class));
     }
 
     private static Event coveredBy(String id, String image) {
@@ -264,12 +299,12 @@ class EventControllerTest {
     @Test
     void getMyFeedEvents_shouldSignEveryStoredCoverInOneCall() {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
-        when(eventService.getFeedEvents("user1")).thenReturn(Flux.just(coveredBy("1", "events/1/cover-a.jpg"),
+        when(eventService.getFeedEvents("user1", ViewerFriends.NONE, FeedRank.DEFAULT)).thenReturn(Flux.just(coveredBy("1", "events/1/cover-a.jpg"),
                 coveredBy("2", "/demo/events/picnic.jpg"), coveredBy("3", null), coveredBy("4", "events/4/cover-b.jpg")));
         when(mediaStore.urls(List.of("events/1/cover-a.jpg", "events/4/cover-b.jpg"))).thenReturn(Mono.just(Map.of(
                 "events/1/cover-a.jpg", "https://media/a", "events/4/cover-b.jpg", "https://media/b")));
 
-        StepVerifier.create(withRealMapping().getMyFeedEvents(jwt).map(response -> String.valueOf(response.getImage())))
+        StepVerifier.create(withRealMapping().getMyFeedEvents(null, jwt).map(response -> String.valueOf(response.getImage())))
                 .expectNext("https://media/a", "/demo/events/picnic.jpg", "null", "https://media/b")
                 .verifyComplete();
         verify(mediaStore, times(1)).urls(any());
@@ -278,11 +313,11 @@ class EventControllerTest {
     @Test
     void getMyFeedEvents_shouldDropStoredCovers_ratherThanFail_whenWelyMediaIsDown() {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
-        when(eventService.getFeedEvents("user1")).thenReturn(Flux.just(coveredBy("1", "events/1/cover-a.jpg"),
+        when(eventService.getFeedEvents("user1", ViewerFriends.NONE, FeedRank.DEFAULT)).thenReturn(Flux.just(coveredBy("1", "events/1/cover-a.jpg"),
                 coveredBy("2", "/demo/events/picnic.jpg")));
         when(mediaStore.urls(any())).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
 
-        StepVerifier.create(withRealMapping().getMyFeedEvents(jwt).map(response -> String.valueOf(response.getImage())))
+        StepVerifier.create(withRealMapping().getMyFeedEvents(null, jwt).map(response -> String.valueOf(response.getImage())))
                 .expectNext("null", "/demo/events/picnic.jpg")
                 .verifyComplete();
     }
@@ -306,7 +341,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("1").image("https://media/a").build();
         when(eventService.setCover(eq("1"), eq("user1"), any())).thenReturn(Mono.just(covered));
         when(mediaStore.urls(List.of("events/1/cover-a.jpg"))).thenReturn(Mono.just(urls.byKey()));
-        when(mapper.toResponse(covered, urls)).thenReturn(response);
+        when(mapper.toResponse(covered, urls, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.setCover("1", UploadsTest.form(UploadsTest.file(4096)), jwt))
                 .expectNext(response)
@@ -361,7 +396,7 @@ class EventControllerTest {
         Event event = Event.builder().title("Title").participantIds(new ArrayList<>()).build();
         when(mapper.toDomain(request)).thenReturn(event);
         when(eventService.createEvent(any(Event.class), any())).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(EventResponse.builder().build());
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(EventResponse.builder().build());
 
         controller.createEvent(request, jwt).block();
 
@@ -377,7 +412,7 @@ class EventControllerTest {
         LeaveOutcome outcome = LeaveOutcome.left(event);
         LeaveResponse response = new LeaveResponse(false, EventResponse.builder().id("1").build());
         when(eventService.leave("1", "user1", "lea", false)).thenReturn(Mono.just(outcome));
-        when(mapper.toResponse(outcome, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(outcome, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.leave("1", new LeaveRequest("lea", false), jwt))
                 .expectNext(response)
@@ -424,7 +459,7 @@ class EventControllerTest {
         Event event = Event.builder().id("1").communityId("c1").build();
         EventResponse response = EventResponse.builder().id("1").communityId("c1").build();
         when(eventService.getCommunityEvents("c1", "user1")).thenReturn(Flux.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.getCommunityEvents("c1", jwt)).expectNext(response).verifyComplete();
     }
@@ -435,7 +470,7 @@ class EventControllerTest {
         Event event = Event.builder().id("1").communityId("c1").build();
         EventResponse response = EventResponse.builder().id("1").build();
         when(eventService.respond("1", "user1", PollAnswer.MAYBE)).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.respondTo("1", new ResponseRequest(PollAnswer.MAYBE), jwt))
                 .expectNext(response)
@@ -452,7 +487,7 @@ class EventControllerTest {
         EventResponse response = EventResponse.builder().id("s1").build();
         when(mapper.toDomain(request)).thenReturn(event);
         when(surpriseService.createSurprise(eq(event), any(), eq("bob_l"))).thenReturn(Mono.just(event));
-        when(mapper.toResponse(event, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.createEvent(request, jwt)).expectNext(response).verifyComplete();
         assertThat(event.getOrganizerId()).isEqualTo("bob");

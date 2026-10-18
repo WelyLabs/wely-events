@@ -6,6 +6,7 @@ import com.calendar.events.application.dtos.FixDateRequest;
 import com.calendar.events.application.dtos.PollResponse;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.PollService;
 import jakarta.validation.Valid;
@@ -38,13 +39,15 @@ public class PollController {
 
     private final PollService pollService;
     private final PictureService pictureService;
+    private final FriendshipService friendshipService;
     private final EventRestMapper mapper;
     private final Duration keepAlive;
 
-    public PollController(PollService pollService, PictureService pictureService, EventRestMapper mapper,
-                          @Value("${app.poll.keep-alive:20s}") Duration keepAlive) {
+    public PollController(PollService pollService, PictureService pictureService, FriendshipService friendshipService,
+                          EventRestMapper mapper, @Value("${app.poll.keep-alive:20s}") Duration keepAlive) {
         this.pollService = pollService;
         this.pictureService = pictureService;
+        this.friendshipService = friendshipService;
         this.mapper = mapper;
         this.keepAlive = keepAlive;
     }
@@ -53,7 +56,7 @@ public class PollController {
     @GetMapping("/me/polls")
     public Flux<EventResponse> getMyPolls(@AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(pollService.getMyPolls(userId));
+        return respond(pollService.getMyPolls(userId), userId);
     }
 
     /** Replaces the caller's ballot. 404 if the event is not theirs to see, 409 once fixed, 400 on an unknown slot. */
@@ -69,7 +72,7 @@ public class PollController {
     public Mono<EventResponse> fixDate(@PathVariable String id, @Valid @RequestBody FixDateRequest request,
                                        @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(pollService.fix(id, userId, request.slotId()));
+        return respond(pollService.fix(id, userId, request.slotId()), userId);
     }
 
     /**
@@ -96,15 +99,16 @@ public class PollController {
                         .takeUntilOther(shared.then())));
     }
 
-    /** One signing round for the whole list, as in EventController. */
-    private Flux<EventResponse> respond(Flux<Event> events) {
+    /** One signing round and one read of the caller's friends for the whole list, as in EventController. */
+    private Flux<EventResponse> respond(Flux<Event> events, String viewerId) {
         return events.collectList()
-                .flatMapMany(list -> pictureService.signCovers(list)
-                        .flatMapIterable(urls -> list.stream().map(event -> mapper.toResponse(event, urls)).toList()));
+                .flatMapMany(list -> Mono.zip(pictureService.signCovers(list), friendshipService.viewerFriends(viewerId))
+                        .flatMapIterable(known -> list.stream()
+                                .map(event -> mapper.toResponse(event, known.getT1(), known.getT2()))
+                                .toList()));
     }
 
-    private Mono<EventResponse> respond(Mono<Event> event) {
-        return event.flatMap(found -> pictureService.signCovers(List.of(found))
-                .map(urls -> mapper.toResponse(found, urls)));
+    private Mono<EventResponse> respond(Mono<Event> event, String viewerId) {
+        return respond(event.flux(), viewerId).next();
     }
 }

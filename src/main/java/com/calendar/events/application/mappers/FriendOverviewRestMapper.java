@@ -3,6 +3,7 @@ package com.calendar.events.application.mappers;
 import com.calendar.events.application.dtos.FriendOverviewResponse;
 import com.calendar.events.domain.models.FriendOverview;
 import com.calendar.events.domain.models.SignedUrls;
+import com.calendar.events.domain.models.ViewerFriends;
 import org.mapstruct.Context;
 import org.mapstruct.Mapper;
 
@@ -10,5 +11,5 @@ import org.mapstruct.Mapper;
 @Mapper(componentModel = "spring", uses = EventRestMapper.class)
 public interface FriendOverviewRestMapper {
 
-    FriendOverviewResponse toResponse(FriendOverview overview, @Context SignedUrls urls);
+    FriendOverviewResponse toResponse(FriendOverview overview, @Context SignedUrls urls, @Context ViewerFriends friends);
 }

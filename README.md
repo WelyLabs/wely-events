@@ -93,6 +93,21 @@ The feed filter runs **in the Mongo query** (`ReactiveEventMongoRepository.findF
 
 La même règle (`Event.isVisibleTo`) protège `GET /events/{id}` et l'inscription : un événement qu'on ne peut pas voir répond **404**, pour ne pas révéler qu'il existe, et on ne peut pas s'y inscrire en devinant son id. Se désinscrire reste toujours possible.
 
+### Friends going
+
+Every event response carries who of the caller's friends go to it, computed from the `friendships` projection with one read per response (`ViewerFriends`):
+
+```json
+"friendsGoing": [ { "userId": "…", "closeness": "INTIMATE" } ],
+"friendsGoingCount": 7,
+"affinity": 3
+```
+
+- `friendsGoing`: the caller's friends among the organizer and the participants, INTIMATE first, then CLOSE, then FRIEND, the organizer then join order within a level, 5 at most. `friendsGoingCount` counts them all. `affinity` is the closest level among them: 0 none, 1 FRIEND, 2 CLOSE, 3 INTIMATE. The caller is never among their own friends.
+- The three fields are `null` on a BIRTHDAY, which nobody goes to (and which no listing but `/me/birthdays` serves).
+- Every endpoint that returns events fills them: feed, subscribed, map, by id, community, create, update, subscribe, leave, cover, polls, conflicts, reschedule, a friend's overview and the profile summary.
+- `GET /events/me/feed?rank=affinity` sorts on `affinity` descending, then `startDate` ascending, in memory after the Mongo filter: the feed is not paginated (see "Known limits").
+
 L'abonnement est un simple `toggle` : le même endpoint inscrit ou désinscrit selon l'état courant, ce qui évite au client de connaître l'état avant d'agir.
 
 ---
@@ -104,7 +119,7 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | Méthode | Route | Description |
 |---|---|---|
 | `GET` | `/events/me/subscribed` | Événements auxquels l'utilisateur est inscrit |
-| `GET` | `/events/me/feed` | Événements visibles auxquels il n'est pas inscrit |
+| `GET` | `/events/me/feed?rank=affinity` | Visible events the caller does not take part in. With `rank=affinity` (any case), the events their closest friends go to first, then the soonest; without it, the usual order; any other rank is `EVT-BUS-035` (400) |
 | `GET` | `/events/me/summary` | Le résumé de la page de profil : sorties de l'année et du mois (heure de Paris), événements organisés, lieux, 3 prochaines sorties, 6 derniers souvenirs, les 5 personnes avec qui l'on sort le plus, les lieux les plus fréquentés et le solde de chaque événement aux comptes non soldés. Calculé uniquement sur les événements de l'appelant |
 | `GET` | `/events/{id}` | Détail d'un événement, s'il est visible (404 sinon) |
 | `GET` | `/events/{id}/participants` | Participants d'un événement visible (404 sinon) : `count`, `friendsGoingIds` (les amis de l'appelant parmi eux) et `participantIds`, la liste complète, réservée à l'organisateur et aux participants (vide pour les autres) |
@@ -394,6 +409,9 @@ Every request path that needs friendships — the feed, the map, `GET /events/{i
 | `EVT-BUS-032` | 400 | Birthday range backwards or longer than 400 days |
 | `EVT-BUS-033` | 400 | Update without a location, on anything but a surprise |
 | `EVT-BUS-034` | 400 | All-day event not on whole UTC days, or with a date poll |
+| `EVT-BUS-035` | 400 | Unknown feed rank: only `affinity` is known |
+| `EVT-BUS-036` | 404 | Not a friend of the caller (reunions, memories) |
+| `EVT-BUS-037` | 400 | Circle range backwards or longer than 62 days |
 | `EVT-TEC-001` | 502 | `wely-social` unreachable: a community's membership cannot be checked (friendships never call it) |
 | `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
 | `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |

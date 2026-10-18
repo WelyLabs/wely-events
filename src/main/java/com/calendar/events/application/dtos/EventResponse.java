@@ -10,6 +10,7 @@ import com.calendar.events.domain.models.EventKind;
 import com.calendar.events.domain.models.Visibility;
 
 import java.time.Instant;
+import java.util.List;
 
 @Getter
 @Setter
@@ -39,4 +40,10 @@ public class EventResponse {
     private EventKind kind;
     /** Whose birthday a SURPRISE celebrates; null on a standard event. */
     private String honoreeId;
+    /** The caller's friends among the organizer and participants, closest first, at most 5; null on a birthday. */
+    private List<FriendGoingResponse> friendsGoing;
+    /** How many of the caller's friends go, uncapped; null on a birthday. */
+    private Integer friendsGoingCount;
+    /** The closest closeness among them: 0 none, 1 FRIEND, 2 CLOSE, 3 INTIMATE; null on a birthday. */
+    private Integer affinity;
 }

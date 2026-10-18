@@ -5,6 +5,7 @@ import com.calendar.events.application.mappers.FriendOverviewRestMapper;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.FriendOverview;
 import com.calendar.events.domain.services.FriendOverviewService;
+import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.domain.services.PictureService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -23,12 +24,14 @@ public class FriendOverviewController {
 
     private final FriendOverviewService friendOverviewService;
     private final PictureService pictureService;
+    private final FriendshipService friendshipService;
     private final FriendOverviewRestMapper mapper;
 
     public FriendOverviewController(FriendOverviewService friendOverviewService, PictureService pictureService,
-                                    FriendOverviewRestMapper mapper) {
+                                    FriendshipService friendshipService, FriendOverviewRestMapper mapper) {
         this.friendOverviewService = friendOverviewService;
         this.pictureService = pictureService;
+        this.friendshipService = friendshipService;
         this.mapper = mapper;
     }
 
@@ -36,9 +39,11 @@ public class FriendOverviewController {
     @GetMapping("/users/{friendId}/overview")
     public Mono<FriendOverviewResponse> getFriendOverview(@PathVariable String friendId,
                                                           @AuthenticationPrincipal Jwt jwt) {
-        return friendOverviewService.overviewOf(jwt.getClaimAsString("businessId"), friendId)
-                .flatMap(overview -> pictureService.signCovers(eventsOf(overview))
-                        .map(urls -> mapper.toResponse(overview, urls)));
+        String userId = jwt.getClaimAsString("businessId");
+        return friendOverviewService.overviewOf(userId, friendId)
+                .flatMap(overview -> Mono.zip(pictureService.signCovers(eventsOf(overview)),
+                                friendshipService.viewerFriends(userId))
+                        .map(known -> mapper.toResponse(overview, known.getT1(), known.getT2())));
     }
 
     private static List<Event> eventsOf(FriendOverview overview) {

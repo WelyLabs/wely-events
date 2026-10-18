@@ -6,6 +6,7 @@ import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.EventCover;
 import com.calendar.events.domain.models.EventDeletion;
 import com.calendar.events.domain.models.EventKind;
+import com.calendar.events.domain.models.FeedRank;
 import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.LeaveOutcome;
@@ -14,6 +15,7 @@ import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Poll;
 import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
@@ -385,15 +387,13 @@ public class EventService {
     }
 
     /**
-     * The events the user may see without taking part. If wely-social is down, the feed shrinks
-     * to public events and the user's own rather than failing: nothing is shown that the
-     * friendship would have been needed for.
+     * The events the user may see without taking part, given the user's friends as read for the
+     * response. Ranked by affinity, the events the closest friends go to come first, then the soonest;
+     * otherwise in the order they are stored.
      */
-    public Flux<Event> getFeedEvents(String userId) {
-        return socialGraph.friendIdsOf(userId)
-                .defaultIfEmpty(Set.of())
-                .onErrorResume(EventService::isSocialOutage, error -> Mono.just(Set.of()))
-                .flatMapMany(friendIds -> eventRepository.findFeed(userId, friendIds));
+    public Flux<Event> getFeedEvents(String userId, ViewerFriends friends, FeedRank rank) {
+        Flux<Event> feed = Flux.defer(() -> eventRepository.findFeed(userId, friends.friendIds()));
+        return rank == FeedRank.AFFINITY ? feed.sort(friends.byAffinity()) : feed;
     }
 
     /**

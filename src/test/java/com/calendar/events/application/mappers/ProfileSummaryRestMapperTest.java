@@ -6,6 +6,7 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.ProfileSummary;
 import com.calendar.events.domain.models.SignedUrls;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -31,7 +32,7 @@ class ProfileSummaryRestMapperTest {
                 List.of(new ProfileSummary.Place("Chez Léa", new GeoPoint(45.77, 4.83), 3)),
                 List.of(new ProfileSummary.EventBalance("e1", "Soirée jeux", -800)));
 
-        ProfileSummaryResponse response = mapper.toResponse(summary, SignedUrls.NONE);
+        ProfileSummaryResponse response = mapper.toResponse(summary, SignedUrls.NONE, ViewerFriends.NONE);
 
         assertThat(response.outingsThisYear()).isEqualTo(23);
         assertThat(response.upcoming().getFirst().getTitle()).isEqualTo("Soirée jeux");
@@ -52,7 +53,7 @@ class ProfileSummaryRestMapperTest {
         ProfileSummary summary = new ProfileSummary(0, 0, 0, 0, List.of(next), List.of(memory), 1, List.of(), List.of(), List.of());
 
         ProfileSummaryResponse response = mapper.toResponse(summary,
-                new SignedUrls(Map.of("events/e1/cover-a.jpg", "https://media/a")));
+                new SignedUrls(Map.of("events/e1/cover-a.jpg", "https://media/a")), ViewerFriends.NONE);
 
         assertThat(response.upcoming().getFirst().getImage()).isEqualTo("https://media/a");
         assertThat(response.memories().getFirst().getImage()).isEqualTo("/demo/events/picnic.jpg");

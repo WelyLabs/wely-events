@@ -4,6 +4,7 @@ import com.calendar.events.application.dtos.FriendOverviewResponse;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.FriendOverview;
 import com.calendar.events.domain.models.SignedUrls;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,7 @@ class FriendOverviewRestMapperTest {
         Event joinable = Event.builder().id("e3").title("Concert").visibility(Visibility.PUBLIC).build();
 
         FriendOverviewResponse response = mapper.toResponse(
-                new FriendOverview(7, List.of(next), List.of(memory), List.of(joinable)), SignedUrls.NONE);
+                new FriendOverview(7, List.of(next), List.of(memory), List.of(joinable)), SignedUrls.NONE, ViewerFriends.NONE);
 
         assertThat(response.outingsTogether()).isEqualTo(7);
         assertThat(response.upcomingTogether().getFirst().getTitle()).isEqualTo("Board games");
@@ -51,7 +52,8 @@ class FriendOverviewRestMapperTest {
 
         FriendOverviewResponse response = mapper.toResponse(
                 new FriendOverview(1, List.of(next), List.of(memory), List.of(joinable)),
-                new SignedUrls(Map.of("events/e1/cover-a.jpg", "https://media/a", "events/e3/cover-c.jpg", "https://media/c")));
+                new SignedUrls(Map.of("events/e1/cover-a.jpg", "https://media/a", "events/e3/cover-c.jpg", "https://media/c")),
+                ViewerFriends.NONE);
 
         assertThat(response.upcomingTogether().getFirst().getImage()).isEqualTo("https://media/a");
         assertThat(response.memoriesTogether().getFirst().getImage()).isEqualTo("/demo/events/picnic.jpg");

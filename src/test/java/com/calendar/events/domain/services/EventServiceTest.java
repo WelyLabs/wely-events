@@ -1,5 +1,9 @@
 package com.calendar.events.domain.services;
 
+import java.util.Map;
+import com.calendar.events.domain.models.Closeness;
+import com.calendar.events.domain.models.FeedRank;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.CommunityRole;
@@ -479,32 +483,39 @@ class EventServiceTest {
     }
 
     @Test
-    void getFeedEvents_shouldPassTheUsersFriends() {
-        Event event = Event.builder().id("2").build();
-        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of("bob")));
-        when(eventRepository.findFeed("user123", Set.of("bob"))).thenReturn(Flux.just(event));
+    void getFeedEvents_shouldPassTheUsersFriends_inTheStoredOrder() {
+        Event later = Event.builder().id("1").organizerId("bob").startDate(Instant.parse("2026-11-02T10:00:00Z")).build();
+        Event sooner = Event.builder().id("2").organizerId("ana").startDate(Instant.parse("2026-11-01T10:00:00Z")).build();
+        ViewerFriends friends = new ViewerFriends(Map.of("bob", Closeness.INTIMATE));
+        when(eventRepository.findFeed("user123", Set.of("bob"))).thenReturn(Flux.just(later, sooner));
 
-        StepVerifier.create(eventService.getFeedEvents("user123"))
-                .expectNext(event)
+        StepVerifier.create(eventService.getFeedEvents("user123", friends, FeedRank.DEFAULT))
+                .expectNext(later, sooner)
                 .verifyComplete();
     }
 
     @Test
-    void getFeedEvents_shouldFallBackToNoFriends_whenTheSocialServiceIsDown() {
-        when(socialGraph.friendIdsOf("user123"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
-        when(eventRepository.findFeed("user123", Set.of())).thenReturn(Flux.empty());
+    void getFeedEvents_shouldPutTheClosestFriendsEventsFirst_thenTheSoonest_whenRankedByAffinity() {
+        Instant day = Instant.parse("2026-11-01T10:00:00Z");
+        Event withNoFriend = Event.builder().id("none").organizerId("x").startDate(day).build();
+        Event withAFriend = Event.builder().id("friend").organizerId("ana").startDate(day.plusSeconds(60)).build();
+        Event withAnIntimateLater = Event.builder().id("intimate-later").organizerId("x")
+                .participantIds(new ArrayList<>(List.of("bob"))).startDate(day.plusSeconds(7200)).build();
+        Event withAnIntimateSooner = Event.builder().id("intimate-sooner").organizerId("bob").startDate(day.plusSeconds(3600)).build();
+        ViewerFriends friends = new ViewerFriends(Map.of("ana", Closeness.FRIEND, "bob", Closeness.INTIMATE));
+        when(eventRepository.findFeed(eq("user123"), any()))
+                .thenReturn(Flux.just(withNoFriend, withAFriend, withAnIntimateLater, withAnIntimateSooner));
 
-        StepVerifier.create(eventService.getFeedEvents("user123")).verifyComplete();
-
-        verify(eventRepository).findFeed("user123", Set.of());
+        StepVerifier.create(eventService.getFeedEvents("user123", friends, FeedRank.AFFINITY).map(Event::getId))
+                .expectNext("intimate-sooner", "intimate-later", "friend", "none")
+                .verifyComplete();
     }
 
     @Test
-    void getFeedEvents_shouldNotHideOtherFailures() {
-        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.error(new IllegalStateException("bug")));
+    void getFeedEvents_shouldPassAReadFailureOn() {
+        when(eventRepository.findFeed("user123", Set.of())).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(eventService.getFeedEvents("user123"))
+        StepVerifier.create(eventService.getFeedEvents("user123", ViewerFriends.NONE, FeedRank.AFFINITY))
                 .expectError(IllegalStateException.class)
                 .verify();
     }

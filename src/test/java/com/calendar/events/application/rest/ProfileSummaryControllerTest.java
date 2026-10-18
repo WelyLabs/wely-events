@@ -1,10 +1,12 @@
 package com.calendar.events.application.rest;
 
+import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.application.dtos.ProfileSummaryResponse;
 import com.calendar.events.application.mappers.ProfileSummaryRestMapper;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.ProfileSummary;
 import com.calendar.events.domain.models.SignedUrls;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.ProfileSummaryService;
@@ -20,6 +22,8 @@ import reactor.test.StepVerifier;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -27,6 +31,9 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ProfileSummaryControllerTest {
+
+    @Mock
+    private FriendshipService friendshipService;
 
     @Mock
     private ProfileSummaryService profileSummaryService;
@@ -44,7 +51,9 @@ class ProfileSummaryControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new ProfileSummaryController(profileSummaryService, new PictureService(mediaStore), mapper);
+        lenient().when(friendshipService.viewerFriends(anyString())).thenReturn(Mono.just(ViewerFriends.NONE));
+        controller = new ProfileSummaryController(profileSummaryService, new PictureService(mediaStore), friendshipService,
+                mapper);
     }
 
     @Test
@@ -53,7 +62,7 @@ class ProfileSummaryControllerTest {
         ProfileSummaryResponse response = new ProfileSummaryResponse(0, 0, 0, 0, List.of(), List.of(), 0, List.of(), List.of(), List.of());
         when(jwt.getClaimAsString("businessId")).thenReturn("me");
         when(profileSummaryService.summaryOf("me")).thenReturn(Mono.just(summary));
-        when(mapper.toResponse(summary, SignedUrls.NONE)).thenReturn(response);
+        when(mapper.toResponse(summary, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.summary(jwt)).expectNext(response).verifyComplete();
     }
@@ -68,7 +77,7 @@ class ProfileSummaryControllerTest {
         when(jwt.getClaimAsString("businessId")).thenReturn("me");
         when(profileSummaryService.summaryOf("me")).thenReturn(Mono.just(summary));
         when(mediaStore.urls(List.of("events/e1/cover-a.jpg", "events/e2/cover-b.jpg"))).thenReturn(Mono.just(urls.byKey()));
-        when(mapper.toResponse(summary, urls)).thenReturn(response);
+        when(mapper.toResponse(summary, urls, ViewerFriends.NONE)).thenReturn(response);
 
         StepVerifier.create(controller.summary(jwt)).expectNext(response).verifyComplete();
         verify(mediaStore, times(1)).urls(any());

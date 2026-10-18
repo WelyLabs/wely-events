@@ -6,16 +6,19 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventCover;
 import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.EventResponses;
+import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.Poll;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollSlotTally;
 import com.calendar.events.domain.models.SignedUrls;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.application.dtos.EventRequest;
 import com.calendar.events.application.dtos.EventUpdateRequest;
 import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.dtos.EventResponsesResponse;
+import com.calendar.events.application.dtos.FriendGoingResponse;
 import com.calendar.events.application.dtos.LeaveResponse;
 import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.dtos.PollResponse;
@@ -55,17 +58,25 @@ public interface EventRestMapper {
     @Mapping(target = "id", ignore = true)
     PollSlot toCandidateSlot(SlotRequest slot);
 
-    // A stored cover is shown through its signed URL; urls comes from one signing round per response.
+    // A stored cover is shown through its signed URL; urls comes from one signing round per response,
+    // and friends from one read of the caller's friendships.
     @Mapping(target = "visibility", expression = "java(domain.effectiveVisibility())")
     @Mapping(target = "image", expression = "java(EventCover.of(domain).shownWith(urls))")
     @Mapping(target = "responses", expression = "java(toResponse(EventResponses.of(domain)))")
     @Mapping(target = "kind", expression = "java(domain.effectiveKind())")
-    EventResponse toResponse(Event domain, @Context SignedUrls urls);
+    @Mapping(target = "friendsGoing", expression = "java(toFriendGoingResponses(friends.friendsGoingTo(domain).friends()))")
+    @Mapping(target = "friendsGoingCount", expression = "java(friends.friendsGoingTo(domain).count())")
+    @Mapping(target = "affinity", expression = "java(friends.friendsGoingTo(domain).affinity())")
+    EventResponse toResponse(Event domain, @Context SignedUrls urls, @Context ViewerFriends friends);
+
+    List<FriendGoingResponse> toFriendGoingResponses(List<Friend> friends);
+
+    FriendGoingResponse toResponse(Friend friend);
 
     EventResponsesResponse toResponse(EventResponses responses);
 
-    // The event, if any, goes through toResponse(Event, urls) with the same signed URLs.
-    LeaveResponse toResponse(LeaveOutcome outcome, @Context SignedUrls urls);
+    // The event, if any, goes through toResponse(Event, urls, friends) with the same signed URLs.
+    LeaveResponse toResponse(LeaveOutcome outcome, @Context SignedUrls urls, @Context ViewerFriends friends);
 
     CalendarEntryResponse toResponse(CalendarEntry entry);
 

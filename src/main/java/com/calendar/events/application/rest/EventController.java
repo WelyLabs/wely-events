@@ -4,6 +4,11 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoBox;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.services.EventService;
+import com.calendar.events.domain.services.FriendshipService;
+import com.calendar.events.domain.models.FeedRank;
+import com.calendar.events.domain.models.ViewerFriends;
+import com.calendar.events.exception.EventErrorCode;
+import com.calendar.events.exception.EventException;
 import com.calendar.events.domain.models.EventKind;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.SurpriseService;
@@ -39,26 +44,36 @@ public class EventController {
     private final EventService eventService;
     private final SurpriseService surpriseService;
     private final PictureService pictureService;
+    private final FriendshipService friendshipService;
     private final EventRestMapper mapper;
 
     public EventController(EventService eventService, SurpriseService surpriseService, PictureService pictureService,
-                           EventRestMapper mapper) {
+                           FriendshipService friendshipService, EventRestMapper mapper) {
         this.eventService = eventService;
         this.surpriseService = surpriseService;
         this.pictureService = pictureService;
+        this.friendshipService = friendshipService;
         this.mapper = mapper;
     }
 
     @GetMapping("/me/subscribed")
     public Flux<EventResponse> getMySubscribedEvents(@AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(eventService.getSubscribedEvents(userId));
+        return respond(eventService.getSubscribedEvents(userId), userId);
     }
 
+    /**
+     * What the caller may discover. {@code rank=affinity} puts the events their closest friends go to
+     * first, then the soonest; without it, the usual order. 400 EVT-BUS-035 for any other rank.
+     */
     @GetMapping("/me/feed")
-    public Flux<EventResponse> getMyFeedEvents(@AuthenticationPrincipal Jwt jwt) {
+    public Flux<EventResponse> getMyFeedEvents(@RequestParam(required = false) String rank,
+                                               @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(eventService.getFeedEvents(userId));
+        return Mono.justOrEmpty(FeedRank.named(rank))
+                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.FEED_RANK_INVALID)))
+                .flatMapMany(feedRank -> friendshipService.viewerFriends(userId)
+                        .flatMapMany(friends -> respond(eventService.getFeedEvents(userId, friends, feedRank), friends)));
     }
 
     /** What the Explore map shows: upcoming events the caller may see, inside the area on screen. */
@@ -68,14 +83,14 @@ public class EventController {
                                             @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         return respond(Mono.fromCallable(() -> new GeoBox(south, west, north, east))
-                .flatMapMany(box -> eventService.getMapEvents(userId, box)));
+                .flatMapMany(box -> eventService.getMapEvents(userId, box)), userId);
     }
 
     /** A community's upcoming events, soonest first; 403 EVT-BUS-024 for anyone but its members. */
     @GetMapping("/community/{communityId}")
     public Flux<EventResponse> getCommunityEvents(@PathVariable String communityId, @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(eventService.getCommunityEvents(communityId, userId));
+        return respond(eventService.getCommunityEvents(communityId, userId), userId);
     }
 
     /**
@@ -86,13 +101,13 @@ public class EventController {
     public Mono<EventResponse> respondTo(@PathVariable String id, @Valid @RequestBody ResponseRequest request,
                                          @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(eventService.respond(id, userId, request.answer()));
+        return respond(eventService.respond(id, userId, request.answer()), userId);
     }
 
     @GetMapping("/{id}")
     public Mono<EventResponse> getEventById(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(eventService.getEventById(id, userId));
+        return respond(eventService.getEventById(id, userId), userId);
     }
 
     /** Who takes part: everyone for those involved, how many and which friends for the others. */
@@ -116,7 +131,7 @@ public class EventController {
         var candidateSlots = mapper.toCandidateSlots(request.getCandidateSlots());
         return respond(request.getKind() == EventKind.SURPRISE
                 ? surpriseService.createSurprise(event, candidateSlots, jwt.getClaimAsString(USERNAME_CLAIM))
-                : eventService.createEvent(event, candidateSlots));
+                : eventService.createEvent(event, candidateSlots), userId);
     }
 
     /**
@@ -127,7 +142,7 @@ public class EventController {
     public Mono<EventResponse> updateEvent(@PathVariable String id, @Valid @RequestBody EventUpdateRequest request,
                                            @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(eventService.updateDetails(id, userId, mapper.toDetails(request)));
+        return respond(eventService.updateDetails(id, userId, mapper.toDetails(request)), userId);
     }
 
     @DeleteMapping("/{id}")
@@ -140,7 +155,7 @@ public class EventController {
     @PostMapping("/{id}/subscribe")
     public Mono<EventResponse> toggleSubscription(@PathVariable String id, @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(eventService.toggleSubscription(id, userId));
+        return respond(eventService.toggleSubscription(id, userId), userId);
     }
 
     /**
@@ -154,8 +169,10 @@ public class EventController {
         String userId = jwt.getClaimAsString("businessId");
         LeaveRequest choice = request != null ? request : new LeaveRequest(null, false);
         return eventService.leave(id, userId, choice.newOrganizerId(), choice.deleteIfLast())
-                .flatMap(outcome -> pictureService.signCovers(outcome.event() != null ? List.of(outcome.event()) : List.of())
-                        .map(urls -> mapper.toResponse(outcome, urls)));
+                .flatMap(outcome -> Mono.zip(
+                                pictureService.signCovers(outcome.event() != null ? List.of(outcome.event()) : List.of()),
+                                friendshipService.viewerFriends(userId))
+                        .map(known -> mapper.toResponse(outcome, known.getT1(), known.getT2())));
     }
 
     /** Multipart {@code file}, organizer only. 413 EVT-BUS-012 above 10 MB, 400 EVT-BUS-011 for anything but an image. */
@@ -164,7 +181,7 @@ public class EventController {
                                         @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         return respond(Uploads.fileOf(form, MediaProfile.COVER)
-                .flatMap(content -> eventService.setCover(id, userId, content)));
+                .flatMap(content -> eventService.setCover(id, userId, content)), userId);
     }
 
     @DeleteMapping("/{id}/cover")
@@ -174,15 +191,25 @@ public class EventController {
         return eventService.removeCover(id, userId);
     }
 
-    /** One signing round for the whole list, so a feed costs one call to wely-media, not one per event. */
-    private Flux<EventResponse> respond(Flux<Event> events) {
-        return events.collectList()
-                .flatMapMany(list -> pictureService.signCovers(list)
-                        .flatMapIterable(urls -> list.stream().map(event -> mapper.toResponse(event, urls)).toList()));
+    /**
+     * One signing round for the whole list, so a feed costs one call to wely-media, not one per event,
+     * and one read of the caller's friendships, for who of them goes to each.
+     */
+    private Flux<EventResponse> respond(Flux<Event> events, String viewerId) {
+        return friendshipService.viewerFriends(viewerId).flatMapMany(friends -> respond(events, friends));
     }
 
-    private Mono<EventResponse> respond(Mono<Event> event) {
-        return event.flatMap(found -> pictureService.signCovers(List.of(found))
-                .map(urls -> mapper.toResponse(found, urls)));
+    private Flux<EventResponse> respond(Flux<Event> events, ViewerFriends friends) {
+        return events.collectList()
+                .flatMapMany(list -> pictureService.signCovers(list)
+                        .flatMapIterable(urls -> list.stream()
+                                .map(event -> mapper.toResponse(event, urls, friends))
+                                .toList()));
+    }
+
+    private Mono<EventResponse> respond(Mono<Event> event, String viewerId) {
+        return event.flatMap(found -> Mono.zip(pictureService.signCovers(List.of(found)),
+                        friendshipService.viewerFriends(viewerId))
+                .map(known -> mapper.toResponse(found, known.getT1(), known.getT2())));
     }
 }

@@ -1,6 +1,8 @@
 package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.Closeness;
+import com.calendar.events.domain.models.Friend;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.models.FriendshipChange;
 import com.calendar.events.domain.models.FriendshipChangeType;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -21,6 +24,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -171,5 +175,29 @@ class FriendshipServiceTest {
 
         StepVerifier.create(service.record(UPGRADE)).expectError(IllegalStateException.class).verify();
         verify(directory, never()).record(any());
+    }
+
+    @Test
+    void viewerFriends_shouldMapEachFriendToTheirCloseness() {
+        when(directory.friendsOf("alice")).thenReturn(Flux.just(new Friend("bob", Closeness.CLOSE),
+                new Friend("zoe", Closeness.FRIEND)));
+
+        StepVerifier.create(service.viewerFriends("alice"))
+                .expectNext(new ViewerFriends(Map.of("bob", Closeness.CLOSE, "zoe", Closeness.FRIEND)))
+                .verifyComplete();
+    }
+
+    @Test
+    void viewerFriends_shouldBeNone_withoutFriends() {
+        when(directory.friendsOf("alice")).thenReturn(Flux.empty());
+
+        StepVerifier.create(service.viewerFriends("alice")).expectNext(ViewerFriends.NONE).verifyComplete();
+    }
+
+    @Test
+    void viewerFriends_shouldPassAReadFailureOn() {
+        when(directory.friendsOf("alice")).thenReturn(Flux.error(new IllegalStateException("mongo down")));
+
+        StepVerifier.create(service.viewerFriends("alice")).expectError(IllegalStateException.class).verify();
     }
 }

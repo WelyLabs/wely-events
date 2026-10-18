@@ -17,11 +17,15 @@ import com.calendar.events.application.dtos.CalendarEntryResponse;
 import com.calendar.events.application.dtos.CoordinatesDto;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.EventKind;
+import com.calendar.events.domain.models.Closeness;
+import com.calendar.events.application.dtos.FriendGoingResponse;
 import com.calendar.events.application.dtos.EventResponsesResponse;
 import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.LeaveOutcome;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.models.SignedUrls;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.models.Visibility;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -79,7 +83,7 @@ class EventRestMapperTest {
                 .participantIds(Collections.singletonList("user1"))
                 .build();
 
-        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE);
+        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE, ViewerFriends.NONE);
 
         assertNotNull(response);
         assertEquals(domain.getId(), response.getId());
@@ -104,7 +108,7 @@ class EventRestMapperTest {
                 .participantIds(new java.util.ArrayList<>(List.of("org", "lea")))
                 .responses(new java.util.LinkedHashMap<>(java.util.Map.of("bob", PollAnswer.MAYBE))).build();
 
-        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE);
+        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE, ViewerFriends.NONE);
 
         assertEquals("c1", response.getCommunityId());
         assertEquals(new EventResponsesResponse(List.of("org", "lea"), List.of("bob"), List.of()), response.getResponses());
@@ -112,7 +116,7 @@ class EventRestMapperTest {
 
     @Test
     void toResponse_shouldGiveNoAnswers_forAnEventOutsideAnyCommunity() {
-        EventResponse response = mapper.toResponse(Event.builder().id("1").build(), SignedUrls.NONE);
+        EventResponse response = mapper.toResponse(Event.builder().id("1").build(), SignedUrls.NONE, ViewerFriends.NONE);
 
         assertNull(response.getResponses());
         assertNull(response.getCommunityId());
@@ -127,7 +131,7 @@ class EventRestMapperTest {
 
     @Test
     void toResponse_shouldReportAMissingVisibilityAsFriends() {
-        EventResponse response = mapper.toResponse(Event.builder().id("1").build(), SignedUrls.NONE);
+        EventResponse response = mapper.toResponse(Event.builder().id("1").build(), SignedUrls.NONE, ViewerFriends.NONE);
 
         assertEquals(Visibility.FRIENDS, response.getVisibility());
     }
@@ -152,13 +156,13 @@ class EventRestMapperTest {
     void toResponse_shouldGiveBackTheCoordinates() {
         Event domain = Event.builder().coordinates(new GeoPoint(45.764, 4.8357)).build();
 
-        assertEquals(new CoordinatesDto(45.764, 4.8357), mapper.toResponse(domain, SignedUrls.NONE).getCoordinates());
+        assertEquals(new CoordinatesDto(45.764, 4.8357), mapper.toResponse(domain, SignedUrls.NONE, ViewerFriends.NONE).getCoordinates());
     }
 
     @Test
     void toDomain_shouldLeaveATypedLocationWithoutCoordinates() {
         assertNull(mapper.toDomain(EventRequest.builder().title("t").location("Lyon").build()).getCoordinates());
-        assertNull(mapper.toResponse(Event.builder().location("Lyon").build(), SignedUrls.NONE).getCoordinates());
+        assertNull(mapper.toResponse(Event.builder().location("Lyon").build(), SignedUrls.NONE, ViewerFriends.NONE).getCoordinates());
     }
 
     @Test
@@ -178,15 +182,15 @@ class EventRestMapperTest {
         Event domain = Event.builder().image("events/1/cover-a.jpg").build();
 
         assertEquals("https://media/a",
-                mapper.toResponse(domain, new SignedUrls(Map.of("events/1/cover-a.jpg", "https://media/a"))).getImage());
-        assertNull(mapper.toResponse(domain, SignedUrls.NONE).getImage());
+                mapper.toResponse(domain, new SignedUrls(Map.of("events/1/cover-a.jpg", "https://media/a")), ViewerFriends.NONE).getImage());
+        assertNull(mapper.toResponse(domain, SignedUrls.NONE, ViewerFriends.NONE).getImage());
     }
 
     @Test
     void toResponse_shouldPassADemoCoverThrough() {
         Event domain = Event.builder().image("/demo/events/picnic.jpg").build();
 
-        assertEquals("/demo/events/picnic.jpg", mapper.toResponse(domain, SignedUrls.NONE).getImage());
+        assertEquals("/demo/events/picnic.jpg", mapper.toResponse(domain, SignedUrls.NONE, ViewerFriends.NONE).getImage());
     }
 
     @Test
@@ -207,7 +211,7 @@ class EventRestMapperTest {
                 Map.of("lea", Map.of("thu", PollAnswer.YES), "hugo", Map.of("thu", PollAnswer.MAYBE)), null);
         Event domain = Event.builder().id("1").startDate(slot.start()).poll(poll).build();
 
-        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE);
+        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE, ViewerFriends.NONE);
 
         assertEquals(PollStatus.OPEN, response.getPoll().status());
         assertNull(response.getPoll().fixedSlotId());
@@ -219,7 +223,7 @@ class EventRestMapperTest {
     void toResponse_shouldLeaveThePollNull_forAnEventWithAFixedDate() {
         Event domain = Event.builder().id("1").startDate(Instant.now()).build();
 
-        assertNull(mapper.toResponse(domain, SignedUrls.NONE).getPoll());
+        assertNull(mapper.toResponse(domain, SignedUrls.NONE, ViewerFriends.NONE).getPoll());
     }
 
     @Test
@@ -238,7 +242,7 @@ class EventRestMapperTest {
         Event domain = Event.builder().id("1").image("events/1/cover-a.jpg").build();
 
         LeaveResponse response = mapper.toResponse(LeaveOutcome.left(domain),
-                new SignedUrls(Map.of("events/1/cover-a.jpg", "https://media/a")));
+                new SignedUrls(Map.of("events/1/cover-a.jpg", "https://media/a")), ViewerFriends.NONE);
 
         assertFalse(response.deleted());
         assertEquals("1", response.event().getId());
@@ -247,7 +251,7 @@ class EventRestMapperTest {
 
     @Test
     void toResponse_shouldMapADeletionWithoutEvent() {
-        assertEquals(new LeaveResponse(true, null), mapper.toResponse(LeaveOutcome.eventDeleted(), SignedUrls.NONE));
+        assertEquals(new LeaveResponse(true, null), mapper.toResponse(LeaveOutcome.eventDeleted(), SignedUrls.NONE, ViewerFriends.NONE));
     }
 
     @Test
@@ -274,12 +278,44 @@ class EventRestMapperTest {
         Event surprise = Event.builder().id("s1").allDay(true).kind(com.calendar.events.domain.models.EventKind.SURPRISE)
                 .honoreeId("lea").hiddenFrom(new java.util.ArrayList<>(java.util.List.of("lea"))).build();
 
-        EventResponse response = mapper.toResponse(surprise, SignedUrls.NONE);
+        EventResponse response = mapper.toResponse(surprise, SignedUrls.NONE, ViewerFriends.NONE);
 
         assertTrue(response.isAllDay());
         assertEquals(com.calendar.events.domain.models.EventKind.SURPRISE, response.getKind());
         assertEquals("lea", response.getHonoreeId());
         assertEquals(com.calendar.events.domain.models.EventKind.STANDARD,
-                mapper.toResponse(Event.builder().id("e1").build(), SignedUrls.NONE).getKind());
+                mapper.toResponse(Event.builder().id("e1").build(), SignedUrls.NONE, ViewerFriends.NONE).getKind());
+    }
+
+    @Test
+    void toResponse_shouldNameTheCallersFriendsGoing_closestFirst() {
+        Event domain = Event.builder().id("1").organizerId("ana")
+                .participantIds(new java.util.ArrayList<>(List.of("ana", "bob", "zoe", "max"))).build();
+        ViewerFriends friends = new ViewerFriends(Map.of("ana", Closeness.FRIEND,
+                "zoe", Closeness.INTIMATE));
+
+        EventResponse response = mapper.toResponse(domain, SignedUrls.NONE, friends);
+
+        assertEquals(List.of(
+                new FriendGoingResponse("zoe", Closeness.INTIMATE),
+                new FriendGoingResponse("ana", Closeness.FRIEND)),
+                response.getFriendsGoing());
+        assertEquals(2, response.getFriendsGoingCount());
+        assertEquals(3, response.getAffinity());
+    }
+
+    @Test
+    void toResponse_shouldShowNoFriendsGoing_asZero_andHideThemOnABirthday() {
+        EventResponse none = mapper.toResponse(Event.builder().id("1").organizerId("ana").build(), SignedUrls.NONE,
+                ViewerFriends.NONE);
+        EventResponse birthday = mapper.toResponse(Event.builder().id("b").organizerId("ana").kind(EventKind.BIRTHDAY).build(),
+                SignedUrls.NONE, new ViewerFriends(Map.of("ana", Closeness.CLOSE)));
+
+        assertEquals(List.of(), none.getFriendsGoing());
+        assertEquals(0, none.getFriendsGoingCount());
+        assertEquals(0, none.getAffinity());
+        assertNull(birthday.getFriendsGoing());
+        assertNull(birthday.getFriendsGoingCount());
+        assertNull(birthday.getAffinity());
     }
 }

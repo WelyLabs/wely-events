@@ -2,6 +2,7 @@ package com.calendar.events.application.rest;
 
 import com.calendar.events.application.dtos.ProfileSummaryResponse;
 import com.calendar.events.application.mappers.ProfileSummaryRestMapper;
+import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.ProfileSummaryService;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,21 +21,25 @@ public class ProfileSummaryController {
 
     private final ProfileSummaryService profileSummaryService;
     private final PictureService pictureService;
+    private final FriendshipService friendshipService;
     private final ProfileSummaryRestMapper mapper;
 
     public ProfileSummaryController(ProfileSummaryService profileSummaryService, PictureService pictureService,
-                                    ProfileSummaryRestMapper mapper) {
+                                    FriendshipService friendshipService, ProfileSummaryRestMapper mapper) {
         this.profileSummaryService = profileSummaryService;
         this.pictureService = pictureService;
+        this.friendshipService = friendshipService;
         this.mapper = mapper;
     }
 
-    /** Upcoming events and memories show their covers, signed in one round. */
+    /** Upcoming events and memories show their covers, signed in one round, and the caller's friends on them. */
     @GetMapping
     public Mono<ProfileSummaryResponse> summary(@AuthenticationPrincipal Jwt jwt) {
-        return profileSummaryService.summaryOf(jwt.getClaimAsString("businessId"))
-                .flatMap(summary -> pictureService
-                        .signCovers(Stream.concat(summary.upcoming().stream(), summary.memories().stream()).toList())
-                        .map(urls -> mapper.toResponse(summary, urls)));
+        String userId = jwt.getClaimAsString("businessId");
+        return profileSummaryService.summaryOf(userId)
+                .flatMap(summary -> Mono.zip(pictureService
+                                .signCovers(Stream.concat(summary.upcoming().stream(), summary.memories().stream()).toList()),
+                                friendshipService.viewerFriends(userId))
+                        .map(known -> mapper.toResponse(summary, known.getT1(), known.getT2())));
     }
 }

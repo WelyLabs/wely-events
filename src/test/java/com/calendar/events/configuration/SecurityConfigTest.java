@@ -17,11 +17,9 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import com.calendar.events.domain.ports.CalendarLinks;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventRepository;
-import com.calendar.events.domain.ports.SocialGraph;
+import com.calendar.events.domain.ports.FriendshipDirectory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -51,9 +49,9 @@ class SecurityConfigTest {
     @MockitoBean
     private EventRepository eventRepository;
 
-    /** Mocked for the same reason: the feed asks wely-social for the caller's friends. */
+    /** Mocked for the same reason: the feed reads the caller's friends from the projection. */
     @MockitoBean
-    private SocialGraph socialGraph;
+    private FriendshipDirectory friendships;
 
     /** The deleted-accounts register, read on every write. */
     @MockitoBean
@@ -88,7 +86,7 @@ class SecurityConfigTest {
 
     @Test
     void springSecurityFilterChain_shouldAllowAuthenticatedRequests() {
-        when(socialGraph.friendIdsOf(any())).thenReturn(Mono.just(Set.of()));
+        when(friendships.friendsOf(any())).thenReturn(Flux.empty());
         when(eventRepository.findFeed(any(), any())).thenReturn(Flux.empty());
 
         client().mutateWith(mockJwt().jwt(jwt -> jwt.claim("businessId", "user-1")))
@@ -115,7 +113,7 @@ class SecurityConfigTest {
 
     @Test
     void springSecurityFilterChain_shouldServeReadsToADeletedAccount() {
-        when(socialGraph.friendIdsOf(any())).thenReturn(Mono.just(Set.of()));
+        when(friendships.friendsOf(any())).thenReturn(Flux.empty());
         when(eventRepository.findFeed(any(), any())).thenReturn(Flux.empty());
 
         client().mutateWith(mockJwt().jwt(jwt -> jwt.claim("businessId", "gone")))

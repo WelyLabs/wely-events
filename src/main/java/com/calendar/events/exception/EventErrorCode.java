@@ -215,6 +215,25 @@ public enum EventErrorCode {
             "An all-day event starts at 00:00Z and ends at 00:00Z of the day after its last day, without a date poll.",
             HttpStatus.BAD_REQUEST),
 
+    FEED_RANK_INVALID(
+            "EVT-BUS-035",
+            "Invalid feed rank",
+            "Rank the feed by 'affinity', or leave the rank out for the usual order.",
+            HttpStatus.BAD_REQUEST),
+
+    /** 404 rather than 403: whether two people are friends is not the caller's to learn by guessing ids. */
+    FRIEND_NOT_FOUND(
+            "EVT-BUS-036",
+            "Friend not found",
+            "No friend of yours matches the given identifier.",
+            HttpStatus.NOT_FOUND),
+
+    INVALID_CIRCLE_REQUEST(
+            "EVT-BUS-037",
+            "Invalid circle request",
+            "Ask for your circle over a period of at most 62 days that ends after it starts.",
+            HttpStatus.BAD_REQUEST),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",

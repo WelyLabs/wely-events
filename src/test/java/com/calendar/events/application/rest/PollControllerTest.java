@@ -1,5 +1,7 @@
 package com.calendar.events.application.rest;
 
+import com.calendar.events.domain.services.FriendshipService;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.application.dtos.BallotRequest;
 import com.calendar.events.application.dtos.EventResponse;
 import com.calendar.events.application.dtos.FixDateRequest;
@@ -43,6 +45,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockJwt;
@@ -59,6 +63,9 @@ class PollControllerTest {
     private static final Poll CLOSED = new Poll(PollStatus.CLOSED, List.of(THURSDAY, FRIDAY), VOTED.ballots(), "thu");
 
     @Mock
+    private FriendshipService friendshipService;
+
+    @Mock
     private PollService pollService;
     @Mock
     private MediaStore mediaStore;
@@ -70,7 +77,9 @@ class PollControllerTest {
 
     @BeforeEach
     void setUp() {
-        controller = new PollController(pollService, new PictureService(mediaStore), mapper, Duration.ofSeconds(20));
+        lenient().when(friendshipService.viewerFriends(anyString())).thenReturn(Mono.just(ViewerFriends.NONE));
+        controller = new PollController(pollService, new PictureService(mediaStore), friendshipService, mapper,
+                Duration.ofSeconds(20));
     }
 
     private static Event event(Poll poll) {
@@ -182,7 +191,7 @@ class PollControllerTest {
         // EventController too, so /events/me/polls is shown not to be taken for /events/{id}.
         EventController events = new EventController(org.mockito.Mockito.mock(EventService.class),
                 org.mockito.Mockito.mock(com.calendar.events.domain.services.SurpriseService.class),
-                new PictureService(mediaStore), mapper);
+                new PictureService(mediaStore), friendshipService, mapper);
         return WebTestClient.bindToController(controller, events)
                 .argumentResolvers(resolvers -> resolvers.addCustomResolver(
                         new AuthenticationPrincipalArgumentResolver(ReactiveAdapterRegistry.getSharedInstance())))

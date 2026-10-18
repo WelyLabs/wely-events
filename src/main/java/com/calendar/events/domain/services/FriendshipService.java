@@ -1,8 +1,10 @@
 package com.calendar.events.domain.services;
 
+import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.models.FriendshipChange;
 import com.calendar.events.domain.models.FriendshipHistoryEntry;
+import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.FriendshipHistory;
 import reactor.core.publisher.Mono;
@@ -30,6 +32,13 @@ public class FriendshipService {
         this.surpriseService = surpriseService;
         this.accountGuard = accountGuard;
         this.clock = clock;
+    }
+
+    /** The viewer's friends and how close each is, read once for a whole response. */
+    public Mono<ViewerFriends> viewerFriends(String viewerId) {
+        return directory.friendsOf(viewerId)
+                .collectMap(Friend::userId, Friend::closeness)
+                .map(ViewerFriends::new);
     }
 
     /**
