@@ -58,8 +58,10 @@ class ProfileSummaryControllerTest {
 
     @Test
     void summary_shouldOnlyEverBeTheCallersOwn() {
-        ProfileSummary summary = new ProfileSummary(0, 0, 0, 0, List.of(), List.of(), 0, List.of(), List.of(), List.of());
-        ProfileSummaryResponse response = new ProfileSummaryResponse(0, 0, 0, 0, List.of(), List.of(), 0, List.of(), List.of(), List.of());
+        ProfileSummary summary = new ProfileSummary(0, 0, 0, 0, List.of(), List.of(), 0, List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of());
+        ProfileSummaryResponse response = new ProfileSummaryResponse(0, 0, 0, 0, List.of(), List.of(), 0, List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of());
         when(jwt.getClaimAsString("businessId")).thenReturn("me");
         when(profileSummaryService.summaryOf("me")).thenReturn(Mono.just(summary));
         when(mapper.toResponse(summary, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
@@ -71,9 +73,11 @@ class ProfileSummaryControllerTest {
     void summary_shouldSignTheCoversOfUpcomingEventsAndMemories_inOneCall() {
         Event next = Event.builder().id("e1").image("events/e1/cover-a.jpg").build();
         Event memory = Event.builder().id("e2").image("events/e2/cover-b.jpg").build();
-        ProfileSummary summary = new ProfileSummary(0, 0, 0, 0, List.of(next), List.of(memory), 1, List.of(), List.of(), List.of());
+        ProfileSummary summary = new ProfileSummary(0, 0, 0, 0, List.of(next), List.of(memory), 1, List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of());
         SignedUrls urls = new SignedUrls(Map.of("events/e1/cover-a.jpg", "https://media/a", "events/e2/cover-b.jpg", "https://media/b"));
-        ProfileSummaryResponse response = new ProfileSummaryResponse(0, 0, 0, 0, List.of(), List.of(), 1, List.of(), List.of(), List.of());
+        ProfileSummaryResponse response = new ProfileSummaryResponse(0, 0, 0, 0, List.of(), List.of(), 1, List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of());
         when(jwt.getClaimAsString("businessId")).thenReturn("me");
         when(profileSummaryService.summaryOf("me")).thenReturn(Mono.just(summary));
         when(mediaStore.urls(List.of("events/e1/cover-a.jpg", "events/e2/cover-b.jpg"))).thenReturn(Mono.just(urls.byKey()));

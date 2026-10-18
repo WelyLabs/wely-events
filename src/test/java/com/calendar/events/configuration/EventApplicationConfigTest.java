@@ -73,7 +73,9 @@ class EventApplicationConfigTest {
 
     @Test
     void profileSummaryService_shouldBuildTheDomainServiceFromItsPorts() {
-        ProfileSummaryService service = config.profileSummaryService(mock(EventRepository.class), mock(ExpenseRepository.class));
+        ProfileSummaryService service = config.profileSummaryService(mock(EventRepository.class), mock(ExpenseRepository.class),
+                mock(com.calendar.events.domain.ports.FriendshipDirectory.class),
+                mock(com.calendar.events.domain.ports.FriendshipHistory.class));
 
         assertThat(service).isNotNull();
         // A profile's "this year" starts at midnight in France, not in UTC.

@@ -151,8 +151,10 @@ public class EventApplicationConfig {
     }
 
     @Bean
-    public ProfileSummaryService profileSummaryService(EventRepository eventRepository, ExpenseRepository expenseRepository) {
-        return new ProfileSummaryService(eventRepository, expenseRepository, Clock.systemUTC(), USERS_ZONE);
+    public ProfileSummaryService profileSummaryService(EventRepository eventRepository, ExpenseRepository expenseRepository,
+                                                       FriendshipDirectory friendships, FriendshipHistory friendshipHistory) {
+        return new ProfileSummaryService(eventRepository, expenseRepository, friendships, friendshipHistory,
+                Clock.systemUTC(), USERS_ZONE);
     }
 
     @Bean

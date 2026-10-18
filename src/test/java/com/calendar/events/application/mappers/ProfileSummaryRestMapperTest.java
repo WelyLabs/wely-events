@@ -2,6 +2,7 @@ package com.calendar.events.application.mappers;
 
 import com.calendar.events.application.dtos.CoordinatesDto;
 import com.calendar.events.application.dtos.ProfileSummaryResponse;
+import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.GeoPoint;
 import com.calendar.events.domain.models.ProfileSummary;
@@ -22,6 +23,9 @@ class ProfileSummaryRestMapperTest {
 
     private final ProfileSummaryRestMapper mapper = Mappers.getMapper(ProfileSummaryRestMapper.class);
 
+    private static final Instant SINCE = Instant.parse("2026-04-02T09:00:00Z");
+    private static final Instant UPGRADED = Instant.parse("2026-03-15T09:00:00Z");
+
     @Test
     void toResponse_shouldCarryEverything_andShowEventsAsTheFeedDoes() {
         // Spring wires the event mapper in the application; here it is set by hand.
@@ -30,7 +34,10 @@ class ProfileSummaryRestMapperTest {
         ProfileSummary summary = new ProfileSummary(23, 4, 6, 9, List.of(event), List.of(), 23,
                 List.of(new ProfileSummary.Companion("lea", 12)),
                 List.of(new ProfileSummary.Place("Chez Léa", new GeoPoint(45.77, 4.83), 3)),
-                List.of(new ProfileSummary.EventBalance("e1", "Soirée jeux", -800)));
+                List.of(new ProfileSummary.EventBalance("e1", "Soirée jeux", -800)),
+                List.of(new ProfileSummary.NewFriend("zoe", SINCE)),
+                List.of(new ProfileSummary.Upgrade("lea", Closeness.INTIMATE, UPGRADED)),
+                List.of(new ProfileSummary.Companion("lea", 9)));
 
         ProfileSummaryResponse response = mapper.toResponse(summary, SignedUrls.NONE, ViewerFriends.NONE);
 
@@ -43,6 +50,10 @@ class ProfileSummaryRestMapperTest {
                 new ProfileSummaryResponse.PlaceResponse("Chez Léa", new CoordinatesDto(45.77, 4.83), 3));
         assertThat(response.balances()).containsExactly(
                 new ProfileSummaryResponse.EventBalanceResponse("e1", "Soirée jeux", -800));
+        assertThat(response.newFriendsThisYear()).containsExactly(new ProfileSummaryResponse.NewFriendResponse("zoe", SINCE));
+        assertThat(response.upgradesThisYear())
+                .containsExactly(new ProfileSummaryResponse.UpgradeResponse("lea", Closeness.INTIMATE, UPGRADED));
+        assertThat(response.topFriendsThisYear()).containsExactly(new ProfileSummaryResponse.CompanionResponse("lea", 9));
     }
 
     @Test
@@ -50,7 +61,8 @@ class ProfileSummaryRestMapperTest {
         ReflectionTestUtils.setField(mapper, "eventRestMapper", Mappers.getMapper(EventRestMapper.class));
         Event next = Event.builder().id("e1").image("events/e1/cover-a.jpg").build();
         Event memory = Event.builder().id("e2").image("/demo/events/picnic.jpg").build();
-        ProfileSummary summary = new ProfileSummary(0, 0, 0, 0, List.of(next), List.of(memory), 1, List.of(), List.of(), List.of());
+        ProfileSummary summary = new ProfileSummary(0, 0, 0, 0, List.of(next), List.of(memory), 1, List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of());
 
         ProfileSummaryResponse response = mapper.toResponse(summary,
                 new SignedUrls(Map.of("events/e1/cover-a.jpg", "https://media/a")), ViewerFriends.NONE);

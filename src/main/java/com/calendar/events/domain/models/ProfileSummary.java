@@ -1,5 +1,6 @@
 package com.calendar.events.domain.models;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -7,7 +8,8 @@ import java.util.List;
  * what is behind them, who they go out with, where, and where their accounts stand.
  *
  * <p>An outing is an event they organize or take part in that has started; "this year" and "this
- * month" are read in the user's time zone.
+ * month" are read in the user's time zone. The year in review adds the friends made this year, those
+ * who became closer, and the friends most often out with them this year.
  */
 public record ProfileSummary(
         int outingsThisYear,
@@ -19,7 +21,10 @@ public record ProfileSummary(
         int pastCount,
         List<Companion> circle,
         List<Place> places,
-        List<EventBalance> balances
+        List<EventBalance> balances,
+        List<NewFriend> newFriendsThisYear,
+        List<Upgrade> upgradesThisYear,
+        List<Companion> topFriendsThisYear
 ) {
     public ProfileSummary {
         upcoming = List.copyOf(upcoming);
@@ -27,7 +32,16 @@ public record ProfileSummary(
         circle = List.copyOf(circle);
         places = List.copyOf(places);
         balances = List.copyOf(balances);
+        newFriendsThisYear = List.copyOf(newFriendsThisYear);
+        upgradesThisYear = List.copyOf(upgradesThisYear);
+        topFriendsThisYear = List.copyOf(topFriendsThisYear);
     }
+
+    /** A friend made this year, still a friend. */
+    public record NewFriend(String userId, Instant since) {}
+
+    /** A friend who became closer this year: the level reached, and when. */
+    public record Upgrade(String userId, Closeness closeness, Instant at) {}
 
     /** Someone the member went out with, and how often. */
     public record Companion(String userId, int outingsTogether) {}

@@ -1,6 +1,10 @@
 package com.calendar.events.domain.services;
 
+import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.Friendship;
+import com.calendar.events.domain.models.FriendshipChangeType;
+import com.calendar.events.domain.models.FriendshipHistoryEntry;
 import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.models.ExpenseKind;
 import com.calendar.events.domain.models.GeoPoint;
@@ -9,6 +13,8 @@ import com.calendar.events.domain.models.Share;
 import com.calendar.events.domain.models.SplitMode;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
+import com.calendar.events.domain.ports.FriendshipDirectory;
+import com.calendar.events.domain.ports.FriendshipHistory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,6 +34,8 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,12 +53,20 @@ class ProfileSummaryServiceTest {
     @Mock
     private ExpenseRepository expenseRepository;
 
+    @Mock
+    private FriendshipDirectory friendships;
+
+    @Mock
+    private FriendshipHistory friendshipHistory;
+
     private ProfileSummaryService service;
 
     @BeforeEach
     void setUp() {
-        service = new ProfileSummaryService(eventRepository, expenseRepository, Clock.fixed(NOW, ZoneOffset.UTC),
-                ZoneId.of("Europe/Paris"));
+        service = new ProfileSummaryService(eventRepository, expenseRepository, friendships, friendshipHistory,
+                Clock.fixed(NOW, ZoneOffset.UTC), ZoneId.of("Europe/Paris"));
+        lenient().when(friendships.friendshipsOf(ME)).thenReturn(Flux.empty());
+        lenient().when(friendshipHistory.involvingSince(eq(ME), any())).thenReturn(Flux.empty());
     }
 
     private static Event event(String id, String start, String organizer, String location, String... participants) {
@@ -197,5 +213,92 @@ class ProfileSummaryServiceTest {
                 })
                 .verifyComplete();
         verify(expenseRepository, never()).findByEvents(any());
+    }
+
+    // --- Year in review --------------------------------------------------------
+
+    /** 1 January 2026, midnight in Paris. */
+    private static final Instant YEAR_START = Instant.parse("2025-12-31T23:00:00Z");
+
+    private static Friendship friendOfMine(String friendId, Closeness closeness, String since) {
+        return new Friendship(ME, friendId, true, closeness, Instant.parse(since), 1);
+    }
+
+    private static FriendshipHistoryEntry change(String friendId, FriendshipChangeType type, Closeness closeness,
+                                                 Closeness previous, String at) {
+        Friendship pair = new Friendship(ME, friendId, true, Closeness.FRIEND, null, 1);
+        return new FriendshipHistoryEntry(pair.pairId(), pair.userA(), pair.userB(), type, closeness, previous,
+                Instant.parse(at), 1);
+    }
+
+    @Test
+    void summaryOf_shouldListTheFriendsMadeThisYear_inTheUsersTimeZone_mostRecentFirst() {
+        involvedIn();
+        when(friendships.friendshipsOf(ME)).thenReturn(Flux.just(
+                friendOfMine("lea", Closeness.FRIEND, "2026-03-03T10:00:00Z"),
+                // 31 Dec 2025 at 23:30 UTC is already 2026 in Paris.
+                friendOfMine("zoe", Closeness.CLOSE, "2025-12-31T23:30:00Z"),
+                friendOfMine("old", Closeness.INTIMATE, "2025-12-31T22:30:00Z")));
+
+        StepVerifier.create(service.summaryOf(ME))
+                .assertNext(summary -> assertThat(summary.newFriendsThisYear()).containsExactly(
+                        new ProfileSummary.NewFriend("lea", Instant.parse("2026-03-03T10:00:00Z")),
+                        new ProfileSummary.NewFriend("zoe", Instant.parse("2025-12-31T23:30:00Z"))))
+                .verifyComplete();
+        verify(friendshipHistory).involvingSince(ME, YEAR_START);
+    }
+
+    @Test
+    void summaryOf_shouldListEachCurrentFriendsLatestUpgradeThisYear_oldestFirst() {
+        involvedIn();
+        when(friendships.friendshipsOf(ME)).thenReturn(Flux.just(
+                friendOfMine("lea", Closeness.INTIMATE, "2024-01-01T10:00:00Z"),
+                friendOfMine("bob", Closeness.CLOSE, "2024-01-01T10:00:00Z")));
+        when(friendshipHistory.involvingSince(ME, YEAR_START)).thenReturn(Flux.just(
+                change("lea", FriendshipChangeType.CLOSENESS_CHANGED, Closeness.CLOSE, Closeness.FRIEND, "2026-02-01T10:00:00Z"),
+                change("bob", FriendshipChangeType.CLOSENESS_CHANGED, Closeness.CLOSE, Closeness.FRIEND, "2026-02-10T10:00:00Z"),
+                change("lea", FriendshipChangeType.CLOSENESS_CHANGED, Closeness.INTIMATE, Closeness.CLOSE, "2026-03-15T10:00:00Z"),
+                // A downgrade, a snapshot and a former friend are not upgrades to tell.
+                change("bob", FriendshipChangeType.CLOSENESS_CHANGED, Closeness.FRIEND, Closeness.CLOSE, "2026-04-01T10:00:00Z"),
+                change("bob", FriendshipChangeType.SNAPSHOT, Closeness.CLOSE, null, "2026-04-02T10:00:00Z"),
+                change("gone", FriendshipChangeType.CLOSENESS_CHANGED, Closeness.INTIMATE, Closeness.CLOSE, "2026-05-01T10:00:00Z")));
+
+        StepVerifier.create(service.summaryOf(ME))
+                .assertNext(summary -> assertThat(summary.upgradesThisYear()).containsExactly(
+                        new ProfileSummary.Upgrade("bob", Closeness.CLOSE, Instant.parse("2026-02-10T10:00:00Z")),
+                        new ProfileSummary.Upgrade("lea", Closeness.INTIMATE, Instant.parse("2026-03-15T10:00:00Z"))))
+                .verifyComplete();
+    }
+
+    @Test
+    void summaryOf_shouldRankTheFriendsOnMostOfThisYearsOutings_upToThree() {
+        involvedIn(
+                event("a", "2026-02-01T18:00:00Z", ME, "Bar", ME, "lea", "bob", "stranger"),
+                event("b", "2026-03-01T18:00:00Z", "lea", "Bar", "lea", ME, "zoe"),
+                event("c", "2026-04-01T18:00:00Z", ME, "Bar", ME, "zoe", "max"),
+                event("d", "2026-05-01T18:00:00Z", "bob", "Bar", ME, "max", "lea"),
+                event("last-year", "2025-06-01T18:00:00Z", ME, "Bar", ME, "max", "bob"),
+                event("tomorrow", "2026-10-14T18:00:00Z", ME, "Bar", ME, "max", "bob"));
+        when(expenseRepository.findByEvents(any())).thenReturn(Flux.empty());
+        when(friendships.friendshipsOf(ME)).thenReturn(Flux.just(
+                friendOfMine("lea", Closeness.FRIEND, "2024-01-01T10:00:00Z"),
+                friendOfMine("bob", Closeness.FRIEND, "2024-01-01T10:00:00Z"),
+                friendOfMine("zoe", Closeness.FRIEND, "2024-01-01T10:00:00Z"),
+                friendOfMine("max", Closeness.FRIEND, "2024-01-01T10:00:00Z")));
+
+        StepVerifier.create(service.summaryOf(ME))
+                .assertNext(summary -> assertThat(summary.topFriendsThisYear()).containsExactly(
+                        new ProfileSummary.Companion("lea", 3),
+                        new ProfileSummary.Companion("bob", 2),
+                        new ProfileSummary.Companion("max", 2)))
+                .verifyComplete();
+    }
+
+    @Test
+    void summaryOf_shouldFail_whenTheFriendshipsCannotBeRead() {
+        involvedIn();
+        when(friendships.friendshipsOf(ME)).thenReturn(Flux.error(new IllegalStateException("mongo down")));
+
+        StepVerifier.create(service.summaryOf(ME)).expectError(IllegalStateException.class).verify();
     }
 }
