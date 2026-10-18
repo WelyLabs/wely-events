@@ -63,17 +63,23 @@ class SurpriseServiceTest {
     private FriendshipDirectory friendships;
     @Mock
     private BirthdayNoticeOutbox noticeOutbox;
+    @Mock
+    private DeletedUserMarkers markers;
+    @Mock
+    private ExpenseRepository expenseRepository;
+    @Mock
+    private EventDeletionOutbox deletionOutbox;
 
     private SurpriseService service;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-        EventService eventService = new EventService(eventRepository, socialGraph, mock(ExpenseRepository.class),
-                new PictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class),
+        EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
+                new PictureService(mock(MediaStore.class)), deletionOutbox,
                 mock(CommunityDirectory.class), new AccountGuard(mock(DeletedUserMarkers.class)), clock);
-        service = new SurpriseService(eventService, eventRepository, socialGraph, friendships, noticeOutbox, clock,
-                ZoneId.of("Europe/Paris"));
+        service = new SurpriseService(eventService, eventRepository, socialGraph, friendships, noticeOutbox,
+                new AccountGuard(markers), clock, ZoneId.of("Europe/Paris"));
         lenient().when(noticeOutbox.record(any())).thenReturn(Mono.just(true));
     }
 
@@ -239,5 +245,80 @@ class SurpriseServiceTest {
         StepVerifier.create(service.createSurprise(allDay, null, "bob"))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.ALL_DAY_INVALID)).verify();
         verify(eventRepository, never()).insertSurprise(any());
+    }
+
+    private static Event surpriseFor(String honoree, String organizer, String... participants) {
+        List<String> ids = new ArrayList<>(List.of(organizer));
+        ids.addAll(List.of(participants));
+        return Event.builder().id("s-" + honoree + "-" + organizer).title("Surprise").kind(EventKind.SURPRISE)
+                .honoreeId(honoree).organizerId(organizer).hiddenFrom(new ArrayList<>(List.of(honoree)))
+                .startDate(PARTY_START).endDate(PARTY_END).participantIds(ids).build();
+    }
+
+    private void noSurprisesFor(String honoree) {
+        when(eventRepository.findSurprisesHonoring(honoree)).thenReturn(Flux.empty());
+    }
+
+    @Test
+    void releaseAfterFriendshipEnded_shouldRemoveTheFormerFriendFromTheOthersSurprise() {
+        Event surprise = surpriseFor("lea", "zoe", "bob", "max");
+        when(eventRepository.findSurprisesHonoring("lea")).thenReturn(Flux.just(surprise));
+        noSurprisesFor("bob");
+        when(eventRepository.removeParticipant(surprise.getId(), "bob")).thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectNext(1L).verifyComplete();
+        verify(eventRepository, never()).handOver(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void releaseAfterFriendshipEnded_shouldWorkBothWays_andLeaveSurprisesTheyAreNotOn() {
+        noSurprisesFor("lea");
+        Event bobsParty = surpriseFor("bob", "max", "lea");
+        Event untouched = surpriseFor("bob", "zoe");
+        untouched.setId("other");
+        when(eventRepository.findSurprisesHonoring("bob")).thenReturn(Flux.just(bobsParty, untouched));
+        when(eventRepository.removeParticipant(bobsParty.getId(), "lea")).thenReturn(Mono.just(bobsParty));
+
+        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectNext(1L).verifyComplete();
+        verify(eventRepository, never()).removeParticipant("other", "lea");
+    }
+
+    @Test
+    void releaseAfterFriendshipEnded_shouldHandAnOrganizedSurpriseToTheEarliestParticipantStillTheHonoreesFriend() {
+        Event surprise = surpriseFor("lea", "bob", "max", "zoe", "ana");
+        when(eventRepository.findSurprisesHonoring("lea")).thenReturn(Flux.just(surprise));
+        noSurprisesFor("bob");
+        // Max is no longer Léa's friend, Zoé's account is deleted: Ana takes over.
+        when(friendships.friendsOf("lea")).thenReturn(Flux.just(new Friend("bob", Closeness.CLOSE),
+                new Friend("zoe", Closeness.CLOSE), new Friend("ana", Closeness.FRIEND)));
+        when(markers.deletedAmong(surprise.getParticipantIds())).thenReturn(Mono.just(java.util.Set.of("zoe")));
+        when(eventRepository.handOver(surprise.getId(), "bob", "ana")).thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(service.releaseAfterFriendshipEnded("bob", "lea")).expectNext(1L).verifyComplete();
+        verify(eventRepository, never()).deleteByOrganizer(anyString(), anyString());
+    }
+
+    @Test
+    void releaseAfterFriendshipEnded_shouldDeleteAnOrganizedSurprise_whenNoParticipantIsStillTheHonoreesFriend() {
+        Event surprise = surpriseFor("lea", "bob", "max");
+        when(eventRepository.findSurprisesHonoring("lea")).thenReturn(Flux.just(surprise));
+        noSurprisesFor("bob");
+        when(friendships.friendsOf("lea")).thenReturn(Flux.just(new Friend("bob", Closeness.CLOSE)));
+        when(markers.deletedAmong(surprise.getParticipantIds())).thenReturn(Mono.just(java.util.Set.of()));
+        when(eventRepository.deleteByOrganizer(surprise.getId(), "bob")).thenReturn(Mono.just(surprise));
+        when(deletionOutbox.record(any())).thenReturn(Mono.empty());
+        when(expenseRepository.findByEvent(surprise.getId())).thenReturn(Flux.empty());
+        when(expenseRepository.deleteByEvent(surprise.getId())).thenReturn(Mono.empty());
+
+        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectNext(1L).verifyComplete();
+        verify(deletionOutbox).record(any());
+        verify(eventRepository, never()).handOver(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void releaseAfterFriendshipEnded_shouldFail_whenTheSurprisesCannotBeRead() {
+        when(eventRepository.findSurprisesHonoring("lea")).thenReturn(Flux.error(new IllegalStateException("mongo down")));
+
+        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectError(IllegalStateException.class).verify();
     }
 }

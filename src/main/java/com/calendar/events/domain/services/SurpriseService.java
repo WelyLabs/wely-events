@@ -26,6 +26,9 @@ import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Surprise birthday parties: organized by a close friend of the honoree, one per birthday, and kept
@@ -44,16 +47,19 @@ public class SurpriseService {
     private final SocialGraph socialGraph;
     private final FriendshipDirectory friendships;
     private final BirthdayNoticeOutbox noticeOutbox;
+    private final AccountGuard accountGuard;
     private final Clock clock;
     private final ZoneId zone;
 
     public SurpriseService(EventService eventService, EventRepository eventRepository, SocialGraph socialGraph,
-                           FriendshipDirectory friendships, BirthdayNoticeOutbox noticeOutbox, Clock clock, ZoneId zone) {
+                           FriendshipDirectory friendships, BirthdayNoticeOutbox noticeOutbox, AccountGuard accountGuard,
+                           Clock clock, ZoneId zone) {
         this.eventService = eventService;
         this.eventRepository = eventRepository;
         this.socialGraph = socialGraph;
         this.friendships = friendships;
         this.noticeOutbox = noticeOutbox;
+        this.accountGuard = accountGuard;
         this.clock = clock;
         this.zone = zone;
     }
@@ -128,6 +134,42 @@ public class SurpriseService {
                 .onErrorResume(error -> {
                     LOG.log(System.Logger.Level.WARNING, "Surprise {0} not announced: {1}", surprise.getId(), error.toString());
                     return Mono.empty();
+                });
+    }
+
+    /**
+     * Once two people are no longer friends, neither takes part in a surprise for the other: a participant
+     * is removed, and an organizer hands it to the earliest remaining participant still the honoree's
+     * friend, or deletes it when there is none. Every write flags the event's group for the relay, so the
+     * chat group follows. Returns how many surprises changed; safe to replay.
+     */
+    public Mono<Long> releaseAfterFriendshipEnded(String userId, String otherId) {
+        return Flux.concat(releaseSurprisesOf(userId, otherId), releaseSurprisesOf(otherId, userId)).count();
+    }
+
+    private Flux<Event> releaseSurprisesOf(String honoreeId, String formerFriendId) {
+        return Flux.defer(() -> eventRepository.findSurprisesHonoring(honoreeId))
+                .filter(surprise -> surprise.involves(formerFriendId))
+                .concatMap(surprise -> formerFriendId.equals(surprise.getOrganizerId())
+                        ? handOverOrDelete(surprise, honoreeId, formerFriendId)
+                        : eventRepository.removeParticipant(surprise.getId(), formerFriendId));
+    }
+
+    private Mono<Event> handOverOrDelete(Event surprise, String honoreeId, String organizerId) {
+        Mono<Set<String>> honoreeFriends = friendships.friendsOf(honoreeId)
+                .map(Friend::userId)
+                .collect(Collectors.toSet());
+        return Mono.zip(honoreeFriends, accountGuard.deletedAmong(surprise.getParticipantIds()))
+                .flatMap(known -> {
+                    Optional<String> successor = surprise.getParticipantIds().stream()
+                            .filter(id -> !id.equals(organizerId) && !id.equals(honoreeId)
+                                    && known.getT1().contains(id) && !known.getT2().contains(id))
+                            .findFirst();
+                    if (successor.isPresent()) {
+                        return eventRepository.handOver(surprise.getId(), organizerId, successor.get());
+                    }
+                    return eventRepository.deleteByOrganizer(surprise.getId(), organizerId)
+                            .flatMap(gone -> eventService.afterDeletion(gone).thenReturn(gone));
                 });
     }
 

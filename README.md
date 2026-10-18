@@ -232,7 +232,7 @@ Supprimer un événement (par `DELETE` ou par le dernier départ) emporte son do
 - **Pseudonym.** Past events, closed-poll ballots, past answers and expenses keep the `businessId`, which the web app labels as a deleted user. Balances stay exact.
 - **Propagation.** Hand-overs and departures go through `EVENT_GROUP_CHANGED` (version bumped, `groupSynced: false`): wely-chat and wely-notifications follow without any extra call. The successor is not notified.
 - **After the marker**, every write (`POST`, `PUT`, `PATCH`, `DELETE`) carried by the deleted account's still-valid token answers `EVT-BUS-025` (410), from a filter in the security chain; reads go through. The poll stream cannot be reopened either (`EVT-BUS-025`), and a stream checks the marker again once it listens, so an erasure landing between the check and the subscription still ends it. A "Yes" vote that outlived the erasure never subscribes the account when the date is fixed.
-- **Birthday and friendships.** Right after the marker, the account's birthday, the surprises for it and its pending notices are erased, then every pair involving it in `friendships`.
+- **Birthday and friendships.** Right after the marker, the account's birthday, the surprises for it and its pending notices are erased, then every pair involving it in `friendships`, and its entries in `friendship_history`.
 - **Demo accounts** (`ACCOUNT_DELETION_PROTECTED_USER_IDS`) are never erased, and never made successor automatically, since anyone can sign in to them.
 
 ### Reconciliation
@@ -349,6 +349,9 @@ wely-social publishes every friendship change on `FRIENDSHIP_CHANGED` from a tra
 - **Deleted accounts.** A record naming an account in `deleted_users` is ignored, and the erasure deletes every pair involving the account, tombstones included, after the marker.
 - **Errors.** Each record is isolated: an unreadable one, an unknown type or closeness, ids that are not two distinct canonical UUIDs, a missing `version`, or friends without a closeness is logged and skipped; a failing write is retried 5 times (1 s to 30 s), then logged, and the stream goes on. That pair is then stale until its next change.
 - **Freshness.** The projection is eventually consistent with wely-social: it lags by the outbox relay and the consumer, and it is empty until wely-social's snapshot has been consumed.
+- **History.** Every applied change is also appended to `friendship_history` (`{_id: "<pairId>:<version>", pairId, a, b, type, closeness, previousCloseness, at, version}`, `at` = wely-social's `occurredAt`, or the processing time without one), unique per pair and version, so a replay appends nothing. The year in review reads it; the account erasure purges it.
+- **A friendship that ends.** When a record turns a pair from friends to not friends (a `REMOVED`), neither side stays in a surprise for the other: a participant is removed, and an organizer hands the surprise to the earliest remaining participant who is still the honoree's friend (and not a deleted account), or deletes it, with the usual cascade, when there is none. Each write flags the event's group, so wely-chat follows through `EVENT_GROUP_CHANGED`. The other side's FRIENDS events it never joined disappear from its feed on their own, since visibility reads the same projection; events it joined stay.
+- **Order of the steps.** Deleted-account guard, staleness check against the stored version, surprise release, history, then the pair itself, last: a failure midway leaves the pair stale, so the retry runs every step again, each of which is safe to replay.
 
 ### Friendships without a synchronous call
 

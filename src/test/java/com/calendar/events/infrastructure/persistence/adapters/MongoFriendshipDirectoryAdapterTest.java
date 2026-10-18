@@ -63,6 +63,35 @@ class MongoFriendshipDirectoryAdapterTest {
     }
 
     @Test
+    void friendshipsOf_shouldReadThePairsWithTheirStart() {
+        when(mongoRepository.findFriendshipsOf("bob")).thenReturn(Flux.just(mapper.toEntity(CLOSE)));
+
+        StepVerifier.create(adapter.friendshipsOf("bob")).expectNext(CLOSE).verifyComplete();
+    }
+
+    @Test
+    void allFriendships_shouldReadEveryPairStillFriends() {
+        when(mongoRepository.findAllFriends()).thenReturn(Flux.just(mapper.toEntity(CLOSE)));
+
+        StepVerifier.create(adapter.allFriendships()).expectNext(CLOSE).verifyComplete();
+    }
+
+    @Test
+    void pairOf_shouldReadThePairInEitherOrder_tombstoneIncluded() {
+        Friendship parted = new Friendship("alice", "bob", false, null, null, 9);
+        when(mongoRepository.findById("alice:bob")).thenReturn(Mono.just(mapper.toEntity(parted)));
+
+        StepVerifier.create(adapter.pairOf("bob", "alice")).expectNext(parted).verifyComplete();
+    }
+
+    @Test
+    void pairOf_shouldBeEmptyForOneself_withoutReading() {
+        StepVerifier.create(adapter.pairOf("bob", "bob")).verifyComplete();
+
+        verify(mongoRepository, never()).findById(any(String.class));
+    }
+
+    @Test
     void record_shouldOverwriteAnOlderPair_withoutInserting() {
         when(mongoRepository.overwriteIfOlder("alice:bob", true, "CLOSE", SINCE, 7L)).thenReturn(Mono.just(1L));
 

@@ -2,6 +2,8 @@ package com.calendar.events.infrastructure.messaging.adapters;
 
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Friendship;
+import com.calendar.events.domain.models.FriendshipChange;
+import com.calendar.events.domain.models.FriendshipChangeType;
 import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.infrastructure.messaging.models.FriendshipChangedEventDTO;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +37,7 @@ class FriendshipChangedConsumerTest {
     private static final String BOB = "89a380b8-f66a-44d0-b9d9-616241080430";
     private static final String ZOE = "c56a4180-65aa-42ec-a945-5fd21dec0538";
     private static final Instant SINCE = Instant.parse("2026-05-01T10:00:00Z");
+    private static final Instant OCCURRED = Instant.parse("2026-10-18T08:00:00Z");
 
     @Mock
     private FriendshipService friendshipService;
@@ -58,6 +61,10 @@ class FriendshipChangedConsumerTest {
                 + ",\"occurredAt\":\"2026-10-18T08:00:00Z\"}");
     }
 
+    private static FriendshipChange applied(String type, Friendship after) {
+        return new FriendshipChange(FriendshipChangeType.valueOf(type), after, null, OCCURRED);
+    }
+
     @SafeVarargs
     private Mono<Void> consume(Message<byte[]>... records) {
         return consumer.friendships().apply(Flux.just(records));
@@ -65,7 +72,7 @@ class FriendshipChangedConsumerTest {
 
     @Test
     void friendships_shouldRecordAnAcceptanceAsFriends_whicheverSideActed() {
-        Friendship expected = new Friendship(ALICE, BOB, true, Closeness.FRIEND, SINCE, 12);
+        FriendshipChange expected = applied("ACCEPTED", new Friendship(ALICE, BOB, true, Closeness.FRIEND, SINCE, 12));
         when(friendshipService.record(expected)).thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(change("ACCEPTED", BOB, ALICE, "FRIEND", 12))).verifyComplete();
@@ -78,8 +85,9 @@ class FriendshipChangedConsumerTest {
 
         StepVerifier.create(consume(change("SNAPSHOT", ALICE, BOB, "CLOSE", 1),
                 change("CLOSENESS_CHANGED", ALICE, BOB, "INTIMATE", 2))).verifyComplete();
-        verify(friendshipService).record(new Friendship(ALICE, BOB, true, Closeness.CLOSE, SINCE, 1));
-        verify(friendshipService).record(new Friendship(ALICE, BOB, true, Closeness.INTIMATE, SINCE, 2));
+        verify(friendshipService).record(applied("SNAPSHOT", new Friendship(ALICE, BOB, true, Closeness.CLOSE, SINCE, 1)));
+        verify(friendshipService).record(applied("CLOSENESS_CHANGED",
+                new Friendship(ALICE, BOB, true, Closeness.INTIMATE, SINCE, 2)));
     }
 
     @Test
@@ -88,15 +96,18 @@ class FriendshipChangedConsumerTest {
 
         StepVerifier.create(consume(change("REMOVED", ALICE, BOB, null, 3), change("REJECTED", ALICE, BOB, null, 4),
                 change("CANCELLED", ALICE, BOB, null, 5), change("REQUESTED", ALICE, BOB, null, 6))).verifyComplete();
-        for (long version = 3; version <= 6; version++) {
-            verify(friendshipService).record(new Friendship(ALICE, BOB, false, null, null, version));
+        String[] types = {"REMOVED", "REJECTED", "CANCELLED", "REQUESTED"};
+        for (int i = 0; i < types.length; i++) {
+            verify(friendshipService).record(applied(types[i], new Friendship(ALICE, BOB, false, null, null, i + 3)));
         }
     }
 
     @Test
     void friendships_shouldGoOn_whenAStaleVersionIsIgnored() {
-        when(friendshipService.record(new Friendship(ALICE, BOB, false, null, null, 3))).thenReturn(Mono.just(false));
-        when(friendshipService.record(new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 4))).thenReturn(Mono.just(true));
+        when(friendshipService.record(applied("REMOVED", new Friendship(ALICE, BOB, false, null, null, 3))))
+                .thenReturn(Mono.just(false));
+        when(friendshipService.record(applied("ACCEPTED", new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 4))))
+                .thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(change("REMOVED", ALICE, BOB, null, 3), change("ACCEPTED", ZOE, ALICE, "FRIEND", 4)))
                 .verifyComplete();
@@ -105,7 +116,7 @@ class FriendshipChangedConsumerTest {
 
     @Test
     void friendships_shouldDropMalformedRecords_andGoOn() {
-        Friendship valid = new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 9);
+        FriendshipChange valid = applied("ACCEPTED", new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 9));
         when(friendshipService.record(valid)).thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(
@@ -127,8 +138,8 @@ class FriendshipChangedConsumerTest {
 
     @Test
     void friendships_shouldRetryAFailure_thenGiveUpWithoutStoppingTheStream() {
-        Friendship failing = new Friendship(ALICE, BOB, true, Closeness.FRIEND, SINCE, 1);
-        Friendship next = new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 2);
+        FriendshipChange failing = applied("ACCEPTED", new Friendship(ALICE, BOB, true, Closeness.FRIEND, SINCE, 1));
+        FriendshipChange next = applied("ACCEPTED", new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 2));
         when(friendshipService.record(failing)).thenReturn(Mono.error(new IllegalStateException("mongo down")));
         when(friendshipService.record(next)).thenReturn(Mono.just(true));
 
@@ -140,17 +151,39 @@ class FriendshipChangedConsumerTest {
     }
 
     @Test
-    void friendship_shouldLowercaseAnUppercaseUuid() {
-        FriendshipChangedEventDTO dto = new FriendshipChangedEventDTO("REMOVED", BOB.toUpperCase(), ALICE, null, null, 2L);
+    void change_shouldLowercaseAnUppercaseUuid() {
+        FriendshipChangedEventDTO dto = new FriendshipChangedEventDTO("REMOVED", BOB.toUpperCase(), ALICE, null, "CLOSE",
+                null, 2L, OCCURRED);
 
-        assertThat(FriendshipChangedConsumer.friendship(dto)).contains(new Friendship(ALICE, BOB, false, null, null, 2));
+        assertThat(FriendshipChangedConsumer.change(dto)).contains(new FriendshipChange(FriendshipChangeType.REMOVED,
+                new Friendship(ALICE, BOB, false, null, null, 2), Closeness.CLOSE, OCCURRED));
     }
 
     @Test
-    void friendship_shouldBeEmpty_withoutATypeOrAVersion() {
-        assertThat(FriendshipChangedConsumer.friendship(new FriendshipChangedEventDTO(null, ALICE, BOB, null, null, 1L))).isEmpty();
-        assertThat(FriendshipChangedConsumer.friendship(new FriendshipChangedEventDTO("REMOVED", ALICE, BOB, null, null, null))).isEmpty();
-        assertThat(FriendshipChangedConsumer.friendship(new FriendshipChangedEventDTO("REMOVED", ALICE, null, null, null, 1L))).isEmpty();
+    void change_shouldKeepThePreviousCloseness_andReadAnUnknownOneAsNone() {
+        FriendshipChangedEventDTO upgrade = new FriendshipChangedEventDTO("CLOSENESS_CHANGED", ALICE, BOB, "INTIMATE",
+                "CLOSE", SINCE, 3L, OCCURRED);
+        FriendshipChangedEventDTO unknown = new FriendshipChangedEventDTO("CLOSENESS_CHANGED", ALICE, BOB, "INTIMATE",
+                "BESTIE", SINCE, 3L, null);
+
+        assertThat(FriendshipChangedConsumer.change(upgrade)).get()
+                .satisfies(change -> assertThat(change.previousCloseness()).isEqualTo(Closeness.CLOSE));
+        assertThat(FriendshipChangedConsumer.change(unknown)).get()
+                .satisfies(change -> {
+                    assertThat(change.previousCloseness()).isNull();
+                    assertThat(change.at()).isNull();
+                });
+    }
+
+    @Test
+    void change_shouldBeEmpty_withoutATypeOrAVersion() {
+        assertThat(FriendshipChangedConsumer.change(dto(null, BOB, 1L))).isEmpty();
+        assertThat(FriendshipChangedConsumer.change(dto("REMOVED", BOB, null))).isEmpty();
+        assertThat(FriendshipChangedConsumer.change(dto("REMOVED", null, 1L))).isEmpty();
         verify(friendshipService, never()).record(any());
+    }
+
+    private static FriendshipChangedEventDTO dto(String type, String to, Long version) {
+        return new FriendshipChangedEventDTO(type, ALICE, to, null, null, null, version, null);
     }
 }

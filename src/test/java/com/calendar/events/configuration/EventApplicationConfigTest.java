@@ -127,7 +127,9 @@ class EventApplicationConfigTest {
 
         AccountErasureService service = config.accountErasureService(repository, eventService,
                 mock(com.calendar.events.domain.services.BirthdayService.class),
-                mock(com.calendar.events.domain.ports.FriendshipDirectory.class), mock(ExpenseRepository.class), mock(MediaStore.class), mock(DeletedUserMarkers.class),
+                mock(com.calendar.events.domain.ports.FriendshipDirectory.class),
+                mock(com.calendar.events.domain.ports.FriendshipHistory.class), mock(ExpenseRepository.class),
+                mock(MediaStore.class), mock(DeletedUserMarkers.class),
                 mock(PollUpdates.class), "89a380b8-f66a-44d0-b9d9-616241080430");
 
         assertThat(service).isNotNull();
@@ -173,9 +175,13 @@ class EventApplicationConfigTest {
         com.calendar.events.domain.ports.FriendshipDirectory friendships =
                 mock(com.calendar.events.domain.ports.FriendshipDirectory.class);
 
-        assertThat(config.friendshipService(friendships, guard())).isNotNull();
+        com.calendar.events.domain.services.SurpriseService surpriseService =
+                config.surpriseService(eventService, repository, socialGraph, friendships, outbox, guard(), clock);
+
+        assertThat(surpriseService).isNotNull();
+        assertThat(config.friendshipService(friendships, mock(com.calendar.events.domain.ports.FriendshipHistory.class),
+                surpriseService, guard(), clock)).isNotNull();
         assertThat(config.birthdayService(repository, eventService, socialGraph, outbox, guard())).isNotNull();
-        assertThat(config.surpriseService(eventService, repository, socialGraph, friendships, outbox, clock)).isNotNull();
         assertThat(config.birthdayReminderService(repository, friendships, outbox, guard(), clock)).isNotNull();
     }
 }

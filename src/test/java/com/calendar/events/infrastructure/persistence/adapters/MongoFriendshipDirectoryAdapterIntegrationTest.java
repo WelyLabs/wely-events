@@ -102,4 +102,33 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
         StepVerifier.create(adapter.forget("bob")).expectNext(2L).verifyComplete();
         StepVerifier.create(adapter.friendsOf("alice")).expectNext(new Friend("zoe", Closeness.FRIEND)).verifyComplete();
     }
+
+    @Test
+    void friendshipsOf_shouldReadTheUsersPairsStillFriends_withTheirStart() {
+        adapter.record(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 1)).block();
+        adapter.record(new Friendship("bob", "max", false, null, null, 1)).block();
+
+        StepVerifier.create(adapter.friendshipsOf("bob"))
+                .expectNext(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 1))
+                .verifyComplete();
+    }
+
+    @Test
+    void allFriendships_shouldSkipTombstones() {
+        adapter.record(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 1)).block();
+        adapter.record(new Friendship("bob", "max", false, null, null, 1)).block();
+        adapter.record(new Friendship("max", "zoe", true, Closeness.FRIEND, SINCE, 2)).block();
+
+        assertThat(adapter.allFriendships().collectList().block())
+                .extracting(Friendship::pairId).containsExactlyInAnyOrder("alice:bob", "max:zoe");
+    }
+
+    @Test
+    void pairOf_shouldReadAPair_friendsOrNot() {
+        adapter.record(new Friendship("alice", "bob", false, null, null, 4)).block();
+
+        StepVerifier.create(adapter.pairOf("bob", "alice"))
+                .expectNext(new Friendship("alice", "bob", false, null, null, 4)).verifyComplete();
+        StepVerifier.create(adapter.pairOf("bob", "zoe")).verifyComplete();
+    }
 }

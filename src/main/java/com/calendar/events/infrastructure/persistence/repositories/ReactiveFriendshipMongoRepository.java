@@ -17,6 +17,10 @@ public interface ReactiveFriendshipMongoRepository extends ReactiveMongoReposito
     @Query("{ 'friends': true, $or: [ { 'a': ?0 }, { 'b': ?0 } ] }")
     Flux<FriendshipEntity> findFriendshipsOf(String userId);
 
+    /** Every pair currently friends. */
+    @Query("{ 'friends': true }")
+    Flux<FriendshipEntity> findAllFriends();
+
     /** Rewrites the pair only if the stored version is lower: 0 when it is absent, as new or newer. */
     @Query("{ '_id': ?0, 'version': { $lt: ?4 } }")
     @Update("{ '$set': { 'friends': ?1, 'closeness': ?2, 'since': ?3, 'version': ?4 } }")

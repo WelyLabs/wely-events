@@ -35,6 +35,24 @@ public class MongoFriendshipDirectoryAdapter implements FriendshipDirectory {
     }
 
     @Override
+    public Flux<Friendship> friendshipsOf(String userId) {
+        return mongoRepository.findFriendshipsOf(userId).map(mapper::toDomain);
+    }
+
+    @Override
+    public Flux<Friendship> allFriendships() {
+        return mongoRepository.findAllFriends().map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Friendship> pairOf(String userId, String otherId) {
+        if (userId.equals(otherId)) {
+            return Mono.empty();
+        }
+        return mongoRepository.findById(Friendship.pairIdOf(userId, otherId)).map(mapper::toDomain);
+    }
+
+    @Override
     public Mono<Boolean> record(Friendship friendship) {
         FriendshipEntity entity = mapper.toEntity(friendship);
         return overwriteIfOlder(entity)

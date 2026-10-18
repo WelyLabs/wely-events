@@ -9,6 +9,7 @@ import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
+import com.calendar.events.domain.ports.FriendshipHistory;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
@@ -91,12 +92,13 @@ public class EventApplicationConfig {
     @Bean
     public AccountErasureService accountErasureService(EventRepository eventRepository, EventService eventService,
                                                        BirthdayService birthdayService, FriendshipDirectory friendships,
-                                                       ExpenseRepository expenseRepository, MediaStore mediaStore,
-                                                       DeletedUserMarkers markers, PollUpdates pollUpdates,
+                                                       FriendshipHistory friendshipHistory, ExpenseRepository expenseRepository,
+                                                       MediaStore mediaStore, DeletedUserMarkers markers, PollUpdates pollUpdates,
                                                        @Value("${app.account-deletion.protected-user-ids:}") String protectedUserIds) {
         Set<String> protectedIds = parseIds(protectedUserIds);
         log.info("Account erasure: {} protected account(s)", protectedIds.size());
-        return new AccountErasureService(eventRepository, eventService, birthdayService, friendships, expenseRepository,
+        return new AccountErasureService(eventRepository, eventService, birthdayService, friendships, friendshipHistory,
+                expenseRepository,
                 mediaStore, markers, pollUpdates, protectedIds, Clock.systemUTC());
     }
 
@@ -154,8 +156,9 @@ public class EventApplicationConfig {
     }
 
     @Bean
-    public FriendshipService friendshipService(FriendshipDirectory friendships, AccountGuard accountGuard) {
-        return new FriendshipService(friendships, accountGuard);
+    public FriendshipService friendshipService(FriendshipDirectory friendships, FriendshipHistory friendshipHistory,
+                                               SurpriseService surpriseService, AccountGuard accountGuard, Clock clock) {
+        return new FriendshipService(friendships, friendshipHistory, surpriseService, accountGuard, clock);
     }
 
     @Bean
@@ -168,9 +171,9 @@ public class EventApplicationConfig {
     @Bean
     public SurpriseService surpriseService(EventService eventService, EventRepository eventRepository,
                                            SocialGraph socialGraph, FriendshipDirectory friendships,
-                                           BirthdayNoticeOutbox noticeOutbox, Clock clock) {
-        return new SurpriseService(eventService, eventRepository, socialGraph, friendships, noticeOutbox, clock,
-                USERS_ZONE);
+                                           BirthdayNoticeOutbox noticeOutbox, AccountGuard accountGuard, Clock clock) {
+        return new SurpriseService(eventService, eventRepository, socialGraph, friendships, noticeOutbox, accountGuard,
+                clock, USERS_ZONE);
     }
 
     /** Days until a birthday count in France, where Wely's users are, as the 08:00 run does. */
