@@ -116,6 +116,18 @@ public interface EventRepository {
     Mono<Long> countPastInvolvingBoth(String userId, String otherId, Instant now);
 
     /**
+     * Shared outings: events started by {@code now}, date fixed, that both users organize or take part in.
+     * Never a birthday, nor a surprise for either of them or hidden from either. Most recent first.
+     */
+    Flux<Event> findSharedOutings(String userId, String otherId, Instant now);
+
+    /** The most recent shared outing, as {@link #findSharedOutings} counts them; empty when there is none. */
+    Mono<Event> findLastSharedOuting(String userId, String otherId, Instant now);
+
+    /** Whether both users are on an event not started at {@code now}, or still polling its date, on the same terms. */
+    Mono<Boolean> hasUpcomingShared(String userId, String otherId, Instant now);
+
+    /**
      * Replaces the voter's whole ballot in one atomic write, leaving the others untouched; an empty
      * map withdraws it. Empty when the event has no open poll.
      */

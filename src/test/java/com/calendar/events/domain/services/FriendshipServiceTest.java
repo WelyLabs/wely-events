@@ -10,6 +10,8 @@ import com.calendar.events.domain.models.FriendshipHistoryEntry;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.FriendshipHistory;
+import com.calendar.events.domain.ports.FriendshipNoticeOutbox;
+import com.calendar.events.domain.ports.ReunionSnoozes;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,6 +53,10 @@ class FriendshipServiceTest {
     @Mock
     private FriendshipHistory history;
     @Mock
+    private FriendshipNoticeOutbox noticeOutbox;
+    @Mock
+    private ReunionSnoozes snoozes;
+    @Mock
     private SurpriseService surpriseService;
     @Mock
     private DeletedUserMarkers markers;
@@ -59,8 +65,8 @@ class FriendshipServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new FriendshipService(directory, history, surpriseService, new AccountGuard(markers),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new FriendshipService(directory, history, noticeOutbox, snoozes, surpriseService,
+                new AccountGuard(markers), Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private void nobodyDeleted() {
@@ -199,5 +205,30 @@ class FriendshipServiceTest {
         when(directory.friendsOf("alice")).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
         StepVerifier.create(service.viewerFriends("alice")).expectError(IllegalStateException.class).verify();
+    }
+
+    @Test
+    void forget_shouldEraseThePairsTheHistoryTheNoticesAndTheSnoozes_inOrder() {
+        when(directory.forget("alice")).thenReturn(Mono.just(2L));
+        when(history.forget("alice")).thenReturn(Mono.just(5L));
+        when(noticeOutbox.forget("alice")).thenReturn(Mono.empty());
+        when(snoozes.forget("alice")).thenReturn(Mono.empty());
+
+        StepVerifier.create(service.forget("alice")).verifyComplete();
+        InOrder order = inOrder(directory, history, noticeOutbox, snoozes);
+        order.verify(directory).forget("alice");
+        order.verify(history).forget("alice");
+        order.verify(noticeOutbox).forget("alice");
+        order.verify(snoozes).forget("alice");
+    }
+
+    @Test
+    void forget_shouldStop_whenAStepFails_forTheErasureToBeRetried() {
+        when(directory.forget("alice")).thenReturn(Mono.just(2L));
+        when(history.forget("alice")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+
+        StepVerifier.create(service.forget("alice")).expectError(IllegalStateException.class).verify();
+        verify(noticeOutbox, never()).forget(anyString());
+        verify(snoozes, never()).forget(anyString());
     }
 }

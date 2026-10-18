@@ -7,6 +7,8 @@ import com.calendar.events.domain.models.FriendshipHistoryEntry;
 import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.FriendshipHistory;
+import com.calendar.events.domain.ports.FriendshipNoticeOutbox;
+import com.calendar.events.domain.ports.ReunionSnoozes;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
@@ -21,17 +23,34 @@ public class FriendshipService {
 
     private final FriendshipDirectory directory;
     private final FriendshipHistory history;
+    private final FriendshipNoticeOutbox noticeOutbox;
+    private final ReunionSnoozes snoozes;
     private final SurpriseService surpriseService;
     private final AccountGuard accountGuard;
     private final Clock clock;
 
-    public FriendshipService(FriendshipDirectory directory, FriendshipHistory history, SurpriseService surpriseService,
-                             AccountGuard accountGuard, Clock clock) {
+    public FriendshipService(FriendshipDirectory directory, FriendshipHistory history, FriendshipNoticeOutbox noticeOutbox,
+                             ReunionSnoozes snoozes, SurpriseService surpriseService, AccountGuard accountGuard,
+                             Clock clock) {
         this.directory = directory;
         this.history = history;
+        this.noticeOutbox = noticeOutbox;
+        this.snoozes = snoozes;
         this.surpriseService = surpriseService;
         this.accountGuard = accountGuard;
         this.clock = clock;
+    }
+
+    /**
+     * Erases what this service holds of an account's friendships: every pair, past ones included, its
+     * history, its pending friendship notices and its snoozes. Safe to replay; runs after the deleted-account
+     * marker, which keeps a late FRIENDSHIP_CHANGED from storing a pair again.
+     */
+    public Mono<Void> forget(String userId) {
+        return Mono.defer(() -> directory.forget(userId))
+                .then(Mono.defer(() -> history.forget(userId)))
+                .then(Mono.defer(() -> noticeOutbox.forget(userId)))
+                .then(Mono.defer(() -> snoozes.forget(userId)));
     }
 
     /** The viewer's friends and how close each is, read once for a whole response. */

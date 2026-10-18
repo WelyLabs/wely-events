@@ -1242,4 +1242,56 @@ class MongoEventRepositoryAdapterIntegrationTest {
                         Instant.parse("2026-10-20T00:00:00Z"), "lea").map(Event::getTitle).collectList().block())
                 .containsExactlyInAnyOrder("bob's dinner", "zoe joins");
     }
+
+    // --- Shared outings, for reunions and memories ------------------------------
+
+    private static final Instant SHARED_NOW = Instant.parse("2026-10-18T08:00:00Z");
+
+    private Event withKind(Event event, com.calendar.events.domain.models.EventKind kind, String honoree) {
+        event.setKind(kind);
+        event.setHonoreeId(honoree);
+        event.setHiddenFrom(new ArrayList<>(honoree == null ? List.of() : List.of(honoree)));
+        return adapter.save(event).block();
+    }
+
+    @Test
+    @DisplayName("a shared outing has started with both on it, most recent first; never a surprise for either, nor a poll")
+    void findSharedOutings_shouldKeepStartedEventsBothAreOn_mostRecentFirst() {
+        saveAt("older", "lea", List.of("lea", "hugo"), "2026-03-01T18:00:00Z", "2026-03-01T20:00:00Z");
+        saveAt("newer, hugo organizes", "hugo", List.of("hugo", "zoe", "lea"), "2026-09-01T18:00:00Z", null);
+        saveAt("still running", "zoe", List.of("zoe", "lea", "hugo"), "2026-10-18T07:30:00Z", "2026-10-18T09:00:00Z");
+        saveAt("not started", "lea", List.of("lea", "hugo"), "2026-10-20T18:00:00Z", "2026-10-20T20:00:00Z");
+        saveAt("lea only", "lea", List.of("lea", "zoe"), "2026-05-01T18:00:00Z", "2026-05-01T20:00:00Z");
+        withKind(saveAt("lea's surprise", "hugo", List.of("hugo", "zoe"), "2026-04-01T18:00:00Z", null),
+                com.calendar.events.domain.models.EventKind.SURPRISE, "lea");
+        withKind(saveAt("zoe's surprise", "hugo", List.of("hugo", "lea"), "2026-04-02T18:00:00Z", null),
+                com.calendar.events.domain.models.EventKind.SURPRISE, "zoe");
+        Event poll = aPoll("polling", "lea", List.of("lea", "hugo"));
+        poll.setStartDate(Instant.parse("2026-01-01T10:00:00Z"));
+        adapter.save(poll).block();
+
+        assertThat(titles(adapter.findSharedOutings("hugo", "lea", SHARED_NOW)))
+                .containsExactly("still running", "newer, hugo organizes", "zoe's surprise", "older");
+        assertThat(adapter.findLastSharedOuting("lea", "hugo", SHARED_NOW).map(Event::getTitle).block())
+                .isEqualTo("still running");
+        StepVerifier.create(adapter.findLastSharedOuting("lea", "max", SHARED_NOW)).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("something upcoming together: not started, or a date still being voted on; never a surprise for either")
+    void hasUpcomingShared_shouldFindAnEventNotStartedYet_orStillPolling() {
+        saveAt("past", "lea", List.of("lea", "hugo"), "2026-03-01T18:00:00Z", "2026-03-01T20:00:00Z");
+        withKind(saveAt("hugo's surprise", "lea", List.of("lea", "zoe"), "2026-11-01T18:00:00Z", null),
+                com.calendar.events.domain.models.EventKind.SURPRISE, "hugo");
+        assertThat(adapter.hasUpcomingShared("lea", "hugo", SHARED_NOW).block()).isFalse();
+
+        Event poll = aPoll("polling", "lea", List.of("lea", "hugo"));
+        poll.setStartDate(Instant.parse("2026-01-01T10:00:00Z"));
+        adapter.save(poll).block();
+        assertThat(adapter.hasUpcomingShared("hugo", "lea", SHARED_NOW).block()).isTrue();
+
+        saveAt("next week", "zoe", List.of("zoe", "max", "lea"), "2026-10-25T18:00:00Z", null);
+        assertThat(adapter.hasUpcomingShared("max", "lea", SHARED_NOW).block()).isTrue();
+        assertThat(adapter.hasUpcomingShared("max", "hugo", SHARED_NOW).block()).isFalse();
+    }
 }

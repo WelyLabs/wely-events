@@ -129,8 +129,7 @@ class EventApplicationConfigTest {
 
         AccountErasureService service = config.accountErasureService(repository, eventService,
                 mock(com.calendar.events.domain.services.BirthdayService.class),
-                mock(com.calendar.events.domain.ports.FriendshipDirectory.class),
-                mock(com.calendar.events.domain.ports.FriendshipHistory.class), mock(ExpenseRepository.class),
+                mock(com.calendar.events.domain.services.FriendshipService.class), mock(ExpenseRepository.class),
                 mock(MediaStore.class), mock(DeletedUserMarkers.class),
                 mock(PollUpdates.class), "89a380b8-f66a-44d0-b9d9-616241080430");
 
@@ -182,8 +181,26 @@ class EventApplicationConfigTest {
 
         assertThat(surpriseService).isNotNull();
         assertThat(config.friendshipService(friendships, mock(com.calendar.events.domain.ports.FriendshipHistory.class),
-                surpriseService, guard(), clock)).isNotNull();
+                mock(com.calendar.events.domain.ports.FriendshipNoticeOutbox.class),
+                mock(com.calendar.events.domain.ports.ReunionSnoozes.class), surpriseService, guard(), clock)).isNotNull();
         assertThat(config.birthdayService(repository, eventService, socialGraph, outbox, guard())).isNotNull();
         assertThat(config.birthdayReminderService(repository, friendships, outbox, guard(), clock)).isNotNull();
+    }
+
+    @Test
+    void friendshipFeatureServices_shouldBuildTheDomainServicesFromTheirPorts() {
+        EventRepository repository = mock(EventRepository.class);
+        com.calendar.events.domain.ports.FriendshipDirectory friendships =
+                mock(com.calendar.events.domain.ports.FriendshipDirectory.class);
+        java.time.Clock clock = config.clock();
+        com.calendar.events.domain.services.DisplayNames names = config.displayNames(repository);
+        com.calendar.events.domain.services.ReunionService reunions = config.reunionService(repository, friendships,
+                mock(com.calendar.events.domain.ports.ReunionSnoozes.class), names, clock);
+
+        assertThat(names).isNotNull();
+        assertThat(reunions).isNotNull();
+        assertThat(config.friendshipMemoriesService(repository, friendships, names, clock)).isNotNull();
+        assertThat(config.friendshipReminderService(friendships, reunions,
+                mock(com.calendar.events.domain.ports.FriendshipNoticeOutbox.class), names, clock)).isNotNull();
     }
 }

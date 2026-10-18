@@ -190,6 +190,21 @@ public class MongoEventRepositoryAdapter implements EventRepository {
         return mongoRepository.countPastInvolvingBoth(userId, otherId, now, now.minus(Event.DEFAULT_DURATION));
     }
 
+    @Override
+    public Flux<Event> findSharedOutings(String userId, String otherId, Instant now) {
+        return mongoRepository.findSharedOutings(userId, otherId, now, Limit.unlimited()).map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Event> findLastSharedOuting(String userId, String otherId, Instant now) {
+        return mongoRepository.findSharedOutings(userId, otherId, now, Limit.of(1)).next().map(mapper::toDomain);
+    }
+
+    @Override
+    public Mono<Boolean> hasUpcomingShared(String userId, String otherId, Instant now) {
+        return mongoRepository.existsUpcomingShared(userId, otherId, now);
+    }
+
     /**
      * Mongo counts modified documents, not matched ones: casting the same ballot again modifies
      * nothing. A poll never reopens, so finding it still open after the write means it matched.

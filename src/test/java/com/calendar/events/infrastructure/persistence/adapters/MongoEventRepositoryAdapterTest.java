@@ -373,6 +373,40 @@ class MongoEventRepositoryAdapterTest {
     }
 
     @Test
+    void findSharedOutings_shouldReadThemAll() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        when(mongoRepository.findSharedOutings("alice", "bob", NOW, Limit.unlimited())).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findSharedOutings("alice", "bob", NOW)).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findLastSharedOuting_shouldReadOnlyTheMostRecent() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        when(mongoRepository.findSharedOutings("alice", "bob", NOW, Limit.of(1))).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findLastSharedOuting("alice", "bob", NOW)).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void findLastSharedOuting_shouldBeEmpty_withoutOne() {
+        when(mongoRepository.findSharedOutings("alice", "bob", NOW, Limit.of(1))).thenReturn(Flux.empty());
+
+        StepVerifier.create(adapter.findLastSharedOuting("alice", "bob", NOW)).verifyComplete();
+    }
+
+    @Test
+    void hasUpcomingShared_shouldAskWhetherOneExists() {
+        when(mongoRepository.existsUpcomingShared("alice", "bob", NOW)).thenReturn(Mono.just(true));
+
+        StepVerifier.create(adapter.hasUpcomingShared("alice", "bob", NOW)).expectNext(true).verifyComplete();
+    }
+
+    @Test
     void setImage_shouldReadTheEventBack_whenTheOrganizersUpdateMatched() {
         EventEntity entity = new EventEntity();
         Event domain = Event.builder().id("1").image("events/1/cover-a.jpg").build();

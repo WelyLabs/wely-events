@@ -1,6 +1,7 @@
 package com.calendar.events.infrastructure.scheduling;
 
 import com.calendar.events.domain.services.BirthdayReminderService;
+import com.calendar.events.domain.services.FriendshipReminderService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -10,12 +11,14 @@ import reactor.core.publisher.Mono;
 import java.time.Clock;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.function.Supplier;
 
 /**
- * Runs the birthday reminders: every day at 08:00 in Paris, and hourly from shortly after startup
- * to catch up a missed or failed run. Notices are keyed, so a repeated run, or every pod running
- * it, records nothing twice. The catch-up waits for 08:00, so a restart at night wakes nobody.
- * Spring subscribes to the returned Mono itself.
+ * Runs the daily reminders: the birthday ones, then the friendship ones (anniversaries and reunion
+ * nudges), every day at 08:00 in Paris, and hourly from shortly after startup to catch up a missed or
+ * failed run. Notices are keyed, so a repeated run, or every pod running it, records nothing twice.
+ * The catch-up waits for 08:00, so a restart at night wakes nobody. One kind failing never stops the
+ * other. Spring subscribes to the returned Mono itself.
  */
 @Slf4j
 @Component
@@ -26,10 +29,13 @@ public class BirthdayReminderJob {
     static final LocalTime SENDING_FROM = LocalTime.of(8, 0);
 
     private final BirthdayReminderService reminders;
+    private final FriendshipReminderService friendshipReminders;
     private final Clock clock;
 
-    public BirthdayReminderJob(BirthdayReminderService reminders, Clock clock) {
+    public BirthdayReminderJob(BirthdayReminderService reminders, FriendshipReminderService friendshipReminders,
+                               Clock clock) {
         this.reminders = reminders;
+        this.friendshipReminders = friendshipReminders;
         this.clock = clock;
     }
 
@@ -48,14 +54,19 @@ public class BirthdayReminderJob {
     }
 
     private Mono<Void> run(String which) {
-        return Mono.defer(reminders::recordDueNotices)
+        return step("Birthday reminders", which, reminders::recordDueNotices)
+                .then(step("Friendship reminders", which, friendshipReminders::recordDueNotices));
+    }
+
+    private static Mono<Void> step(String what, String which, Supplier<Mono<Long>> run) {
+        return Mono.defer(run)
                 .doOnNext(recorded -> {
                     if (recorded > 0) {
-                        log.info("Birthday reminders ({}): {} notice(s) recorded", which, recorded);
+                        log.info("{} ({}): {} notice(s) recorded", what, which, recorded);
                     }
                 })
                 .onErrorResume(error -> {
-                    log.warn("Birthday reminders ({}) failed; the next run retries: {}", which, error.toString());
+                    log.warn("{} ({}) failed; the next run retries: {}", what, which, error.toString());
                     return Mono.empty();
                 })
                 .then();

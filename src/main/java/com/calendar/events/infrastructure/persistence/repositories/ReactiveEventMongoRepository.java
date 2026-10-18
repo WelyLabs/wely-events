@@ -230,6 +230,32 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
             ] }""", count = true)
     Mono<Long> countPastInvolvingBoth(String userId, String otherId, Instant now, Instant startedBefore);
 
+    // A shared outing between two people: both on it, neither its honoree nor hidden from it, never a birthday.
+    // Started means a fixed date in the past: an open poll's start is only its earliest proposal.
+
+    @Query(value = """
+            { $and: [
+                { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
+                { $or: [ { organizerId: ?1 }, { participantIds: ?1 } ] },
+                { kind: { $ne: 'BIRTHDAY' } },
+                { hiddenFrom: { $nin: [ ?0, ?1 ] } },
+                { $or: [ { kind: { $ne: 'SURPRISE' } }, { honoreeId: { $nin: [ ?0, ?1 ] } } ] },
+                { 'poll.status': { $ne: 'OPEN' } },
+                { startDate: { $lte: ?2 } }
+            ] }""", sort = "{ startDate: -1 }")
+    Flux<EventEntity> findSharedOutings(String userId, String otherId, Instant now, Limit limit);
+
+    @Query(value = """
+            { $and: [
+                { $or: [ { organizerId: ?0 }, { participantIds: ?0 } ] },
+                { $or: [ { organizerId: ?1 }, { participantIds: ?1 } ] },
+                { kind: { $ne: 'BIRTHDAY' } },
+                { hiddenFrom: { $nin: [ ?0, ?1 ] } },
+                { $or: [ { kind: { $ne: 'SURPRISE' } }, { honoreeId: { $nin: [ ?0, ?1 ] } } ] },
+                { $or: [ { 'poll.status': 'OPEN' }, { startDate: { $gt: ?2 } } ] }
+            ] }""", exists = true)
+    Mono<Boolean> existsUpcomingShared(String userId, String otherId, Instant now);
+
     /** A community's events not over yet, as {@link #findOccupying} counts it: without an end, one hour. */
     @Query(value = """
             { communityId: ?0, hiddenFrom: { $ne: ?3 },

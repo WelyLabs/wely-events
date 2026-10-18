@@ -138,6 +138,9 @@ Préfixées par `/events-service`, exposées sur `/api/v1/events-service/**`. L'
 | `POST` | `/events/me/free-slots` | Créneaux où l'utilisateur et des amis sont tous libres (voir plus bas) |
 | `GET` | `/events/users/{friendId}/calendar?from=&to=` | Calendrier d'un ami, dévoilé selon la proximité (voir plus bas) |
 | `GET` | `/events/me/circle?from=&to=` | "My circle": the busy and visible entries of all the caller's INTIMATE friends, 62 days at most (`EVT-BUS-037` otherwise), as a friend's calendar entry plus `userId` (see "A friend's calendar") |
+| `GET` | `/events/me/reunions` | Up to 3 close or intimate friends the caller has drifted from (see "Reunions and anniversaries"): `[{friendId, name, closeness, lastSharedAt, lastSharedEventId, lastSharedTitle, monthsApart}]` |
+| `POST` | `/events/me/reunions/{friendId}/dismiss` | "Later": that friend is not suggested again for 30 days (204); `EVT-BUS-036` (404) for anyone but a friend |
+| `GET` | `/events/me/friendships/{friendId}/memories` | What the caller and that friend shared: `{friendId, name, closeness, since, years, days, sharedCount, first, last, highlights}`, each outing `{eventId, title, startDate, imageUrl}`; `EVT-BUS-036` (404) for anyone but a friend |
 | `GET` | `/events/users/{friendId}/overview` | La page d'un ami : nombre de sorties passées ensemble, 5 prochains événements communs, 6 derniers souvenirs communs, et les 5 prochains événements de l'ami que l'appelant peut voir et où il n'est pas encore (sondages de date ouverts compris). Réservé aux amis (`EVT-BUS-003`, 403) ; sa propre page est refusée (`EVT-BUS-005`, 400) |
 | `GET` | `/events/{id}/expenses` | Dépenses partagées de l'événement, les plus récentes d'abord (membres seulement, 404 sinon) |
 | `POST` | `/events/{id}/expenses` | Ajoute une dépense (201) |
@@ -248,7 +251,7 @@ Supprimer un événement (par `DELETE` ou par le dernier départ) emporte son do
 - **Pseudonym.** Past events, closed-poll ballots, past answers and expenses keep the `businessId`, which the web app labels as a deleted user. Balances stay exact.
 - **Propagation.** Hand-overs and departures go through `EVENT_GROUP_CHANGED` (version bumped, `groupSynced: false`): wely-chat and wely-notifications follow without any extra call. The successor is not notified.
 - **After the marker**, every write (`POST`, `PUT`, `PATCH`, `DELETE`) carried by the deleted account's still-valid token answers `EVT-BUS-025` (410), from a filter in the security chain; reads go through. The poll stream cannot be reopened either (`EVT-BUS-025`), and a stream checks the marker again once it listens, so an erasure landing between the check and the subscription still ends it. A "Yes" vote that outlived the erasure never subscribes the account when the date is fixed.
-- **Birthday and friendships.** Right after the marker, the account's birthday, the surprises for it and its pending notices are erased, then every pair involving it in `friendships`, and its entries in `friendship_history`.
+- **Birthday and friendships.** Right after the marker, the account's birthday, the surprises for it and its pending notices are erased, then every pair involving it in `friendships`, its entries in `friendship_history`, its pending friendship notices and its reunion snoozes.
 - **Demo accounts** (`ACCOUNT_DELETION_PROTECTED_USER_IDS`) are never erased, and never made successor automatically, since anyone can sign in to them.
 
 ### Reconciliation
@@ -380,6 +383,41 @@ Every request path that needs friendships — the feed, the map, `GET /events/{i
 - **The trade-off.** A change made in wely-social reaches this service a few seconds later (outbox relay, then the consumer): a friend just accepted may not see a FRIENDS event for that long, and a friend just removed may still see one. In exchange, wely-social being down, slow or redeployed costs this service nothing: no timeout, no circuit breaker, no degraded feed.
 - **Still remote.** Community membership (`CommunityDirectory`) is still asked of wely-social, with the caller's token.
 
+## Reunions and anniversaries
+
+### Shared outings
+
+A **shared outing** between X and Y is an event that has started (`startDate` passed, date fixed: an open poll's start is only a proposal) that both organize or take part in. A BIRTHDAY never counts, nor a SURPRISE for either of them, nor an event hidden from either: the filter is in the Mongo query (`findSharedOutings`, `findLastSharedOuting`). An **upcoming shared event** is the same for an event not started yet, or still polling its date (`hasUpcomingShared`, an `exists` query).
+
+### Reunions (`ReunionService`)
+
+A friend is a **reunion candidate** when the two are CLOSE or INTIMATE, friends for at least 90 days, with no shared outing in the last 90 days and nothing upcoming together, and the caller has not snoozed them. INTIMATE come first, then the longest unseen (never seen first). `monthsApart` counts whole months since the last shared outing, in Paris time, `null` when they never had one.
+
+- `GET /events/me/reunions` serves the first 3; `POST …/{friendId}/dismiss` snoozes the pair, for the caller only, for 30 days, in `reunion_snoozes` (`{_id: "<userId>:<friendId>", userId, friendId, until}`, TTL on `until`). The card ignores the nudge caps below: having been notified about Hugo does not hide Hugo from the card.
+- **Names** come from each user's BIRTHDAY (`honoreeName`, kept from `USER_BIRTHDAY`; signup asks for it), read in one query; without one, "Un ami" (`DisplayNames`).
+
+### Memories (`FriendshipMemoriesService`)
+
+`GET /events/me/friendships/{friendId}/memories`: `years` and `days` of friendship counted on Paris dates from the projection's `since`, the number of shared outings, the first and the latest, and up to 6 highlights, those with a cover first, the most recent first. Covers are signed in one round, as everywhere (`imageUrl`).
+
+### The daily friendship notices (`FriendshipReminderService`)
+
+The birthday job (08:00 Paris time, plus the hourly catch-up) runs the friendship notices right after the birthday ones; one failing never stops the other. Both read every pair from the projection.
+
+- **FRIENDSHIP_ANNIVERSARY**, to both friends, on the anniversary of `since` in Paris time, from the first year on (a 29 February falls on the 28th). Key `FRIENDSHIP_ANNIVERSARY:<recipientId>:<friendId>:<years>`.
+- **REUNION_NUDGE**, about the most due reunion candidate, to every user with a close or intimate friend: at most one per user per 7 days, never about a friend nudged about in the last 30 days, never about a snoozed one. Key `REUNION_NUDGE:<recipientId>:<day>`: two pods or two runs on the same day record one nudge at most, whoever it is about. The caps read the outbox itself (`recipientId, type, recordedAt` index), so sent notices stay until their TTL.
+- **Outbox.** `friendship_notices` is outbox and idempotency key at once, as `birthday_notices` (`_id` = the key, TTL 400 days); `FriendshipNoticeRelay` sends it on `FRIENDSHIP_NOTICES` (binding `friendshipNotices-out-0`), keyed by recipient, at least once:
+
+```json
+{ "type": "REUNION_NUDGE", "recipientId": "…", "friendId": "…", "friendName": "Hugo", "closeness": "CLOSE",
+  "lastSharedAt": "2026-05-02T18:00:00Z", "lastSharedEventId": "…", "monthsApart": 5, "years": null, "since": null }
+{ "type": "FRIENDSHIP_ANNIVERSARY", "recipientId": "…", "friendId": "…", "friendName": "Léa", "closeness": "INTIMATE",
+  "lastSharedAt": null, "lastSharedEventId": null, "monthsApart": null, "years": 1, "since": "2025-03-03T10:00:00Z" }
+```
+
+- **Cost.** A run reads every pair, then for each user with a close friend two indexed queries per close friend: fine at this scale, to batch per user if the graph grows.
+- **Account deletion** erases the user's pending friendship notices and snoozes, with the pairs and their history.
+
 ## Gestion des erreurs
 
 | Code | HTTP | Signification |
@@ -470,7 +508,8 @@ client peut tester et un `timestamp` :
 | `FRIENDSHIP_TOPIC` | Friendship changes from wely-social, `FRIENDSHIP_CHANGED` by default; `FRIENDSHIPS_CONSUMER_ENABLED` turns the consumer off |
 | `USER_BIRTHDAY_TOPIC` | Birthdays from wely-users, `USER_BIRTHDAY` by default; `USER_BIRTHDAY_CONSUMER_ENABLED` turns the consumer off |
 | `BIRTHDAY_NOTICES_TOPIC` | Notices for wely-notifications, `BIRTHDAY_NOTICES` by default; `BIRTHDAY_NOTICES_RELAY_ENABLED` turns the relay off |
-| `BIRTHDAY_REMINDERS_ENABLED` | Runs the daily birthday job (and `@Scheduled`), `true` by default |
+| `FRIENDSHIP_NOTICES_TOPIC` | Anniversaries and reunion nudges for wely-notifications, `FRIENDSHIP_NOTICES` by default; `FRIENDSHIP_NOTICES_RELAY_ENABLED` turns the relay off |
+| `BIRTHDAY_REMINDERS_ENABLED` | Runs the daily job, birthdays then friendship notices (and `@Scheduled`), `true` by default |
 | `ACCOUNT_DELETION_PROTECTED_USER_IDS` | Comma-separated `businessId`s of the demo accounts, never erased nor made successor. Empty by default |
 | `USERS_API_URL` | In-cluster URL of wely-users, read by the reconciliation (`http://localhost:8082` in the `dev` profile). Empty by default: every pass then fails without a call |
 | `DELETED_USERS_READER_SECRET` | Sent as `X-Internal-Secret` to wely-users' deleted-accounts listing. Empty by default: every pass then fails without a call |

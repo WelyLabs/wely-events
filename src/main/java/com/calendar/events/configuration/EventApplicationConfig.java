@@ -10,6 +10,8 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.FriendshipHistory;
+import com.calendar.events.domain.ports.FriendshipNoticeOutbox;
+import com.calendar.events.domain.ports.ReunionSnoozes;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
@@ -18,7 +20,11 @@ import com.calendar.events.domain.services.AccountGuard;
 import com.calendar.events.domain.services.AccountReconciliationService;
 import com.calendar.events.domain.services.BirthdayReminderService;
 import com.calendar.events.domain.services.BirthdayService;
+import com.calendar.events.domain.services.DisplayNames;
+import com.calendar.events.domain.services.FriendshipMemoriesService;
+import com.calendar.events.domain.services.FriendshipReminderService;
 import com.calendar.events.domain.services.FriendshipService;
+import com.calendar.events.domain.services.ReunionService;
 import com.calendar.events.domain.services.SurpriseService;
 import com.calendar.events.domain.services.CalendarExportService;
 import com.calendar.events.domain.services.EventService;
@@ -91,13 +97,13 @@ public class EventApplicationConfig {
     /** {@code protectedUserIds}: the demo accounts, comma-separated, never erased nor handed an event. */
     @Bean
     public AccountErasureService accountErasureService(EventRepository eventRepository, EventService eventService,
-                                                       BirthdayService birthdayService, FriendshipDirectory friendships,
-                                                       FriendshipHistory friendshipHistory, ExpenseRepository expenseRepository,
+                                                       BirthdayService birthdayService, FriendshipService friendshipService,
+                                                       ExpenseRepository expenseRepository,
                                                        MediaStore mediaStore, DeletedUserMarkers markers, PollUpdates pollUpdates,
                                                        @Value("${app.account-deletion.protected-user-ids:}") String protectedUserIds) {
         Set<String> protectedIds = parseIds(protectedUserIds);
         log.info("Account erasure: {} protected account(s)", protectedIds.size());
-        return new AccountErasureService(eventRepository, eventService, birthdayService, friendships, friendshipHistory,
+        return new AccountErasureService(eventRepository, eventService, birthdayService, friendshipService,
                 expenseRepository,
                 mediaStore, markers, pollUpdates, protectedIds, Clock.systemUTC());
     }
@@ -159,8 +165,39 @@ public class EventApplicationConfig {
 
     @Bean
     public FriendshipService friendshipService(FriendshipDirectory friendships, FriendshipHistory friendshipHistory,
+                                               FriendshipNoticeOutbox friendshipNotices, ReunionSnoozes snoozes,
                                                SurpriseService surpriseService, AccountGuard accountGuard, Clock clock) {
-        return new FriendshipService(friendships, friendshipHistory, surpriseService, accountGuard, clock);
+        return new FriendshipService(friendships, friendshipHistory, friendshipNotices, snoozes, surpriseService,
+                accountGuard, clock);
+    }
+
+    @Bean
+    public DisplayNames displayNames(EventRepository eventRepository) {
+        return new DisplayNames(eventRepository);
+    }
+
+    /** Months apart count in France, where Wely's users are. */
+    @Bean
+    public ReunionService reunionService(EventRepository eventRepository, FriendshipDirectory friendships,
+                                         ReunionSnoozes snoozes, DisplayNames displayNames, Clock clock) {
+        return new ReunionService(eventRepository, friendships, snoozes, displayNames, clock, USERS_ZONE);
+    }
+
+    @Bean
+    public FriendshipMemoriesService friendshipMemoriesService(EventRepository eventRepository,
+                                                               FriendshipDirectory friendships,
+                                                               DisplayNames displayNames, Clock clock) {
+        return new FriendshipMemoriesService(eventRepository, friendships, displayNames, clock, USERS_ZONE);
+    }
+
+    /** Anniversaries fall on the day in France, as the 08:00 run does. */
+    @Bean
+    public FriendshipReminderService friendshipReminderService(FriendshipDirectory friendships,
+                                                               ReunionService reunionService,
+                                                               FriendshipNoticeOutbox friendshipNotices,
+                                                               DisplayNames displayNames, Clock clock) {
+        return new FriendshipReminderService(friendships, reunionService, friendshipNotices, displayNames, clock,
+                USERS_ZONE);
     }
 
     @Bean
