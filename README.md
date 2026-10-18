@@ -343,7 +343,7 @@ Un « Tricount » attaché à chaque événement : ses membres (organisateur et 
 
 « Complet » = titre, lieu, description et id ; « occupé » = début et fin seulement. Cacher dans le calendrier ce qu'Alice voit déjà dans son feed ne protégerait rien : la proximité ne joue que sur ce qu'elle ne pourrait pas voir autrement.
 
-The closeness (friend < close < intimate) is read from the `friendships` projection, so a downgrade takes effect once `FRIENDSHIP_CHANGED` has been consumed, a few seconds later. Not friends: `EVT-BUS-003` (403).
+The closeness (friend < close < intimate) is read from the `friendships` projection, so a downgrade takes effect once `FRIENDSHIP_STATE` has been consumed, a few seconds later. Not friends: `EVT-BUS-003` (403).
 
 ### My circle
 
@@ -360,21 +360,27 @@ The closeness (friend < close < intimate) is read from the `friendships` project
 
 ### The `friendships` projection
 
-wely-social publishes every friendship change on `FRIENDSHIP_CHANGED` from a transactional outbox, keyed by the pair (`idA:idB`, sorted), so one pair's records stay in order on one partition: `{type, fromUserId, fromUserName, toUserId, closeness, since, version, occurredAt}`. `FriendshipChangedConsumer` (binding `friendships-in-0`, its own group `events-friendships-group`, from the earliest retained record) keeps one document per pair in `friendships`:
+wely-social publishes two topics from its transactional outbox, both keyed by the pair (`idA:idB`, sorted), so one pair's records stay in order on one partition:
+
+- **`FRIENDSHIP_STATE`**, compacted: the pair's current state. While they are friends, the value is `{a, b, friends: true, closeness, since, version}`; once they part, or an account is erased, a **tombstone** (null value). Compaction keeps the latest record per key, so the topic holds every current friendship, however old.
+- **`FRIENDSHIP_CHANGED`**, 3 days of retention: every change, `{type, fromUserId, toUserId, closeness, previousCloseness, since, version, occurredAt}`, for the history only.
+
+`FriendshipStateConsumer` (binding `friendshipState-in-0`, group `${FRIENDSHIP_STATE_GROUP:events-friendship-state-group}`, earliest offset) keeps one document per pair in `friendships`:
 
 ```
-{ _id: "<idA>:<idB>", a: "<idA>", b: "<idB>", friends: true|false, closeness: "FRIEND|CLOSE|INTIMATE"|null, since, version }
+{ _id: "<idA>:<idB>", a: "<idA>", b: "<idB>", friends: true|false, closeness: "FRIEND|CLOSE|INTIMATE"|null, since, version, streamedVersion }
 ```
 
-- **Types.** `ACCEPTED`, `CLOSENESS_CHANGED` and `SNAPSHOT` (wely-social's one-time backfill of the friendships that existed before the outbox) store the pair as friends, with its closeness. `REQUESTED`, `REJECTED`, `CANCELLED` and `REMOVED` store `friends: false`: the document stays as a **version tombstone**.
-- **Ordering.** A write is a conditional overwrite (`version` lower than the record's), then an insert for a new pair; the insert hitting the unique `_id` means the stored pair is as new or newer, so a record whose `version` is not above the stored one is ignored. A replay or a rebalance cannot bring back an older state, and a removal cannot be undone by a late acceptance.
+- **Values.** A write is a conditional overwrite (`version` lower than the record's), then an insert for a new pair; the insert hitting the unique `_id` means the stored pair is as new or newer, so a value whose `version` is not above the stored one is ignored. Every value, applied or stale, sets `streamedVersion`, the last version the topic carried for the pair.
+- **Tombstones.** Spring Cloud Function hands a tombstone over with a `KafkaNull` payload; the pair is read from the record key. It carries no version: it ends the value read just before it for the same key, since one key's records stay in order on one partition. So it turns the stored pair to `friends: false`, version kept, only when that value was the stored one (`streamedVersion` equals `version`, or is absent for a pair stored before this topic). After a stale value, it ended an older state: replaying `v3, tombstone, v5` over a projection already at `v5` leaves it at `v5`. A tombstone for an unknown pair, or one already not friends, does nothing. The document stays, so a late value cannot bring back an older state.
+- **Rebuild.** Change `FRIENDSHIP_STATE_GROUP` to a name never used: the new group starts from the earliest offset and re-reads the whole compacted topic, which brings back every current friendship, older than 3 days included. Keep the collection: the version guard skips what is already there, and the tombstone rule above keeps a replayed old tombstone from ending a current friendship. Starting from an emptied collection works too, but replays the transitions the topic still holds uncompacted, and their surprise releases.
 - **Reads.** `friendsOf(userId)` matches `friends: true` on `a` or `b`, both indexed.
-- **Deleted accounts.** A record naming an account in `deleted_users` is ignored, and the erasure deletes every pair involving the account, tombstones included, after the marker.
-- **Errors.** Each record is isolated: an unreadable one, an unknown type or closeness, ids that are not two distinct canonical UUIDs, a missing `version`, or friends without a closeness is logged and skipped; a failing write is retried 5 times (1 s to 30 s), then logged, and the stream goes on. That pair is then stale until its next change.
-- **Freshness.** The projection is eventually consistent with wely-social: it lags by the outbox relay and the consumer, and it is empty until wely-social's snapshot has been consumed.
-- **History.** Every applied change is also appended to `friendship_history` (`{_id: "<pairId>:<version>", pairId, a, b, type, closeness, previousCloseness, at, version}`, `at` = wely-social's `occurredAt`, or the processing time without one), unique per pair and version, so a replay appends nothing. The year in review reads it; the account erasure purges it.
-- **A friendship that ends.** When a record turns a pair from friends to not friends (a `REMOVED`), neither side stays in a surprise for the other: a participant is removed, and an organizer hands the surprise to the earliest remaining participant who is still the honoree's friend (and not a deleted account), or deletes it, with the usual cascade, when there is none. Each write flags the event's group, so wely-chat follows through `EVENT_GROUP_CHANGED`. The other side's FRIENDS events it never joined disappear from its feed on their own, since visibility reads the same projection; events it joined stay.
-- **Order of the steps.** Deleted-account guard, staleness check against the stored version, surprise release, history, then the pair itself, last: a failure midway leaves the pair stale, so the retry runs every step again, each of which is safe to replay.
+- **Deleted accounts.** A value naming an account in `deleted_users` is ignored, and the erasure deletes every pair involving the account, ended ones included, after the marker; wely-social's tombstone then finds nothing to end.
+- **Errors.** Each record is isolated: an unreadable value, an unknown closeness, ids that are not two distinct canonical UUIDs or do not match the key, a missing `friends` or `version`, friends without a closeness, or a tombstone without a usable key is logged and skipped; a failing write is retried 5 times (1 s to 30 s), then logged, and the stream goes on. That pair is then stale until its next change, or a rebuild.
+- **Freshness.** The projection is eventually consistent with wely-social: it lags by the outbox relay and the consumer.
+- **History.** `FriendshipChangedConsumer` (binding `friendshipHistory-in-0`, group `events-friendships-group`) appends every FRIENDSHIP_CHANGED record to `friendship_history` (`{_id: "<pairId>:<version>", pairId, a, b, type, closeness, previousCloseness, at, version}`, `at` = wely-social's `occurredAt`, or the processing time without one), unique per pair and version, so a replay appends nothing. It never writes the projection. The year in review reads it; the account erasure purges it. Unlike the projection, it cannot be rebuilt past the topic's 3 days.
+- **A friendship that ends.** When `FRIENDSHIP_STATE` turns a pair from friends to not friends, neither side stays in a surprise for the other: a participant is removed, and an organizer hands the surprise to the earliest remaining participant who is still the honoree's friend (and not a deleted account), or deletes it, with the usual cascade, when there is none. Each write flags the event's group, so wely-chat follows through `EVENT_GROUP_CHANGED`. The other side's FRIENDS events it never joined disappear from its feed on their own, since visibility reads the same projection; events it joined stay.
+- **Once per transition.** The release runs before the pair is written: a failure midway leaves the pair friends, so the retry releases again, which is safe; once the pair is ended, a redelivered tombstone finds it not friends and releases nothing.
 
 ### Friendships without a synchronous call
 
@@ -505,7 +511,9 @@ client peut tester et un `timestamp` :
 | `EVENT_DELETION_RELAY_ENABLED` | Relais des suppressions vers wely-chat, `true` par défaut |
 | `MEDIA_API_SECRET` | Secret partagé envoyé dans `X-Internal-Secret`. Vide par défaut : le service démarre, mais les envois répondent `EVT-TEC-003` et les images sortent sans URL |
 | `USER_DELETED_CONSUMER_ENABLED` | Consumes `USER_DELETED`, `true` by default |
-| `FRIENDSHIP_TOPIC` | Friendship changes from wely-social, `FRIENDSHIP_CHANGED` by default; `FRIENDSHIPS_CONSUMER_ENABLED` turns the consumer off |
+| `FRIENDSHIP_STATE_TOPIC` | wely-social's compacted friendship state, feeding the projection, `FRIENDSHIP_STATE` by default; `FRIENDSHIP_STATE_CONSUMER_ENABLED` turns the consumer off |
+| `FRIENDSHIP_STATE_GROUP` | Consumer group of that topic, `events-friendship-state-group` by default; a new name rebuilds the projection |
+| `FRIENDSHIP_TOPIC` | Friendship changes from wely-social, feeding the history only, `FRIENDSHIP_CHANGED` by default; `FRIENDSHIPS_CONSUMER_ENABLED` turns the consumer off |
 | `USER_BIRTHDAY_TOPIC` | Birthdays from wely-users, `USER_BIRTHDAY` by default; `USER_BIRTHDAY_CONSUMER_ENABLED` turns the consumer off |
 | `BIRTHDAY_NOTICES_TOPIC` | Notices for wely-notifications, `BIRTHDAY_NOTICES` by default; `BIRTHDAY_NOTICES_RELAY_ENABLED` turns the relay off |
 | `FRIENDSHIP_NOTICES_TOPIC` | Anniversaries and reunion nudges for wely-notifications, `FRIENDSHIP_NOTICES` by default; `FRIENDSHIP_NOTICES_RELAY_ENABLED` turns the relay off |

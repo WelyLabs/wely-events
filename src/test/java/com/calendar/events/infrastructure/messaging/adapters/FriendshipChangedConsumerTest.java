@@ -67,57 +67,57 @@ class FriendshipChangedConsumerTest {
 
     @SafeVarargs
     private Mono<Void> consume(Message<byte[]>... records) {
-        return consumer.friendships().apply(Flux.just(records));
+        return consumer.friendshipHistory().apply(Flux.just(records));
     }
 
     @Test
-    void friendships_shouldRecordAnAcceptanceAsFriends_whicheverSideActed() {
+    void friendshipHistory_shouldRecordAnAcceptanceAsFriends_whicheverSideActed() {
         FriendshipChange expected = applied("ACCEPTED", new Friendship(ALICE, BOB, true, Closeness.FRIEND, SINCE, 12));
-        when(friendshipService.record(expected)).thenReturn(Mono.just(true));
+        when(friendshipService.recordHistory(expected)).thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(change("ACCEPTED", BOB, ALICE, "FRIEND", 12))).verifyComplete();
-        verify(friendshipService).record(expected);
+        verify(friendshipService).recordHistory(expected);
     }
 
     @Test
-    void friendships_shouldRecordTheSnapshotAndAClosenessChangeAsFriends() {
-        when(friendshipService.record(any())).thenReturn(Mono.just(true));
+    void friendshipHistory_shouldRecordTheSnapshotAndAClosenessChangeAsFriends() {
+        when(friendshipService.recordHistory(any())).thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(change("SNAPSHOT", ALICE, BOB, "CLOSE", 1),
                 change("CLOSENESS_CHANGED", ALICE, BOB, "INTIMATE", 2))).verifyComplete();
-        verify(friendshipService).record(applied("SNAPSHOT", new Friendship(ALICE, BOB, true, Closeness.CLOSE, SINCE, 1)));
-        verify(friendshipService).record(applied("CLOSENESS_CHANGED",
+        verify(friendshipService).recordHistory(applied("SNAPSHOT", new Friendship(ALICE, BOB, true, Closeness.CLOSE, SINCE, 1)));
+        verify(friendshipService).recordHistory(applied("CLOSENESS_CHANGED",
                 new Friendship(ALICE, BOB, true, Closeness.INTIMATE, SINCE, 2)));
     }
 
     @Test
-    void friendships_shouldRecordARemovalRejectionCancellationOrRequestAsATombstone() {
-        when(friendshipService.record(any())).thenReturn(Mono.just(true));
+    void friendshipHistory_shouldRecordARemovalRejectionCancellationOrRequestAsNotFriends() {
+        when(friendshipService.recordHistory(any())).thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(change("REMOVED", ALICE, BOB, null, 3), change("REJECTED", ALICE, BOB, null, 4),
                 change("CANCELLED", ALICE, BOB, null, 5), change("REQUESTED", ALICE, BOB, null, 6))).verifyComplete();
         String[] types = {"REMOVED", "REJECTED", "CANCELLED", "REQUESTED"};
         for (int i = 0; i < types.length; i++) {
-            verify(friendshipService).record(applied(types[i], new Friendship(ALICE, BOB, false, null, null, i + 3)));
+            verify(friendshipService).recordHistory(applied(types[i], new Friendship(ALICE, BOB, false, null, null, i + 3)));
         }
     }
 
     @Test
-    void friendships_shouldGoOn_whenAStaleVersionIsIgnored() {
-        when(friendshipService.record(applied("REMOVED", new Friendship(ALICE, BOB, false, null, null, 3))))
+    void friendshipHistory_shouldGoOn_whenARecordIsAlreadyInTheHistory() {
+        when(friendshipService.recordHistory(applied("REMOVED", new Friendship(ALICE, BOB, false, null, null, 3))))
                 .thenReturn(Mono.just(false));
-        when(friendshipService.record(applied("ACCEPTED", new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 4))))
+        when(friendshipService.recordHistory(applied("ACCEPTED", new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 4))))
                 .thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(change("REMOVED", ALICE, BOB, null, 3), change("ACCEPTED", ZOE, ALICE, "FRIEND", 4)))
                 .verifyComplete();
-        verify(friendshipService, times(2)).record(any());
+        verify(friendshipService, times(2)).recordHistory(any());
     }
 
     @Test
-    void friendships_shouldDropMalformedRecords_andGoOn() {
+    void friendshipHistory_shouldDropMalformedRecords_andGoOn() {
         FriendshipChange valid = applied("ACCEPTED", new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 9));
-        when(friendshipService.record(valid)).thenReturn(Mono.just(true));
+        when(friendshipService.recordHistory(valid)).thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(
                         record("not json"),
@@ -132,22 +132,22 @@ class FriendshipChangedConsumerTest {
                                 + "\",\"closeness\":\"FRIEND\",\"since\":\"yesterday\",\"version\":1}"),
                         change("ACCEPTED", ZOE, ALICE, "FRIEND", 9)))
                 .verifyComplete();
-        verify(friendshipService).record(valid);
-        verify(friendshipService, times(1)).record(any());
+        verify(friendshipService).recordHistory(valid);
+        verify(friendshipService, times(1)).recordHistory(any());
     }
 
     @Test
-    void friendships_shouldRetryAFailure_thenGiveUpWithoutStoppingTheStream() {
+    void friendshipHistory_shouldRetryAFailure_thenGiveUpWithoutStoppingTheStream() {
         FriendshipChange failing = applied("ACCEPTED", new Friendship(ALICE, BOB, true, Closeness.FRIEND, SINCE, 1));
         FriendshipChange next = applied("ACCEPTED", new Friendship(ALICE, ZOE, true, Closeness.FRIEND, SINCE, 2));
-        when(friendshipService.record(failing)).thenReturn(Mono.error(new IllegalStateException("mongo down")));
-        when(friendshipService.record(next)).thenReturn(Mono.just(true));
+        when(friendshipService.recordHistory(failing)).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+        when(friendshipService.recordHistory(next)).thenReturn(Mono.just(true));
 
         StepVerifier.withVirtualTime(() -> consume(change("ACCEPTED", ALICE, BOB, "FRIEND", 1),
                         change("ACCEPTED", ALICE, ZOE, "FRIEND", 2)))
                 .thenAwait(Duration.ofMinutes(5))
                 .verifyComplete();
-        verify(friendshipService).record(next);
+        verify(friendshipService).recordHistory(next);
     }
 
     @Test
@@ -180,7 +180,7 @@ class FriendshipChangedConsumerTest {
         assertThat(FriendshipChangedConsumer.change(dto(null, BOB, 1L))).isEmpty();
         assertThat(FriendshipChangedConsumer.change(dto("REMOVED", BOB, null))).isEmpty();
         assertThat(FriendshipChangedConsumer.change(dto("REMOVED", null, 1L))).isEmpty();
-        verify(friendshipService, never()).record(any());
+        verify(friendshipService, never()).recordHistory(any());
     }
 
     private static FriendshipChangedEventDTO dto(String type, String to, Long version) {

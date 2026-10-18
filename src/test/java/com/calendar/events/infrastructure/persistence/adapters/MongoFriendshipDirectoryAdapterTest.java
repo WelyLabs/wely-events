@@ -3,6 +3,7 @@ package com.calendar.events.infrastructure.persistence.adapters;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.models.Friendship;
+import com.calendar.events.domain.models.TrackedPair;
 import com.calendar.events.infrastructure.persistence.entities.FriendshipEntity;
 import com.calendar.events.infrastructure.persistence.mappers.FriendshipPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveFriendshipMongoRepository;
@@ -103,7 +104,8 @@ class MongoFriendshipDirectoryAdapterTest {
     void record_shouldInsertANewPair() {
         when(mongoRepository.overwriteIfOlder("alice:bob", true, "CLOSE", SINCE, 7L)).thenReturn(Mono.just(0L));
         when(mongoRepository.insert(argThat((FriendshipEntity entity) -> "alice:bob".equals(entity.getId())
-                && "alice".equals(entity.getA()) && "bob".equals(entity.getB()) && entity.getVersion() == 7)))
+                && "alice".equals(entity.getA()) && "bob".equals(entity.getB()) && entity.getVersion() == 7
+                && Long.valueOf(7).equals(entity.getStreamedVersion()))))
                 .thenAnswer(call -> Mono.just(call.getArgument(0)));
 
         StepVerifier.create(adapter.record(CLOSE)).expectNext(true).verifyComplete();
@@ -133,6 +135,44 @@ class MongoFriendshipDirectoryAdapterTest {
                 .thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
 
         StepVerifier.create(adapter.record(CLOSE)).expectError(DataAccessResourceFailureException.class).verify();
+    }
+
+    @Test
+    void trackedPairOf_shouldReadThePairWithItsLastStreamedVersion() {
+        FriendshipEntity entity = mapper.toEntity(CLOSE);
+        entity.setStreamedVersion(5L);
+        when(mongoRepository.findById("alice:bob")).thenReturn(Mono.just(entity));
+
+        StepVerifier.create(adapter.trackedPairOf("bob", "alice")).expectNext(new TrackedPair(CLOSE, 5L)).verifyComplete();
+    }
+
+    @Test
+    void trackedPairOf_shouldBeEmptyForOneself_withoutReading() {
+        StepVerifier.create(adapter.trackedPairOf("bob", "bob")).verifyComplete();
+
+        verify(mongoRepository, never()).findById(any(String.class));
+    }
+
+    @Test
+    void markStreamed_shouldNoteTheVersionOnThePair() {
+        when(mongoRepository.markStreamed("alice:bob", 4L)).thenReturn(Mono.just(1L));
+
+        StepVerifier.create(adapter.markStreamed("bob", "alice", 4)).verifyComplete();
+        verify(mongoRepository).markStreamed("alice:bob", 4L);
+    }
+
+    @Test
+    void end_shouldEndThePairAtItsVersion() {
+        when(mongoRepository.endIfAt("alice:bob", 7L)).thenReturn(Mono.just(1L));
+
+        StepVerifier.create(adapter.end(CLOSE)).expectNext(true).verifyComplete();
+    }
+
+    @Test
+    void end_shouldAnswerFalse_whenThePairChangedMeanwhile() {
+        when(mongoRepository.endIfAt("alice:bob", 7L)).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.end(CLOSE)).expectNext(false).verifyComplete();
     }
 
     @Test

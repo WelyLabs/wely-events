@@ -23,8 +23,18 @@ public interface ReactiveFriendshipMongoRepository extends ReactiveMongoReposito
 
     /** Rewrites the pair only if the stored version is lower: 0 when it is absent, as new or newer. */
     @Query("{ '_id': ?0, 'version': { $lt: ?4 } }")
-    @Update("{ '$set': { 'friends': ?1, 'closeness': ?2, 'since': ?3, 'version': ?4 } }")
+    @Update("{ '$set': { 'friends': ?1, 'closeness': ?2, 'since': ?3, 'version': ?4, 'streamedVersion': ?4 } }")
     Mono<Long> overwriteIfOlder(String id, boolean friends, String closeness, Instant since, long version);
+
+    /** Notes the last version streamed for a stored pair; 0 when it is absent. */
+    @Query("{ '_id': ?0 }")
+    @Update("{ '$set': { 'streamedVersion': ?1 } }")
+    Mono<Long> markStreamed(String id, long version);
+
+    /** Ends the pair, version kept, only while it is still friends at that version: 0 otherwise. */
+    @Query("{ '_id': ?0, 'friends': true, 'version': ?1 }")
+    @Update("{ '$set': { 'friends': false, 'closeness': null, 'since': null } }")
+    Mono<Long> endIfAt(String id, long version);
 
     @Query(value = "{ $or: [ { 'a': ?0 }, { 'b': ?0 } ] }", delete = true)
     Mono<Long> deleteInvolving(String userId);

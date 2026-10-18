@@ -11,7 +11,7 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
 
-/** One pair, as wely-social's FRIENDSHIP_CHANGED last described it; kept as a version tombstone once they part. */
+/** One pair, as wely-social's FRIENDSHIP_STATE last described it; kept, not friends, once they part. */
 @Getter
 @Setter
 @Builder
@@ -34,4 +34,6 @@ public class FriendshipEntity {
     private Instant since;
     /** wely-social's version of the pair: a record not above it is stale. */
     private long version;
+    /** The version of the last FRIENDSHIP_STATE value read for the pair, stale or not; null before the first. */
+    private Long streamedVersion;
 }

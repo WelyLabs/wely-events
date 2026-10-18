@@ -7,6 +7,7 @@ import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.models.FriendshipChange;
 import com.calendar.events.domain.models.FriendshipChangeType;
 import com.calendar.events.domain.models.FriendshipHistoryEntry;
+import com.calendar.events.domain.models.TrackedPair;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.FriendshipHistory;
@@ -73,114 +74,167 @@ class FriendshipServiceTest {
         when(markers.deletedAmong(List.of("alice", "bob"))).thenReturn(Mono.just(Set.of()));
     }
 
+    private static TrackedPair tracked(Friendship pair, Long streamedVersion) {
+        return new TrackedPair(pair, streamedVersion);
+    }
+
     @Test
-    void record_shouldAppendTheHistory_thenStoreThePair() {
+    void applyState_shouldStoreANewerVersion_withoutReleasingAnything() {
         nobodyDeleted();
-        when(directory.pairOf("alice", "bob")).thenReturn(Mono.just(new Friendship("alice", "bob", true, Closeness.FRIEND, SINCE, 6)));
-        when(history.append(FriendshipHistoryEntry.of(UPGRADE))).thenReturn(Mono.just(true));
+        when(directory.trackedPairOf("alice", "bob"))
+                .thenReturn(Mono.just(tracked(new Friendship("alice", "bob", true, Closeness.FRIEND, SINCE, 6), 6L)));
         when(directory.record(FRIENDS)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.record(UPGRADE)).expectNext(true).verifyComplete();
-        InOrder order = inOrder(history, directory);
-        order.verify(history).append(FriendshipHistoryEntry.of(UPGRADE));
-        order.verify(directory).record(FRIENDS);
+        StepVerifier.create(service.applyState(FRIENDS)).expectNext(true).verifyComplete();
+        verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
+        verify(history, never()).append(any());
+    }
+
+    @Test
+    void applyState_shouldStoreANewPair() {
+        nobodyDeleted();
+        when(directory.trackedPairOf("alice", "bob")).thenReturn(Mono.empty());
+        when(directory.record(FRIENDS)).thenReturn(Mono.just(true));
+
+        StepVerifier.create(service.applyState(FRIENDS)).expectNext(true).verifyComplete();
+    }
+
+    @Test
+    void applyState_shouldOnlyNoteAStaleOrRepeatedVersionAsStreamed() {
+        nobodyDeleted();
+        when(directory.trackedPairOf("alice", "bob"))
+                .thenReturn(Mono.just(tracked(new Friendship("alice", "bob", true, Closeness.INTIMATE, SINCE, 9), 9L)));
+        when(directory.markStreamed("alice", "bob", 7)).thenReturn(Mono.empty());
+
+        StepVerifier.create(service.applyState(FRIENDS)).expectNext(false).verifyComplete();
+        verify(directory).markStreamed("alice", "bob", 7);
+        verify(directory, never()).record(any());
+    }
+
+    @Test
+    void applyState_shouldReleaseTheSurprisesFirst_whenANewerValueEndsTheFriendship() {
+        nobodyDeleted();
+        Friendship parted = new Friendship("alice", "bob", false, null, null, 8);
+        when(directory.trackedPairOf("alice", "bob")).thenReturn(Mono.just(tracked(FRIENDS, 7L)));
+        when(surpriseService.releaseAfterFriendshipEnded("alice", "bob")).thenReturn(Mono.just(1L));
+        when(directory.record(parted)).thenReturn(Mono.just(true));
+
+        StepVerifier.create(service.applyState(parted)).expectNext(true).verifyComplete();
+        InOrder order = inOrder(surpriseService, directory);
+        order.verify(surpriseService).releaseAfterFriendshipEnded("alice", "bob");
+        order.verify(directory).record(parted);
+    }
+
+    @Test
+    void applyState_shouldIgnoreAPairNamingADeletedAccount() {
+        when(markers.deletedAmong(List.of("alice", "bob"))).thenReturn(Mono.just(Set.of("bob")));
+
+        StepVerifier.create(service.applyState(FRIENDS)).expectNext(false).verifyComplete();
+        verify(directory, never()).trackedPairOf(anyString(), anyString());
+        verify(directory, never()).record(any());
+    }
+
+    @Test
+    void applyState_shouldFail_whenTheRegisterCannotBeRead() {
+        when(markers.deletedAmong(List.of("alice", "bob"))).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+
+        StepVerifier.create(service.applyState(FRIENDS)).expectError(IllegalStateException.class).verify();
+        verify(directory, never()).record(any());
+    }
+
+    @Test
+    void applyTombstone_shouldReleaseTheSurprises_thenEndThePair() {
+        when(directory.trackedPairOf("bob", "alice")).thenReturn(Mono.just(tracked(FRIENDS, 7L)));
+        when(surpriseService.releaseAfterFriendshipEnded("alice", "bob")).thenReturn(Mono.just(2L));
+        when(directory.end(FRIENDS)).thenReturn(Mono.just(true));
+
+        StepVerifier.create(service.applyTombstone("bob", "alice")).expectNext(true).verifyComplete();
+        InOrder order = inOrder(surpriseService, directory);
+        order.verify(surpriseService).releaseAfterFriendshipEnded("alice", "bob");
+        order.verify(directory).end(FRIENDS);
+    }
+
+    @Test
+    void applyTombstone_shouldEndAPairStoredBeforeTheStateTopic() {
+        when(directory.trackedPairOf("alice", "bob")).thenReturn(Mono.just(tracked(FRIENDS, null)));
+        when(surpriseService.releaseAfterFriendshipEnded("alice", "bob")).thenReturn(Mono.just(0L));
+        when(directory.end(FRIENDS)).thenReturn(Mono.just(true));
+
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(true).verifyComplete();
+    }
+
+    @Test
+    void applyTombstone_shouldReleaseNothing_whenThePairIsAlreadyNotFriends() {
+        when(directory.trackedPairOf("alice", "bob"))
+                .thenReturn(Mono.just(tracked(new Friendship("alice", "bob", false, null, null, 7), 7L)));
+
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(false).verifyComplete();
+        verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
+        verify(directory, never()).end(any());
+    }
+
+    @Test
+    void applyTombstone_shouldKeepTheStoredFriendship_whenTheValueBeforeItWasStale() {
+        when(directory.trackedPairOf("alice", "bob")).thenReturn(Mono.just(tracked(FRIENDS, 3L)));
+
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(false).verifyComplete();
+        verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
+        verify(directory, never()).end(any());
+    }
+
+    @Test
+    void applyTombstone_shouldDoNothing_forAnUnknownPair() {
+        when(directory.trackedPairOf("alice", "bob")).thenReturn(Mono.empty());
+
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(false).verifyComplete();
         verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
     }
 
     @Test
-    void record_shouldStoreANewPair() {
-        nobodyDeleted();
-        when(directory.pairOf("alice", "bob")).thenReturn(Mono.empty());
-        when(history.append(any())).thenReturn(Mono.just(true));
-        when(directory.record(FRIENDS)).thenReturn(Mono.just(true));
+    void applyTombstone_shouldNotEndThePair_whenTheReleaseFails_soTheRetryRunsItAgain() {
+        when(directory.trackedPairOf("alice", "bob")).thenReturn(Mono.just(tracked(FRIENDS, 7L)));
+        when(surpriseService.releaseAfterFriendshipEnded("alice", "bob"))
+                .thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.record(UPGRADE)).expectNext(true).verifyComplete();
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectError(IllegalStateException.class).verify();
+        verify(directory, never()).end(any());
     }
 
     @Test
-    void record_shouldDateAnUndatedChange_withTheCurrentTime() {
+    void recordHistory_shouldAppendTheChange_withoutTouchingTheProjection() {
+        nobodyDeleted();
+        when(history.append(FriendshipHistoryEntry.of(UPGRADE))).thenReturn(Mono.just(true));
+
+        StepVerifier.create(service.recordHistory(UPGRADE)).expectNext(true).verifyComplete();
+        verify(directory, never()).record(any());
+        verify(directory, never()).trackedPairOf(anyString(), anyString());
+        verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
+    }
+
+    @Test
+    void recordHistory_shouldDateAnUndatedChange_withTheCurrentTime() {
         nobodyDeleted();
         FriendshipChange undated = new FriendshipChange(FriendshipChangeType.ACCEPTED, FRIENDS, null, null);
-        when(directory.pairOf("alice", "bob")).thenReturn(Mono.empty());
         when(history.append(any())).thenReturn(Mono.just(true));
-        when(directory.record(FRIENDS)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.record(undated)).expectNext(true).verifyComplete();
+        StepVerifier.create(service.recordHistory(undated)).expectNext(true).verifyComplete();
         verify(history).append(FriendshipHistoryEntry.of(undated.datedOrAt(NOW)));
     }
 
     @Test
-    void record_shouldIgnoreAStaleOrRepeatedVersion_withoutTouchingAnything() {
+    void recordHistory_shouldAnswerFalse_whenTheHistoryAlreadyHasTheChange() {
         nobodyDeleted();
-        when(directory.pairOf("alice", "bob")).thenReturn(Mono.just(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 7)));
+        when(history.append(FriendshipHistoryEntry.of(REMOVAL))).thenReturn(Mono.just(false));
 
-        StepVerifier.create(service.record(UPGRADE)).expectNext(false).verifyComplete();
+        StepVerifier.create(service.recordHistory(REMOVAL)).expectNext(false).verifyComplete();
+    }
+
+    @Test
+    void recordHistory_shouldIgnoreAChangeNamingADeletedAccount() {
+        when(markers.deletedAmong(List.of("alice", "bob"))).thenReturn(Mono.just(Set.of("alice")));
+
+        StepVerifier.create(service.recordHistory(UPGRADE)).expectNext(false).verifyComplete();
         verify(history, never()).append(any());
-        verify(directory, never()).record(any());
-    }
-
-    @Test
-    void record_shouldReleaseTheSurprisesFirst_whenTheFriendshipEnds() {
-        nobodyDeleted();
-        when(directory.pairOf("alice", "bob")).thenReturn(Mono.just(FRIENDS));
-        when(surpriseService.releaseAfterFriendshipEnded("alice", "bob")).thenReturn(Mono.just(1L));
-        when(history.append(any())).thenReturn(Mono.just(true));
-        when(directory.record(REMOVAL.after())).thenReturn(Mono.just(true));
-
-        StepVerifier.create(service.record(REMOVAL)).expectNext(true).verifyComplete();
-        InOrder order = inOrder(surpriseService, history, directory);
-        order.verify(surpriseService).releaseAfterFriendshipEnded("alice", "bob");
-        order.verify(history).append(FriendshipHistoryEntry.of(REMOVAL));
-        order.verify(directory).record(REMOVAL.after());
-    }
-
-    @Test
-    void record_shouldReleaseNothing_whenThePairWasNotFriendsBefore() {
-        nobodyDeleted();
-        when(directory.pairOf("alice", "bob")).thenReturn(Mono.just(new Friendship("alice", "bob", false, null, null, 3)));
-        when(history.append(any())).thenReturn(Mono.just(true));
-        when(directory.record(REMOVAL.after())).thenReturn(Mono.just(true));
-
-        StepVerifier.create(service.record(REMOVAL)).expectNext(true).verifyComplete();
-        verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
-    }
-
-    @Test
-    void record_shouldNotStoreThePair_whenTheReleaseFails_soTheRetryRunsItAgain() {
-        nobodyDeleted();
-        when(directory.pairOf("alice", "bob")).thenReturn(Mono.just(FRIENDS));
-        when(surpriseService.releaseAfterFriendshipEnded("alice", "bob"))
-                .thenReturn(Mono.error(new IllegalStateException("mongo down")));
-
-        StepVerifier.create(service.record(REMOVAL)).expectError(IllegalStateException.class).verify();
-        verify(directory, never()).record(any());
-    }
-
-    @Test
-    void record_shouldStoreThePair_whenTheHistoryAlreadyHasTheChange() {
-        nobodyDeleted();
-        when(directory.pairOf("alice", "bob")).thenReturn(Mono.empty());
-        when(history.append(any())).thenReturn(Mono.just(false));
-        when(directory.record(FRIENDS)).thenReturn(Mono.just(true));
-
-        StepVerifier.create(service.record(UPGRADE)).expectNext(true).verifyComplete();
-    }
-
-    @Test
-    void record_shouldIgnoreAPairNamingADeletedAccount() {
-        when(markers.deletedAmong(List.of("alice", "bob"))).thenReturn(Mono.just(Set.of("bob")));
-
-        StepVerifier.create(service.record(UPGRADE)).expectNext(false).verifyComplete();
-        verify(directory, never()).pairOf(anyString(), anyString());
-        verify(directory, never()).record(any());
-    }
-
-    @Test
-    void record_shouldFail_whenTheRegisterCannotBeRead() {
-        when(markers.deletedAmong(List.of("alice", "bob"))).thenReturn(Mono.error(new IllegalStateException("mongo down")));
-
-        StepVerifier.create(service.record(UPGRADE)).expectError(IllegalStateException.class).verify();
-        verify(directory, never()).record(any());
     }
 
     @Test

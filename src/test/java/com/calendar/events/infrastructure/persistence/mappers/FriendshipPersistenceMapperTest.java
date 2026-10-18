@@ -2,6 +2,7 @@ package com.calendar.events.infrastructure.persistence.mappers;
 
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Friendship;
+import com.calendar.events.domain.models.TrackedPair;
 import com.calendar.events.infrastructure.persistence.entities.FriendshipEntity;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -27,6 +28,7 @@ class FriendshipPersistenceMapperTest {
         assertThat(entity.getCloseness()).isEqualTo("INTIMATE");
         assertThat(entity.getSince()).isEqualTo(SINCE);
         assertThat(entity.getVersion()).isEqualTo(9);
+        assertThat(entity.getStreamedVersion()).isEqualTo(9L);
     }
 
     @Test
@@ -44,5 +46,15 @@ class FriendshipPersistenceMapperTest {
 
         assertThat(mapper.toDomain(mapper.toEntity(friendship))).isEqualTo(friendship);
         assertThat(mapper.toDomain(null)).isNull();
+    }
+
+    @Test
+    void toTracked_shouldReadThePairAndItsLastStreamedVersion() {
+        Friendship friendship = new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 4);
+        FriendshipEntity entity = mapper.toEntity(friendship);
+        entity.setStreamedVersion(3L);
+
+        assertThat(mapper.toTracked(entity)).isEqualTo(new TrackedPair(friendship, 3L));
+        assertThat(mapper.toTracked(null)).isNull();
     }
 }

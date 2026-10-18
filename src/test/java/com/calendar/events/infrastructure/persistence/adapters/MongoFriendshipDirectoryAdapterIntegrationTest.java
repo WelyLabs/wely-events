@@ -3,6 +3,7 @@ package com.calendar.events.infrastructure.persistence.adapters;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.models.Friendship;
+import com.calendar.events.domain.models.TrackedPair;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
@@ -130,5 +131,49 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
         StepVerifier.create(adapter.pairOf("bob", "alice"))
                 .expectNext(new Friendship("alice", "bob", false, null, null, 4)).verifyComplete();
         StepVerifier.create(adapter.pairOf("bob", "zoe")).verifyComplete();
+    }
+
+    @Test
+    void trackedPairOf_shouldReadTheLastStreamedVersion_writtenWithThePairOrMarkedLater() {
+        adapter.record(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5)).block();
+
+        StepVerifier.create(adapter.trackedPairOf("bob", "alice"))
+                .expectNext(new TrackedPair(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5), 5L))
+                .verifyComplete();
+
+        StepVerifier.create(adapter.markStreamed("bob", "alice", 3)).verifyComplete();
+        StepVerifier.create(adapter.trackedPairOf("alice", "bob"))
+                .expectNext(new TrackedPair(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5), 3L))
+                .verifyComplete();
+    }
+
+    @Test
+    void markStreamed_shouldNotCreateAnUnknownPair() {
+        StepVerifier.create(adapter.markStreamed("alice", "bob", 3)).verifyComplete();
+
+        assertThat(mongoTemplate.count(new Query(), "friendships").block()).isZero();
+    }
+
+    @Test
+    void end_shouldEndThePairOnce_keepingItsVersion() {
+        Friendship close = new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5);
+        adapter.record(close).block();
+
+        StepVerifier.create(adapter.end(close)).expectNext(true).verifyComplete();
+        StepVerifier.create(adapter.end(close)).expectNext(false).verifyComplete();
+
+        StepVerifier.create(adapter.pairOf("alice", "bob"))
+                .expectNext(new Friendship("alice", "bob", false, null, null, 5)).verifyComplete();
+        StepVerifier.create(adapter.record(new Friendship("alice", "bob", true, Closeness.FRIEND, SINCE, 6)))
+                .expectNext(true).verifyComplete();
+    }
+
+    @Test
+    void end_shouldLeaveAPairThatMovedOn() {
+        adapter.record(new Friendship("alice", "bob", true, Closeness.INTIMATE, SINCE, 6)).block();
+
+        StepVerifier.create(adapter.end(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5)))
+                .expectNext(false).verifyComplete();
+        StepVerifier.create(adapter.friendsOf("alice")).expectNext(new Friend("bob", Closeness.INTIMATE)).verifyComplete();
     }
 }

@@ -2,6 +2,7 @@ package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.models.Friendship;
+import com.calendar.events.domain.models.TrackedPair;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.infrastructure.persistence.entities.FriendshipEntity;
 import com.calendar.events.infrastructure.persistence.mappers.FriendshipPersistenceMapper;
@@ -14,6 +15,7 @@ import reactor.core.publisher.Mono;
 /**
  * The {@code friendships} collection, one document per pair. A write is a conditional overwrite on the
  * version, then an insert when the pair is new: the insert hitting an existing pair means it is stale.
+ * Each write also notes the version as the last streamed one, which a tombstone checks.
  */
 @Component
 public class MongoFriendshipDirectoryAdapter implements FriendshipDirectory {
@@ -53,10 +55,28 @@ public class MongoFriendshipDirectoryAdapter implements FriendshipDirectory {
     }
 
     @Override
+    public Mono<TrackedPair> trackedPairOf(String userId, String otherId) {
+        if (userId.equals(otherId)) {
+            return Mono.empty();
+        }
+        return mongoRepository.findById(Friendship.pairIdOf(userId, otherId)).map(mapper::toTracked);
+    }
+
+    @Override
     public Mono<Boolean> record(Friendship friendship) {
         FriendshipEntity entity = mapper.toEntity(friendship);
         return overwriteIfOlder(entity)
                 .flatMap(overwritten -> overwritten ? Mono.just(true) : insert(entity));
+    }
+
+    @Override
+    public Mono<Void> markStreamed(String userId, String otherId, long version) {
+        return mongoRepository.markStreamed(Friendship.pairIdOf(userId, otherId), version).then();
+    }
+
+    @Override
+    public Mono<Boolean> end(Friendship current) {
+        return mongoRepository.endIfAt(current.pairId(), current.version()).map(ended -> ended > 0);
     }
 
     @Override

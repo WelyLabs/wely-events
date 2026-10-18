@@ -24,8 +24,9 @@ import java.util.function.Function;
 
 /**
  * Consumes wely-social's {@code FRIENDSHIP_CHANGED} through a function the binder subscribes to, keeping
- * the {@code friendships} projection and its history. Records arrive in order per pair (keyed by pair);
- * the version still drops a stale one, from a replay or a rebalance.
+ * {@code friendship_history} only: the projection comes from {@code FRIENDSHIP_STATE} (see
+ * {@link FriendshipStateConsumer}), which outlives this topic's 3-day retention. A replay appends nothing,
+ * the history being unique per pair and version.
  */
 @Slf4j
 @Configuration
@@ -46,7 +47,7 @@ public class FriendshipChangedConsumer {
     }
 
     @Bean
-    public Function<Flux<Message<byte[]>>, Mono<Void>> friendships() {
+    public Function<Flux<Message<byte[]>>, Mono<Void>> friendshipHistory() {
         return records -> records.concatMap(this::handle).then();
     }
 
@@ -67,15 +68,15 @@ public class FriendshipChangedConsumer {
 
     private Mono<Void> record(FriendshipChange change) {
         Friendship friendship = change.after();
-        return Mono.defer(() -> friendshipService.record(change))
+        return Mono.defer(() -> friendshipService.recordHistory(change))
                 .retryWhen(Retry.backoff(MAX_RETRIES, FIRST_BACKOFF).maxBackoff(MAX_BACKOFF))
-                .doOnNext(stored -> {
-                    if (stored) {
-                        log.info("{} applied, pair={}, version={}, friends={}", TOPIC, friendship.pairId(),
-                                friendship.version(), friendship.friends());
+                .doOnNext(appended -> {
+                    if (appended) {
+                        log.info("{} added to the history, pair={}, version={}, type={}", TOPIC, friendship.pairId(),
+                                friendship.version(), change.type());
                     } else {
-                        log.debug("{} ignored, stale or naming a deleted account, pair={}, version={}", TOPIC,
-                                friendship.pairId(), friendship.version());
+                        log.debug("{} ignored, already in the history or naming a deleted account, pair={}, version={}",
+                                TOPIC, friendship.pairId(), friendship.version());
                     }
                 })
                 .then()
@@ -105,7 +106,7 @@ public class FriendshipChangedConsumer {
         }
     }
 
-    // Only the year in review reads it: an unknown value must not cost the projection its update.
+    // Only the year in review reads it: an unknown value must not cost the entry.
     private static Closeness previousCloseness(String value) {
         if (value == null) {
             return null;
@@ -118,7 +119,7 @@ public class FriendshipChangedConsumer {
     }
 
     /** As for USER_DELETED: only a canonical UUID passes, in lowercase like the businessIds in tokens. */
-    private static Optional<String> canonical(String userId) {
+    static Optional<String> canonical(String userId) {
         if (userId == null) {
             return Optional.empty();
         }

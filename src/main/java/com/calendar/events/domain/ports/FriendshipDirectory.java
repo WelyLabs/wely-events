@@ -2,6 +2,7 @@ package com.calendar.events.domain.ports;
 
 import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.models.Friendship;
+import com.calendar.events.domain.models.TrackedPair;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -20,8 +21,20 @@ public interface FriendshipDirectory {
     /** The pair as last recorded, friends or not; empty when never recorded or for oneself. */
     Mono<Friendship> pairOf(String userId, String otherId);
 
-    /** Stores the pair's new state unless one as new or newer is already stored; true when stored. */
+    /** The pair as last recorded, with the last version FRIENDSHIP_STATE carried for it; empty when never recorded. */
+    Mono<TrackedPair> trackedPairOf(String userId, String otherId);
+
+    /**
+     * Stores the pair's new state unless one as new or newer is already stored, and notes its version as the
+     * last one streamed; true when stored.
+     */
     Mono<Boolean> record(Friendship friendship);
+
+    /** Notes the version FRIENDSHIP_STATE carried for a stored pair, though stale; nothing for an unknown pair. */
+    Mono<Void> markStreamed(String userId, String otherId, long version);
+
+    /** Turns the pair to not friends, keeping its version, if it is still {@code current}; true when ended. */
+    Mono<Boolean> end(Friendship current);
 
     /** Drops every pair involving the user, past ones included; returns how many. */
     Mono<Long> forget(String userId);
