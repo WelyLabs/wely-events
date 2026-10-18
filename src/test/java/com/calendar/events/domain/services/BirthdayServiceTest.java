@@ -180,16 +180,6 @@ class BirthdayServiceTest {
     }
 
     @Test
-    void birthdaysFor_shouldFallBackToMyOwn_whenSocialIsDown() {
-        when(socialGraph.friendsOf("me")).thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
-        when(eventRepository.findBirthdaysOf(Set.of("me"))).thenReturn(Flux.just(birthdayOf("me", "Moi", 3, 20)));
-
-        StepVerifier.create(service.birthdaysFor("me", FROM, TO))
-                .assertNext(mine -> assertThat(mine.mine()).isTrue())
-                .verifyComplete();
-    }
-
-    @Test
     void birthdaysFor_shouldListMyOwn_whenSocialAnswersNothing() {
         when(socialGraph.friendsOf("me")).thenReturn(Mono.empty());
         when(eventRepository.findBirthdaysOf(Set.of("me"))).thenReturn(Flux.just(birthdayOf("me", "Moi", 3, 20)));

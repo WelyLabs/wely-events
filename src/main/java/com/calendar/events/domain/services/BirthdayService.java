@@ -81,7 +81,7 @@ public class BirthdayService {
 
     /**
      * The viewer's birthday and their friends' falling in [from, to), each day by its UTC date, soonest
-     * first. A social outage leaves the viewer's own only, as the feed falls back to what needs no friendship.
+     * first.
      */
     public Flux<BirthdayOccurrence> birthdaysFor(String viewerId, Instant from, Instant to) {
         if (from == null || to == null || !to.isAfter(from) || Duration.between(from, to).compareTo(MAX_RANGE) > 0) {
@@ -89,7 +89,6 @@ public class BirthdayService {
         }
         return socialGraph.friendsOf(viewerId)
                 .defaultIfEmpty(Map.of())
-                .onErrorResume(BirthdayService::isSocialOutage, error -> Mono.just(Map.of()))
                 .flatMapMany(friends -> {
                     Set<String> people = new HashSet<>(friends.keySet());
                     people.add(viewerId);
@@ -166,10 +165,6 @@ public class BirthdayService {
                         .flatMap(gone -> eventService.afterDeletion(gone).thenReturn(gone)))
                 .count()
                 .flatMap(surprisesDeleted -> Mono.defer(() -> noticeOutbox.forget(userId)).thenReturn(surprisesDeleted));
-    }
-
-    private static boolean isSocialOutage(Throwable error) {
-        return error instanceof EventException e && e.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE;
     }
 
     private record Occurrence(Event birthday, LocalDate date) {

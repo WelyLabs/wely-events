@@ -207,17 +207,6 @@ class EventServiceTest {
     }
 
     @Test
-    void getParticipants_shouldNameNoFriend_whenTheSocialServiceIsDown() {
-        when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("carol", Visibility.PUBLIC, "alice")));
-        when(socialGraph.friendIdsOf("carol"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
-
-        StepVerifier.create(eventService.getParticipants("1", "carol"))
-                .expectNext(new Participants(1, List.of("alice"), List.of()))
-                .verifyComplete();
-    }
-
-    @Test
     void getParticipants_shouldNotHideOtherFailures() {
         when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("carol", Visibility.PUBLIC, "alice")));
         when(socialGraph.friendIdsOf("carol")).thenReturn(Mono.error(new IllegalStateException("boom")));
@@ -529,17 +518,6 @@ class EventServiceTest {
         StepVerifier.create(eventService.getMapEvents("user123", LYON))
                 .expectNext(event)
                 .verifyComplete();
-    }
-
-    @Test
-    void getMapEvents_shouldFallBackToNoFriends_whenTheSocialServiceIsDown() {
-        when(socialGraph.friendIdsOf("user123"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
-        when(eventRepository.findOnMap("user123", Set.of(), LYON, NOW, EventService.MAP_LIMIT)).thenReturn(Flux.empty());
-
-        StepVerifier.create(eventService.getMapEvents("user123", LYON)).verifyComplete();
-
-        verify(eventRepository).findOnMap("user123", Set.of(), LYON, NOW, EventService.MAP_LIMIT);
     }
 
     @Test

@@ -67,12 +67,11 @@ public class EventService {
                 .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
     }
 
-    /** Who takes part in an event the viewer may see; a social outage just names no friend. */
+    /** Who takes part in an event the viewer may see. */
     public Mono<Participants> getParticipants(String id, String viewerId) {
         return getEventById(id, viewerId)
                 .flatMap(event -> socialGraph.friendIdsOf(viewerId)
                         .defaultIfEmpty(Set.of())
-                        .onErrorResume(EventService::isSocialOutage, error -> Mono.just(Set.of()))
                         .map(friendIds -> Participants.seenBy(event, viewerId, friendIds)));
     }
 
@@ -396,14 +395,10 @@ public class EventService {
         return rank == FeedRank.AFFINITY ? feed.sort(friends.byAffinity()) : feed;
     }
 
-    /**
-     * Upcoming and ongoing events the user may see, placed inside the area the map shows.
-     * Like the feed, a social outage narrows it to what needs no friendship.
-     */
+    /** Upcoming and ongoing events the user may see, placed inside the area the map shows. */
     public Flux<Event> getMapEvents(String userId, GeoBox box) {
         return socialGraph.friendIdsOf(userId)
                 .defaultIfEmpty(Set.of())
-                .onErrorResume(EventService::isSocialOutage, error -> Mono.just(Set.of()))
                 .flatMapMany(friendIds -> eventRepository.findOnMap(userId, friendIds, box, clock.instant(), MAP_LIMIT));
     }
 
@@ -434,9 +429,5 @@ public class EventService {
         return socialGraph.friendIdsOf(viewerId)
                 .filter(friendIds -> event.isVisibleTo(viewerId, friendIds))
                 .map(friendIds -> event);
-    }
-
-    private static boolean isSocialOutage(Throwable error) {
-        return error instanceof EventException e && e.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE;
     }
 }
