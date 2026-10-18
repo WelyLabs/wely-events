@@ -7,6 +7,7 @@ import com.calendar.events.domain.models.EventKind;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
 import reactor.core.publisher.Flux;
@@ -37,15 +38,15 @@ public class BirthdayService {
 
     private final EventRepository eventRepository;
     private final EventService eventService;
-    private final FriendDirectory friendDirectory;
+    private final SocialGraph socialGraph;
     private final BirthdayNoticeOutbox noticeOutbox;
     private final AccountGuard accountGuard;
 
-    public BirthdayService(EventRepository eventRepository, EventService eventService, FriendDirectory friendDirectory,
+    public BirthdayService(EventRepository eventRepository, EventService eventService, SocialGraph socialGraph,
                            BirthdayNoticeOutbox noticeOutbox, AccountGuard accountGuard) {
         this.eventRepository = eventRepository;
         this.eventService = eventService;
-        this.friendDirectory = friendDirectory;
+        this.socialGraph = socialGraph;
         this.noticeOutbox = noticeOutbox;
         this.accountGuard = accountGuard;
     }
@@ -86,7 +87,8 @@ public class BirthdayService {
         if (from == null || to == null || !to.isAfter(from) || Duration.between(from, to).compareTo(MAX_RANGE) > 0) {
             return Flux.error(new EventException(EventErrorCode.INVALID_BIRTHDAY_RANGE));
         }
-        return friendDirectory.refreshFriendsOf(viewerId)
+        return socialGraph.friendsOf(viewerId)
+                .defaultIfEmpty(Map.of())
                 .onErrorResume(BirthdayService::isSocialOutage, error -> Mono.just(Map.of()))
                 .flatMapMany(friends -> {
                     Set<String> people = new HashSet<>(friends.keySet());
@@ -155,7 +157,7 @@ public class BirthdayService {
 
     /**
      * Everything of an erased account's birthday: the birthday, every surprise for it (with what goes
-     * with a deleted event), the remembered friend list and the notices not sent yet. Safe to replay.
+     * with a deleted event) and the notices not sent yet. Safe to replay.
      */
     public Mono<Long> forget(String userId) {
         return eventRepository.deleteBirthdayOf(userId)
@@ -163,9 +165,7 @@ public class BirthdayService {
                 .concatMap(surprise -> eventRepository.deleteByOrganizer(surprise.getId(), surprise.getOrganizerId())
                         .flatMap(gone -> eventService.afterDeletion(gone).thenReturn(gone)))
                 .count()
-                .flatMap(surprisesDeleted -> friendDirectory.forget(userId)
-                        .then(Mono.defer(() -> noticeOutbox.forget(userId)))
-                        .thenReturn(surprisesDeleted));
+                .flatMap(surprisesDeleted -> Mono.defer(() -> noticeOutbox.forget(userId)).thenReturn(surprisesDeleted));
     }
 
     private static boolean isSocialOutage(Throwable error) {

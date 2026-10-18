@@ -5,10 +5,12 @@ import com.calendar.events.domain.models.BirthdayNoticeType;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventKind;
+import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
 import com.calendar.events.exception.EventException;
@@ -40,17 +42,17 @@ public class SurpriseService {
     private final EventService eventService;
     private final EventRepository eventRepository;
     private final SocialGraph socialGraph;
-    private final FriendDirectory friendDirectory;
+    private final FriendshipDirectory friendships;
     private final BirthdayNoticeOutbox noticeOutbox;
     private final Clock clock;
     private final ZoneId zone;
 
     public SurpriseService(EventService eventService, EventRepository eventRepository, SocialGraph socialGraph,
-                           FriendDirectory friendDirectory, BirthdayNoticeOutbox noticeOutbox, Clock clock, ZoneId zone) {
+                           FriendshipDirectory friendships, BirthdayNoticeOutbox noticeOutbox, Clock clock, ZoneId zone) {
         this.eventService = eventService;
         this.eventRepository = eventRepository;
         this.socialGraph = socialGraph;
-        this.friendDirectory = friendDirectory;
+        this.friendships = friendships;
         this.noticeOutbox = noticeOutbox;
         this.clock = clock;
         this.zone = zone;
@@ -116,21 +118,22 @@ public class SurpriseService {
         String honoreeId = surprise.getHonoreeId();
         LocalDate date = birthday.atYear(Event.nearestOccurrenceYear(birthday, surprise.getStartDate()));
         int daysUntil = (int) Math.max(0, ChronoUnit.DAYS.between(clock.instant().atZone(zone).toLocalDate(), date));
-        // The organizer's own list, fresh from their token, is one of those the honoree's friends are read from.
-        return friendDirectory.refreshFriendsOf(surprise.getOrganizerId())
-                .onErrorResume(error -> Mono.just(Map.of()))
-                .then(Mono.defer(() -> friendDirectory.knownFriendsOf(honoreeId)))
-                .flatMapMany(friends -> Flux.fromIterable(friends.entrySet()))
-                .filter(friend -> friend.getValue().compareTo(Closeness.CLOSE) >= 0
-                        && !friend.getKey().equals(surprise.getOrganizerId())
-                        && !friend.getKey().equals(honoreeId))
+        // The honoree's friends, not the organizer's: only the projection knows them without the honoree's token.
+        return Flux.defer(() -> friendships.friendsOf(honoreeId))
+                .filter(friend -> isToldOf(friend, surprise))
                 .concatMap(friend -> noticeOutbox.record(new BirthdayNotice(BirthdayNoticeType.SURPRISE_CREATED,
-                        friend.getKey(), honoreeId, surprise.getHonoreeName(), date, daysUntil, friend.getValue(),
+                        friend.userId(), honoreeId, surprise.getHonoreeName(), date, daysUntil, friend.closeness(),
                         surprise.getId(), surprise.getOrganizerId(), surprise.getOrganizerName())))
                 .then()
                 .onErrorResume(error -> {
                     LOG.log(System.Logger.Level.WARNING, "Surprise {0} not announced: {1}", surprise.getId(), error.toString());
                     return Mono.empty();
                 });
+    }
+
+    private static boolean isToldOf(Friend friend, Event surprise) {
+        return friend.closeness().compareTo(Closeness.CLOSE) >= 0
+                && !friend.userId().equals(surprise.getOrganizerId())
+                && !friend.userId().equals(surprise.getHonoreeId());
     }
 }

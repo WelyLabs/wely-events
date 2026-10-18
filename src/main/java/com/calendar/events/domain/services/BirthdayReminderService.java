@@ -4,8 +4,10 @@ import com.calendar.events.domain.models.BirthdayNotice;
 import com.calendar.events.domain.models.BirthdayNoticeType;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.FriendshipDirectory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -28,8 +30,8 @@ import java.util.Set;
  *       surprise if one exists, unless they already take part in it;</li>
  *   <li>every friend on the day: FRIEND_BIRTHDAY; the honoree on the day: BIRTHDAY_TODAY.</li>
  * </ul>
- * Friends are those {@link FriendDirectory} knows: a friendship neither side has looked up since
- * the feature shipped is missed.
+ * Friends are read from the {@link FriendshipDirectory}, wely-social's friendships as announced on
+ * {@code FRIENDSHIP_CHANGED}: the job runs on nobody's behalf, without a token to ask wely-social with.
  */
 public class BirthdayReminderService {
 
@@ -39,16 +41,16 @@ public class BirthdayReminderService {
     private static final System.Logger LOG = System.getLogger(BirthdayReminderService.class.getName());
 
     private final EventRepository eventRepository;
-    private final FriendDirectory friendDirectory;
+    private final FriendshipDirectory friendships;
     private final BirthdayNoticeOutbox noticeOutbox;
     private final AccountGuard accountGuard;
     private final Clock clock;
     private final ZoneId zone;
 
-    public BirthdayReminderService(EventRepository eventRepository, FriendDirectory friendDirectory,
+    public BirthdayReminderService(EventRepository eventRepository, FriendshipDirectory friendships,
                                    BirthdayNoticeOutbox noticeOutbox, AccountGuard accountGuard, Clock clock, ZoneId zone) {
         this.eventRepository = eventRepository;
-        this.friendDirectory = friendDirectory;
+        this.friendships = friendships;
         this.noticeOutbox = noticeOutbox;
         this.accountGuard = accountGuard;
         this.clock = clock;
@@ -85,7 +87,8 @@ public class BirthdayReminderService {
         Mono<Optional<Event>> surprise = eventRepository.findSurpriseByOccurrence(Event.occurrenceKeyOf(honoreeId, next.getYear()))
                 .map(Optional::of)
                 .defaultIfEmpty(Optional.empty());
-        Mono<Map<String, Closeness>> friends = friendDirectory.knownFriendsOf(honoreeId);
+        Mono<Map<String, Closeness>> friends = friendships.friendsOf(honoreeId)
+                .collectMap(Friend::userId, Friend::closeness);
         return Mono.zip(surprise, friends)
                 .flatMap(found -> accountGuard.deletedAmong(found.getT2().keySet())
                         .map(deleted -> notices(birthday, next, daysUntil, found.getT1().orElse(null), found.getT2(), deleted)))

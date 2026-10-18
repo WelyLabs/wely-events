@@ -126,7 +126,8 @@ class EventApplicationConfigTest {
                 guard());
 
         AccountErasureService service = config.accountErasureService(repository, eventService,
-                mock(com.calendar.events.domain.services.BirthdayService.class), mock(ExpenseRepository.class), mock(MediaStore.class), mock(DeletedUserMarkers.class),
+                mock(com.calendar.events.domain.services.BirthdayService.class),
+                mock(com.calendar.events.domain.ports.FriendshipDirectory.class), mock(ExpenseRepository.class), mock(MediaStore.class), mock(DeletedUserMarkers.class),
                 mock(PollUpdates.class), "89a380b8-f66a-44d0-b9d9-616241080430");
 
         assertThat(service).isNotNull();
@@ -169,12 +170,12 @@ class EventApplicationConfigTest {
                 config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
                 guard());
         com.calendar.events.domain.ports.BirthdayNoticeOutbox outbox = mock(com.calendar.events.domain.ports.BirthdayNoticeOutbox.class);
-        com.calendar.events.domain.services.FriendDirectory directory = config.friendDirectory(socialGraph,
-                mock(com.calendar.events.domain.ports.FriendLists.class), clock);
+        com.calendar.events.domain.ports.FriendshipDirectory friendships =
+                mock(com.calendar.events.domain.ports.FriendshipDirectory.class);
 
-        assertThat(directory).isNotNull();
-        assertThat(config.birthdayService(repository, eventService, directory, outbox, guard())).isNotNull();
-        assertThat(config.surpriseService(eventService, repository, socialGraph, directory, outbox, clock)).isNotNull();
-        assertThat(config.birthdayReminderService(repository, directory, outbox, guard(), clock)).isNotNull();
+        assertThat(config.friendshipService(friendships, guard())).isNotNull();
+        assertThat(config.birthdayService(repository, eventService, socialGraph, outbox, guard())).isNotNull();
+        assertThat(config.surpriseService(eventService, repository, socialGraph, friendships, outbox, clock)).isNotNull();
+        assertThat(config.birthdayReminderService(repository, friendships, outbox, guard(), clock)).isNotNull();
     }
 }

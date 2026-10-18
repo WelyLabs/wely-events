@@ -2,13 +2,13 @@ package com.calendar.events.configuration;
 
 import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
 import com.calendar.events.domain.ports.CalendarLinks;
-import com.calendar.events.domain.ports.FriendLists;
 import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.DeletedUsersSource;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
+import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
@@ -17,7 +17,7 @@ import com.calendar.events.domain.services.AccountGuard;
 import com.calendar.events.domain.services.AccountReconciliationService;
 import com.calendar.events.domain.services.BirthdayReminderService;
 import com.calendar.events.domain.services.BirthdayService;
-import com.calendar.events.domain.services.FriendDirectory;
+import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.domain.services.SurpriseService;
 import com.calendar.events.domain.services.CalendarExportService;
 import com.calendar.events.domain.services.EventService;
@@ -90,14 +90,14 @@ public class EventApplicationConfig {
     /** {@code protectedUserIds}: the demo accounts, comma-separated, never erased nor handed an event. */
     @Bean
     public AccountErasureService accountErasureService(EventRepository eventRepository, EventService eventService,
-                                                       BirthdayService birthdayService,
+                                                       BirthdayService birthdayService, FriendshipDirectory friendships,
                                                        ExpenseRepository expenseRepository, MediaStore mediaStore,
                                                        DeletedUserMarkers markers, PollUpdates pollUpdates,
                                                        @Value("${app.account-deletion.protected-user-ids:}") String protectedUserIds) {
         Set<String> protectedIds = parseIds(protectedUserIds);
         log.info("Account erasure: {} protected account(s)", protectedIds.size());
-        return new AccountErasureService(eventRepository, eventService, birthdayService, expenseRepository, mediaStore, markers,
-                pollUpdates, protectedIds, Clock.systemUTC());
+        return new AccountErasureService(eventRepository, eventService, birthdayService, friendships, expenseRepository,
+                mediaStore, markers, pollUpdates, protectedIds, Clock.systemUTC());
     }
 
     @Bean
@@ -154,32 +154,32 @@ public class EventApplicationConfig {
     }
 
     @Bean
-    public FriendDirectory friendDirectory(SocialGraph socialGraph, FriendLists friendLists, Clock clock) {
-        return new FriendDirectory(socialGraph, friendLists, clock);
+    public FriendshipService friendshipService(FriendshipDirectory friendships, AccountGuard accountGuard) {
+        return new FriendshipService(friendships, accountGuard);
     }
 
     @Bean
     public BirthdayService birthdayService(EventRepository eventRepository, EventService eventService,
-                                           FriendDirectory friendDirectory, BirthdayNoticeOutbox noticeOutbox,
+                                           SocialGraph socialGraph, BirthdayNoticeOutbox noticeOutbox,
                                            AccountGuard accountGuard) {
-        return new BirthdayService(eventRepository, eventService, friendDirectory, noticeOutbox, accountGuard);
+        return new BirthdayService(eventRepository, eventService, socialGraph, noticeOutbox, accountGuard);
     }
 
     @Bean
     public SurpriseService surpriseService(EventService eventService, EventRepository eventRepository,
-                                           SocialGraph socialGraph, FriendDirectory friendDirectory,
+                                           SocialGraph socialGraph, FriendshipDirectory friendships,
                                            BirthdayNoticeOutbox noticeOutbox, Clock clock) {
-        return new SurpriseService(eventService, eventRepository, socialGraph, friendDirectory, noticeOutbox, clock,
+        return new SurpriseService(eventService, eventRepository, socialGraph, friendships, noticeOutbox, clock,
                 USERS_ZONE);
     }
 
     /** Days until a birthday count in France, where Wely's users are, as the 08:00 run does. */
     @Bean
     public BirthdayReminderService birthdayReminderService(EventRepository eventRepository,
-                                                           FriendDirectory friendDirectory,
+                                                           FriendshipDirectory friendships,
                                                            BirthdayNoticeOutbox noticeOutbox,
                                                            AccountGuard accountGuard, Clock clock) {
-        return new BirthdayReminderService(eventRepository, friendDirectory, noticeOutbox, accountGuard, clock,
+        return new BirthdayReminderService(eventRepository, friendships, noticeOutbox, accountGuard, clock,
                 USERS_ZONE);
     }
 }

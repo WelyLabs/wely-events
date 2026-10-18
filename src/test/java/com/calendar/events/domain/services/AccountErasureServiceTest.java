@@ -18,6 +18,7 @@ import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
+import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
@@ -80,6 +81,8 @@ class AccountErasureServiceTest {
     private EventDeletionOutbox deletionOutbox;
     @Mock
     private BirthdayService birthdayService;
+    @Mock
+    private FriendshipDirectory friendships;
 
     /** Accounts the register knows as deleted; the user being erased is one of them. */
     private final Set<String> deleted = new HashSet<>(Set.of(USER));
@@ -93,9 +96,10 @@ class AccountErasureServiceTest {
         EventService eventService = new EventService(eventRepository, mock(SocialGraph.class), expenseRepository,
                 new PictureService(mediaStore), deletionOutbox, mock(CommunityDirectory.class), new AccountGuard(markers),
                 clock);
-        service = new AccountErasureService(eventRepository, eventService, birthdayService, expenseRepository, mediaStore,
-                markers, pollUpdates, Set.of(DEMO), clock);
+        service = new AccountErasureService(eventRepository, eventService, birthdayService, friendships, expenseRepository,
+                mediaStore, markers, pollUpdates, Set.of(DEMO), clock);
         lenient().when(birthdayService.forget(anyString())).thenReturn(Mono.just(0L));
+        lenient().when(friendships.forget(anyString())).thenReturn(Mono.just(0L));
 
         lenient().when(markers.markDeleted(anyString(), any()))
                 .thenAnswer(call -> Mono.just(new DeletedUserMarker(call.getArgument(0), call.getArgument(1), null)));
@@ -170,6 +174,24 @@ class AccountErasureServiceTest {
         order.verify(markers).markDeleted(USER, DELETED_AT);
         order.verify(birthdayService).forget(USER);
         order.verify(eventRepository).findOrganizedBy(USER);
+    }
+
+    @Test
+    void erase_shouldForgetTheFriendshipsAfterTheMarker_andBeforeTheOrganizedEvents() {
+        erase();
+
+        InOrder order = inOrder(markers, friendships, eventRepository);
+        order.verify(markers).markDeleted(USER, DELETED_AT);
+        order.verify(friendships).forget(USER);
+        order.verify(eventRepository).findOrganizedBy(USER);
+    }
+
+    @Test
+    void erase_shouldFailForARetry_whenTheFriendshipsCannotBeForgotten() {
+        when(friendships.forget(USER)).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+
+        StepVerifier.create(service.erase(USER, DELETED_AT)).expectError(IllegalStateException.class).verify();
+        verify(markers, never()).markErased(anyString(), any());
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
+import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.exception.EventErrorCode;
@@ -31,6 +32,7 @@ public class AccountErasureService {
     private final EventRepository eventRepository;
     private final EventService eventService;
     private final BirthdayService birthdayService;
+    private final FriendshipDirectory friendships;
     private final ExpenseRepository expenseRepository;
     private final MediaStore mediaStore;
     private final DeletedUserMarkers markers;
@@ -40,12 +42,14 @@ public class AccountErasureService {
     private final Clock clock;
 
     public AccountErasureService(EventRepository eventRepository, EventService eventService,
-                                 BirthdayService birthdayService, ExpenseRepository expenseRepository, MediaStore mediaStore,
+                                 BirthdayService birthdayService, FriendshipDirectory friendships,
+                                 ExpenseRepository expenseRepository, MediaStore mediaStore,
                                  DeletedUserMarkers markers, PollUpdates pollUpdates,
                                  Set<String> protectedUserIds, Clock clock) {
         this.eventRepository = eventRepository;
         this.eventService = eventService;
         this.birthdayService = birthdayService;
+        this.friendships = friendships;
         this.expenseRepository = expenseRepository;
         this.mediaStore = mediaStore;
         this.markers = markers;
@@ -66,6 +70,8 @@ public class AccountErasureService {
                 .flatMap(at -> Mono.fromRunnable(() -> pollUpdates.disconnect(userId))
                         // Before the organized events: the birthday is the user's own, never handed over.
                         .then(Mono.defer(() -> birthdayService.forget(userId)))
+                        // After the marker, which keeps a late FRIENDSHIP_CHANGED from storing a pair again.
+                        .then(Mono.defer(() -> friendships.forget(userId)))
                         .then(Mono.defer(() -> withdrawBallots(userId))).map(ErasureReport.NONE::withBallotsWithdrawn)
                         .flatMap(report -> releaseOrganizedEvents(userId, at, report))
                         .flatMap(report -> eventRepository.leaveUpcoming(userId, at).map(report::withEventsLeft))

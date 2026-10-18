@@ -4,9 +4,11 @@ import com.calendar.events.domain.models.BirthdayNotice;
 import com.calendar.events.domain.models.BirthdayNoticeType;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Event;
+import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.FriendshipDirectory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,7 +46,7 @@ class BirthdayReminderServiceTest {
     @Mock
     private EventRepository eventRepository;
     @Mock
-    private FriendDirectory friendDirectory;
+    private FriendshipDirectory friendships;
     @Mock
     private BirthdayNoticeOutbox noticeOutbox;
     @Mock
@@ -56,7 +58,7 @@ class BirthdayReminderServiceTest {
     void setUp() {
         // 23:30 UTC on the 18th is already the 19th in Paris.
         Clock clock = Clock.fixed(Instant.parse("2027-02-18T23:30:00Z"), ZoneOffset.UTC);
-        service = new BirthdayReminderService(eventRepository, friendDirectory, noticeOutbox, new AccountGuard(markers),
+        service = new BirthdayReminderService(eventRepository, friendships, noticeOutbox, new AccountGuard(markers),
                 clock, PARIS);
         lenient().when(markers.deletedAmong(any())).thenReturn(Mono.just(Set.of()));
         lenient().when(eventRepository.findSurpriseByOccurrence(anyString())).thenReturn(Mono.empty());
@@ -66,8 +68,8 @@ class BirthdayReminderServiceTest {
         return BirthdayService.birthdayEvent(userId, name, MonthDay.from(on));
     }
 
-    private static final Map<String, Closeness> LEAS_FRIENDS = Map.of(
-            "zoe", Closeness.INTIMATE, "bob", Closeness.CLOSE, "hugo", Closeness.FRIEND);
+    private static final Flux<Friend> LEAS_FRIENDS = Flux.just(new Friend("zoe", Closeness.INTIMATE),
+            new Friend("bob", Closeness.CLOSE), new Friend("hugo", Closeness.FRIEND));
 
     private List<BirthdayNotice> noticesFor(Event birthday, LocalDate today) {
         return service.noticesFor(birthday, today).collectList().block();
@@ -75,7 +77,7 @@ class BirthdayReminderServiceTest {
 
     @Test
     void noticesFor_shouldProposeASurpriseToIntimateFriendsFrom21DaysAhead() {
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.just(LEAS_FRIENDS));
+        when(friendships.friendsOf("lea")).thenReturn(LEAS_FRIENDS);
 
         assertThat(noticesFor(birthdayOf("lea", "Léa", TODAY.plusDays(21)), TODAY))
                 .containsExactly(new BirthdayNotice(BirthdayNoticeType.SURPRISE_PROPOSAL, "zoe", "lea", "Léa",
@@ -84,7 +86,7 @@ class BirthdayReminderServiceTest {
 
     @Test
     void noticesFor_shouldProposeToCloseFriendsFrom14DaysAhead_namingAnExistingSurprise() {
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.just(LEAS_FRIENDS));
+        when(friendships.friendsOf("lea")).thenReturn(LEAS_FRIENDS);
         Event surprise = Event.builder().id("s1").organizerId("max").organizerName("max_r")
                 .participantIds(new ArrayList<>(List.of("max", "zoe"))).build();
         when(eventRepository.findSurpriseByOccurrence("lea:2027")).thenReturn(Mono.just(surprise));
@@ -97,7 +99,7 @@ class BirthdayReminderServiceTest {
 
     @Test
     void noticesFor_shouldWishEveryFriendAndTheHonoree_onTheDay() {
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.just(LEAS_FRIENDS));
+        when(friendships.friendsOf("lea")).thenReturn(LEAS_FRIENDS);
 
         assertThat(noticesFor(birthdayOf("lea", "Léa", TODAY), TODAY))
                 .extracting(BirthdayNotice::type, BirthdayNotice::recipientId)
@@ -111,12 +113,12 @@ class BirthdayReminderServiceTest {
     @Test
     void noticesFor_shouldSendNothingMoreThan21DaysAhead() {
         assertThat(noticesFor(birthdayOf("lea", "Léa", TODAY.plusDays(22)), TODAY)).isEmpty();
-        verify(friendDirectory, never()).knownFriendsOf(anyString());
+        verify(friendships, never()).friendsOf(anyString());
     }
 
     @Test
     void noticesFor_shouldLookAtNextYear_onceThisYearsBirthdayHasPassed() {
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.just(LEAS_FRIENDS));
+        when(friendships.friendsOf("lea")).thenReturn(LEAS_FRIENDS);
         LocalDate lastDecember = LocalDate.parse("2026-12-20");
 
         assertThat(noticesFor(birthdayOf("lea", "Léa", LocalDate.parse("2027-01-05")), lastDecember))
@@ -129,7 +131,7 @@ class BirthdayReminderServiceTest {
 
     @Test
     void noticesFor_shouldSkipDeletedFriends_andTheHonoreeAmongTheirFriends() {
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.just(Map.of("zoe", Closeness.INTIMATE, "lea", Closeness.CLOSE)));
+        when(friendships.friendsOf("lea")).thenReturn(Flux.just(new Friend("zoe", Closeness.INTIMATE), new Friend("lea", Closeness.CLOSE)));
         when(markers.deletedAmong(any())).thenReturn(Mono.just(Set.of("zoe")));
 
         assertThat(noticesFor(birthdayOf("lea", "Léa", TODAY.plusDays(3)), TODAY)).isEmpty();
@@ -143,7 +145,7 @@ class BirthdayReminderServiceTest {
     @Test
     void recordDueNotices_shouldRecordWhatIsDueInParis_andCountOnlyTheNewOnes() {
         when(eventRepository.findAllBirthdays()).thenReturn(Flux.just(birthdayOf("lea", "Léa", TODAY)));
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.just(Map.of("zoe", Closeness.INTIMATE)));
+        when(friendships.friendsOf("lea")).thenReturn(Flux.just(new Friend("zoe", Closeness.INTIMATE)));
         when(noticeOutbox.record(any())).thenAnswer(call ->
                 Mono.just(((BirthdayNotice) call.getArgument(0)).type() == BirthdayNoticeType.BIRTHDAY_TODAY));
 
@@ -154,8 +156,8 @@ class BirthdayReminderServiceTest {
     void recordDueNotices_shouldGoOnWithTheNextBirthday_whenOneFails() {
         when(eventRepository.findAllBirthdays()).thenReturn(Flux.just(
                 birthdayOf("lea", "Léa", TODAY), birthdayOf("max", "Max", TODAY)));
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
-        when(friendDirectory.knownFriendsOf("max")).thenReturn(Mono.just(Map.of()));
+        when(friendships.friendsOf("lea")).thenReturn(Flux.error(new IllegalStateException("mongo down")));
+        when(friendships.friendsOf("max")).thenReturn(Flux.empty());
         when(noticeOutbox.record(any())).thenReturn(Mono.just(true));
 
         StepVerifier.create(service.recordDueNotices()).expectNext(1L).verifyComplete();

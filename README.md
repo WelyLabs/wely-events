@@ -232,6 +232,7 @@ Supprimer un événement (par `DELETE` ou par le dernier départ) emporte son do
 - **Pseudonym.** Past events, closed-poll ballots, past answers and expenses keep the `businessId`, which the web app labels as a deleted user. Balances stay exact.
 - **Propagation.** Hand-overs and departures go through `EVENT_GROUP_CHANGED` (version bumped, `groupSynced: false`): wely-chat and wely-notifications follow without any extra call. The successor is not notified.
 - **After the marker**, every write (`POST`, `PUT`, `PATCH`, `DELETE`) carried by the deleted account's still-valid token answers `EVT-BUS-025` (410), from a filter in the security chain; reads go through. The poll stream cannot be reopened either (`EVT-BUS-025`), and a stream checks the marker again once it listens, so an erasure landing between the check and the subscription still ends it. A "Yes" vote that outlived the erasure never subscribes the account when the date is fixed.
+- **Birthday and friendships.** Right after the marker, the account's birthday, the surprises for it and its pending notices are erased, then every pair involving it in `friendships`.
 - **Demo accounts** (`ACCOUNT_DELETION_PROTECTED_USER_IDS`) are never erased, and never made successor automatically, since anyone can sign in to them.
 
 ### Reconciliation
@@ -323,7 +324,7 @@ Un « Tricount » attaché à chaque événement : ses membres (organisateur et 
 
 « Complet » = titre, lieu, description et id ; « occupé » = début et fin seulement. Cacher dans le calendrier ce qu'Alice voit déjà dans son feed ne protégerait rien : la proximité ne joue que sur ce qu'elle ne pourrait pas voir autrement.
 
-La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /social-service/relationships/{friendId}`), avec le jeton de l'appelant. Ce service n'en garde aucune copie : une baisse de niveau y prend effet à la requête suivante. Pas amis : `EVT-BUS-003` (403).
+La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /social-service/relationships/{friendId}`), avec le jeton de l'appelant. The `friendships` projection is not read here, so a downgrade takes effect on the next request. Pas amis : `EVT-BUS-003` (403).
 
 ## Birthdays and surprises
 
@@ -332,7 +333,22 @@ La proximité (ami < proche < intime) est **lue dans `wely-social`** (`GET /soci
 - **BIRTHDAY.** One per user, `_id` `birthday-<userId>`, upserted from wely-users' `USER_BIRTHDAY` (`{userId, displayName, month, day}`, never the year): all day on the placeholder year 2000, `birthMonth`/`birthDay`, FRIENDS. It is excluded from every read query (feed, map, by id, subscribed, free slots, conflicts, friend calendar, overview, profile summary, group relay) and served only by `/me/birthdays`, so it cannot be joined, edited or deleted through the API. A 29 February falls on the 28th in common years.
 - **SURPRISE.** `POST /events` with `kind: SURPRISE` and `honoreeId`; the location is optional for it only. The organizer must be a close or intimate friend of the honoree and not the honoree (`EVT-BUS-028`), the honoree must have a birthday (`EVT-BUS-029`), and one surprise per birthday: a second within 60 days answers `EVT-BUS-030` (409) with the existing id in the ProblemDetail property `eventId`, and a unique `occurrenceKey` (`honoreeId:year`) settles two creations racing. It is stored with `hiddenFrom: [honoreeId]`, and **every query filters on it in the database**: the honoree never gets it from the feed, the map, a community, a friend's calendar (not even as busy), an overview, a profile summary, its participants or `GET /events/{id}` (404, as are subscribing and leaving). It is visible to its members and to the honoree's friends, any of whom may join.
 - **Notices.** A daily job (08:00 Paris time, plus an hourly catch-up from a minute after startup, never before 08:00) records `BIRTHDAY_NOTICES` for wely-notifications: `SURPRISE_PROPOSAL` to intimate friends from 21 days ahead and close friends from 14 (naming the surprise if one exists), `FRIEND_BIRTHDAY` to every friend and `BIRTHDAY_TODAY` to the honoree on the day; creating a surprise records `SURPRISE_CREATED` for the honoree's other close friends. The `birthday_notices` collection is both outbox and idempotency key (`_id` = `honoreeId:recipientId:year:type`, TTL 400 days); `BirthdayNoticeRelay` sends it, keyed by recipient.
-- **Friends without a token.** wely-social answers "my friends" to the token's owner only, so each `/me/birthdays` call (and each surprise creation) stores the caller's friends with their closeness in `friend_lists`; the job reads a user's friends back from every list naming them, the fresher of two lists deciding. A friendship neither side has looked up since is unknown to the job.
+- **Friends without a token.** The reminder job and the `SURPRISE_CREATED` fan-out run on nobody's behalf, so they read the honoree's friends from the `friendships` projection (`FriendshipDirectory`), never from wely-social. User-facing paths (`/me/birthdays`, the closeness check on surprise creation, the feed…) still ask wely-social with the caller's token.
+
+### The `friendships` projection
+
+wely-social publishes every friendship change on `FRIENDSHIP_CHANGED` from a transactional outbox, keyed by the pair (`idA:idB`, sorted), so one pair's records stay in order on one partition: `{type, fromUserId, fromUserName, toUserId, closeness, since, version, occurredAt}`. `FriendshipChangedConsumer` (binding `friendships-in-0`, its own group `events-friendships-group`, from the earliest retained record) keeps one document per pair in `friendships`:
+
+```
+{ _id: "<idA>:<idB>", a: "<idA>", b: "<idB>", friends: true|false, closeness: "FRIEND|CLOSE|INTIMATE"|null, since, version }
+```
+
+- **Types.** `ACCEPTED`, `CLOSENESS_CHANGED` and `SNAPSHOT` (wely-social's one-time backfill of the friendships that existed before the outbox) store the pair as friends, with its closeness. `REQUESTED`, `REJECTED`, `CANCELLED` and `REMOVED` store `friends: false`: the document stays as a **version tombstone**.
+- **Ordering.** A write is a conditional overwrite (`version` lower than the record's), then an insert for a new pair; the insert hitting the unique `_id` means the stored pair is as new or newer, so a record whose `version` is not above the stored one is ignored. A replay or a rebalance cannot bring back an older state, and a removal cannot be undone by a late acceptance.
+- **Reads.** `friendsOf(userId)` matches `friends: true` on `a` or `b`, both indexed.
+- **Deleted accounts.** A record naming an account in `deleted_users` is ignored, and the erasure deletes every pair involving the account, tombstones included, after the marker.
+- **Errors.** Each record is isolated: an unreadable one, an unknown type or closeness, ids that are not two distinct canonical UUIDs, a missing `version`, or friends without a closeness is logged and skipped; a failing write is retried 5 times (1 s to 30 s), then logged, and the stream goes on. That pair is then stale until its next change.
+- **Freshness.** The projection is eventually consistent with wely-social: it lags by the outbox relay and the consumer, and it is empty until wely-social's snapshot has been consumed.
 
 ## Gestion des erreurs
 
@@ -418,6 +434,7 @@ client peut tester et un `timestamp` :
 | `EVENT_DELETION_RELAY_ENABLED` | Relais des suppressions vers wely-chat, `true` par défaut |
 | `MEDIA_API_SECRET` | Secret partagé envoyé dans `X-Internal-Secret`. Vide par défaut : le service démarre, mais les envois répondent `EVT-TEC-003` et les images sortent sans URL |
 | `USER_DELETED_CONSUMER_ENABLED` | Consumes `USER_DELETED`, `true` by default |
+| `FRIENDSHIP_TOPIC` | Friendship changes from wely-social, `FRIENDSHIP_CHANGED` by default; `FRIENDSHIPS_CONSUMER_ENABLED` turns the consumer off |
 | `USER_BIRTHDAY_TOPIC` | Birthdays from wely-users, `USER_BIRTHDAY` by default; `USER_BIRTHDAY_CONSUMER_ENABLED` turns the consumer off |
 | `BIRTHDAY_NOTICES_TOPIC` | Notices for wely-notifications, `BIRTHDAY_NOTICES` by default; `BIRTHDAY_NOTICES_RELAY_ENABLED` turns the relay off |
 | `BIRTHDAY_REMINDERS_ENABLED` | Runs the daily birthday job (and `@Scheduled`), `true` by default |

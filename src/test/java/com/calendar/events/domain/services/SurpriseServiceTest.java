@@ -5,6 +5,7 @@ import com.calendar.events.domain.models.BirthdayNoticeType;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventKind;
+import com.calendar.events.domain.models.Friend;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
 import com.calendar.events.domain.ports.CommunityDirectory;
@@ -12,6 +13,7 @@ import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
+import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.EventErrorCode;
@@ -22,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -57,7 +60,7 @@ class SurpriseServiceTest {
     @Mock
     private SocialGraph socialGraph;
     @Mock
-    private FriendDirectory friendDirectory;
+    private FriendshipDirectory friendships;
     @Mock
     private BirthdayNoticeOutbox noticeOutbox;
 
@@ -69,9 +72,8 @@ class SurpriseServiceTest {
         EventService eventService = new EventService(eventRepository, socialGraph, mock(ExpenseRepository.class),
                 new PictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class),
                 mock(CommunityDirectory.class), new AccountGuard(mock(DeletedUserMarkers.class)), clock);
-        service = new SurpriseService(eventService, eventRepository, socialGraph, friendDirectory, noticeOutbox, clock,
+        service = new SurpriseService(eventService, eventRepository, socialGraph, friendships, noticeOutbox, clock,
                 ZoneId.of("Europe/Paris"));
-        lenient().when(friendDirectory.refreshFriendsOf(anyString())).thenReturn(Mono.just(Map.of()));
         lenient().when(noticeOutbox.record(any())).thenReturn(Mono.just(true));
     }
 
@@ -103,7 +105,7 @@ class SurpriseServiceTest {
             saved.setId("s1");
             return Mono.just(saved);
         });
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.just(Map.of()));
+        when(friendships.friendsOf("lea")).thenReturn(Flux.empty());
 
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob_l"))
                 .assertNext(surprise -> {
@@ -130,8 +132,8 @@ class SurpriseServiceTest {
             saved.setId("s1");
             return Mono.just(saved);
         });
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.just(Map.of(
-                "bob", Closeness.CLOSE, "zoe", Closeness.INTIMATE, "hugo", Closeness.FRIEND, "lea", Closeness.CLOSE)));
+        when(friendships.friendsOf("lea")).thenReturn(Flux.just(new Friend("bob", Closeness.CLOSE),
+                new Friend("zoe", Closeness.INTIMATE), new Friend("hugo", Closeness.FRIEND), new Friend("lea", Closeness.CLOSE)));
 
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob_l")).expectNextCount(1).verifyComplete();
 
@@ -139,8 +141,8 @@ class SurpriseServiceTest {
         verify(noticeOutbox, times(1)).record(notices.capture());
         assertThat(notices.getValue()).isEqualTo(new BirthdayNotice(BirthdayNoticeType.SURPRISE_CREATED, "zoe", "lea",
                 "Léa", LocalDate.parse("2027-03-12"), 20, Closeness.INTIMATE, "s1", "bob", "bob_l"));
-        // The organizer's own, fresh list helps find the honoree's friends.
-        verify(friendDirectory).refreshFriendsOf("bob");
+        // Neither the organizer's token nor wely-social: the projection alone names the honoree's friends.
+        verify(socialGraph, never()).friendsOf(anyString());
     }
 
     @Test
@@ -148,7 +150,7 @@ class SurpriseServiceTest {
         bobIsClose();
         when(eventRepository.findSurpriseStartingBetween(anyString(), any(), any())).thenReturn(Mono.empty());
         when(eventRepository.insertSurprise(any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
-        when(friendDirectory.knownFriendsOf("lea")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
+        when(friendships.friendsOf("lea")).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob_l")).expectNextCount(1).verifyComplete();
     }

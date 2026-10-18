@@ -55,8 +55,6 @@ class BirthdayServiceTest {
     @Mock
     private SocialGraph socialGraph;
     @Mock
-    private FriendDirectory friendDirectory;
-    @Mock
     private BirthdayNoticeOutbox noticeOutbox;
     @Mock
     private DeletedUserMarkers markers;
@@ -73,7 +71,7 @@ class BirthdayServiceTest {
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
                 new PictureService(org.mockito.Mockito.mock(MediaStore.class)), deletionOutbox,
                 org.mockito.Mockito.mock(CommunityDirectory.class), guard, Clock.fixed(NOW, ZoneOffset.UTC));
-        service = new BirthdayService(eventRepository, eventService, friendDirectory, noticeOutbox, guard);
+        service = new BirthdayService(eventRepository, eventService, socialGraph, noticeOutbox, guard);
         lenient().when(deletionOutbox.record(any())).thenReturn(Mono.empty());
     }
 
@@ -126,7 +124,7 @@ class BirthdayServiceTest {
 
     @Test
     void birthdaysFor_shouldListMineAndMyFriends_withClosenessAndSurprises() {
-        when(friendDirectory.refreshFriendsOf("me"))
+        when(socialGraph.friendsOf("me"))
                 .thenReturn(Mono.just(Map.of("lea", Closeness.CLOSE, "hugo", Closeness.FRIEND, "zoe", Closeness.INTIMATE)));
         when(eventRepository.findBirthdaysOf(Set.of("me", "lea", "hugo", "zoe"))).thenReturn(Flux.just(
                 birthdayOf("me", "Moi", 3, 20), birthdayOf("lea", "Léa", 3, 12),
@@ -150,7 +148,7 @@ class BirthdayServiceTest {
 
     @Test
     void birthdaysFor_shouldNeverLookForASurpriseForTheViewer() {
-        when(friendDirectory.refreshFriendsOf("me")).thenReturn(Mono.just(Map.of()));
+        when(socialGraph.friendsOf("me")).thenReturn(Mono.just(Map.of()));
         when(eventRepository.findBirthdaysOf(Set.of("me"))).thenReturn(Flux.just(birthdayOf("me", "Moi", 3, 20)));
 
         StepVerifier.create(service.birthdaysFor("me", FROM, TO))
@@ -161,7 +159,7 @@ class BirthdayServiceTest {
 
     @Test
     void birthdaysFor_shouldShowA29FebruaryOnThe28thInACommonYear() {
-        when(friendDirectory.refreshFriendsOf("me")).thenReturn(Mono.just(Map.of("lea", Closeness.FRIEND)));
+        when(socialGraph.friendsOf("me")).thenReturn(Mono.just(Map.of("lea", Closeness.FRIEND)));
         when(eventRepository.findBirthdaysOf(Set.of("me", "lea"))).thenReturn(Flux.just(birthdayOf("lea", "Léa", 2, 29)));
         when(eventRepository.findSurprisesFor(anyCollection(), anyString())).thenReturn(Flux.empty());
 
@@ -172,7 +170,7 @@ class BirthdayServiceTest {
 
     @Test
     void birthdaysFor_shouldListEveryYearsOccurrenceInARangeAcrossNewYear() {
-        when(friendDirectory.refreshFriendsOf("me")).thenReturn(Mono.just(Map.of()));
+        when(socialGraph.friendsOf("me")).thenReturn(Mono.just(Map.of()));
         when(eventRepository.findBirthdaysOf(Set.of("me"))).thenReturn(Flux.just(birthdayOf("me", "Moi", 1, 10)));
 
         StepVerifier.create(service.birthdaysFor("me", Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2027-01-31T00:00:00Z")))
@@ -183,7 +181,17 @@ class BirthdayServiceTest {
 
     @Test
     void birthdaysFor_shouldFallBackToMyOwn_whenSocialIsDown() {
-        when(friendDirectory.refreshFriendsOf("me")).thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
+        when(socialGraph.friendsOf("me")).thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
+        when(eventRepository.findBirthdaysOf(Set.of("me"))).thenReturn(Flux.just(birthdayOf("me", "Moi", 3, 20)));
+
+        StepVerifier.create(service.birthdaysFor("me", FROM, TO))
+                .assertNext(mine -> assertThat(mine.mine()).isTrue())
+                .verifyComplete();
+    }
+
+    @Test
+    void birthdaysFor_shouldListMyOwn_whenSocialAnswersNothing() {
+        when(socialGraph.friendsOf("me")).thenReturn(Mono.empty());
         when(eventRepository.findBirthdaysOf(Set.of("me"))).thenReturn(Flux.just(birthdayOf("me", "Moi", 3, 20)));
 
         StepVerifier.create(service.birthdaysFor("me", FROM, TO))
@@ -199,7 +207,7 @@ class BirthdayServiceTest {
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
         StepVerifier.create(service.birthdaysFor("me", null, TO))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
-        verify(friendDirectory, never()).refreshFriendsOf(anyString());
+        verify(socialGraph, never()).friendsOf(anyString());
     }
 
     @Test
@@ -215,7 +223,7 @@ class BirthdayServiceTest {
     // --- forget ------------------------------------------------------------------------------------
 
     @Test
-    void forget_shouldDropTheBirthdayTheSurprisesForItTheFriendListAndThePendingNotices() {
+    void forget_shouldDropTheBirthdayTheSurprisesForItAndThePendingNotices() {
         Event surprise = Event.builder().id("s1").organizerId("bob").title("Surprise").kind(EventKind.SURPRISE)
                 .participantIds(new ArrayList<>(List.of("bob"))).build();
         when(eventRepository.deleteBirthdayOf("lea")).thenReturn(Mono.just(1L));
@@ -223,13 +231,11 @@ class BirthdayServiceTest {
         when(eventRepository.deleteByOrganizer("s1", "bob")).thenReturn(Mono.just(surprise));
         when(expenseRepository.findByEvent("s1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("s1")).thenReturn(Mono.empty());
-        when(friendDirectory.forget("lea")).thenReturn(Mono.empty());
         when(noticeOutbox.forget("lea")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.forget("lea")).expectNext(1L).verifyComplete();
         // The surprise's group in wely-chat is closed like any deleted event's.
         verify(deletionOutbox).record(any());
-        verify(friendDirectory).forget("lea");
         verify(noticeOutbox).forget("lea");
     }
 
@@ -239,6 +245,6 @@ class BirthdayServiceTest {
                 .thenReturn(Mono.error(new org.springframework.dao.DataAccessResourceFailureException("mongo down")));
 
         StepVerifier.create(service.forget("lea")).expectError().verify();
-        verify(friendDirectory, never()).forget(anyString());
+        verify(noticeOutbox, never()).forget(anyString());
     }
 }
