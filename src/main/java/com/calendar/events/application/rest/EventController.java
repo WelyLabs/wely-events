@@ -121,6 +121,7 @@ public class EventController {
      * A standard event, or with {@code kind: SURPRISE} and {@code honoreeId} a surprise birthday, hidden
      * from the honoree: 403 EVT-BUS-028 for anyone but a close friend, 409 EVT-BUS-029 without a
      * birthday, 409 EVT-BUS-030 with the existing surprise's {@code eventId} when there is one already.
+     * 400 EVT-BUS-038 for a date already past, surprise or not.
      */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)

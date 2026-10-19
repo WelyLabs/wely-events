@@ -45,6 +45,9 @@ public class EventService {
     /** Enough pins for a city; past this, the map asks the user to zoom in. */
     public static final int MAP_LIMIT = 200;
 
+    /** How far behind the clock a new event may start: the time spent filling in the form, and clock skew. */
+    static final Duration START_GRACE = Duration.ofMinutes(5);
+
     private static final System.Logger LOG = System.getLogger(EventService.class.getName());
 
     private final EventRepository eventRepository;
@@ -122,6 +125,9 @@ public class EventService {
         if (!normalizeAllDay(event, candidateSlots)) {
             return Mono.error(new EventException(EventErrorCode.ALL_DAY_INVALID));
         }
+        if (candidateSlots == null && isInPast(event)) {
+            return Mono.error(new EventException(EventErrorCode.EVENT_IN_PAST));
+        }
         return Mono.fromCallable(() -> {
             event.setImage(null);
             List<String> participantIds = new ArrayList<>(event.getParticipantIds() != null ? event.getParticipantIds() : List.of());
@@ -157,6 +163,14 @@ public class EventService {
             event.setEndDate(start.plus(Duration.ofDays(1)));
         }
         return isMidnightUtc(event.getEndDate()) && event.getEndDate().isAfter(start);
+    }
+
+    /** A fixed date already behind: an all-day event once its last day is over, any other once it started. */
+    private boolean isInPast(Event event) {
+        Instant now = clock.instant();
+        return event.isAllDay()
+                ? !event.getEndDate().isAfter(now)
+                : event.getStartDate() != null && event.getStartDate().isBefore(now.minus(START_GRACE));
     }
 
     private static boolean isMidnightUtc(Instant instant) {

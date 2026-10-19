@@ -234,6 +234,12 @@ public enum EventErrorCode {
             "Ask for your circle over a period of at most 62 days that ends after it starts.",
             HttpStatus.BAD_REQUEST),
 
+    EVENT_IN_PAST(
+            "EVT-BUS-038",
+            "Event in the past",
+            "A new event starts now or later; an all-day event, today or later.",
+            HttpStatus.BAD_REQUEST),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",

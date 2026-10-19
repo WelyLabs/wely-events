@@ -44,6 +44,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -1423,6 +1424,32 @@ class EventServiceTest {
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.ALL_DAY_INVALID))
                 .verify();
         verify(eventRepository, never()).save(any());
+    }
+
+    @Test
+    void createEvent_shouldRefuseADateInThePast() {
+        List<Event> past = List.of(
+                Event.builder().title("a").startDate(NOW.minus(Duration.ofMinutes(6))).build(),
+                Event.builder().title("b").startDate(Instant.parse("2026-10-10T18:00:00Z")).build(),
+                Event.builder().title("c").allDay(true).startDate(Instant.parse("2026-10-10T00:00:00Z")).build());
+        for (Event event : past) {
+            StepVerifier.create(eventService.createEvent(event))
+                    .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_IN_PAST))
+                    .verify();
+        }
+        verify(eventRepository, never()).save(any());
+    }
+
+    @Test
+    void createEvent_shouldAcceptAStartJustBehindTheClock_orAnAllDayEventToday() {
+        when(eventRepository.save(any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
+
+        StepVerifier.create(eventService.createEvent(Event.builder().title("now")
+                        .startDate(NOW.minus(Duration.ofMinutes(4))).build()))
+                .expectNextCount(1).verifyComplete();
+        StepVerifier.create(eventService.createEvent(Event.builder().title("today").allDay(true)
+                        .startDate(Instant.parse("2026-10-11T00:00:00Z")).build()))
+                .expectNextCount(1).verifyComplete();
     }
 
     @Test

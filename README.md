@@ -461,6 +461,7 @@ The birthday job (08:00 Paris time, plus the hourly catch-up) runs the friendshi
 | `EVT-BUS-035` | 400 | Unknown feed rank: only `affinity` is known |
 | `EVT-BUS-036` | 404 | Not a friend of the caller (reunions, memories) |
 | `EVT-BUS-037` | 400 | Circle range backwards or longer than 62 days |
+| `EVT-BUS-038` | 400 | New event already past: a start more than 5 minutes behind, or an all-day event whose last day is over. Surprises included; a poll's slots answer `EVT-BUS-014` |
 | `EVT-TEC-001` | 502 | `wely-social` unreachable: a community's membership cannot be checked (friendships never call it) |
 | `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
 | `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |

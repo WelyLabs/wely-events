@@ -29,6 +29,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.MonthDay;
@@ -170,6 +171,18 @@ class SurpriseServiceTest {
         when(socialGraph.closenessBetween("zoe", "lea")).thenReturn(Mono.empty());
         StepVerifier.create(service.createSurprise(request("zoe", "lea"), null, "zoe"))
                 .expectErrorMatches(e -> hasCode(e, EventErrorCode.SURPRISE_NOT_ALLOWED)).verify();
+        verify(eventRepository, never()).insertSurprise(any());
+    }
+
+    @Test
+    void createSurprise_shouldRefuseADateInThePast() {
+        bobIsClose();
+        Event surprise = request("bob", "lea");
+        surprise.setStartDate(NOW.minus(Duration.ofDays(2)));
+        surprise.setEndDate(NOW.minus(Duration.ofDays(2)).plus(Duration.ofHours(4)));
+
+        StepVerifier.create(service.createSurprise(surprise, null, "bob_l"))
+                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_IN_PAST)).verify();
         verify(eventRepository, never()).insertSurprise(any());
     }
 
