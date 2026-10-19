@@ -278,6 +278,18 @@ class PollServiceTest {
     }
 
     @Test
+    void fix_shouldRefuseASlotAlreadyPast() {
+        PollSlot gone = new PollSlot("gone", NOW.minus(Duration.ofDays(1)), NOW.minus(Duration.ofDays(1)).plus(Duration.ofHours(2)));
+        Poll poll = new Poll(PollStatus.OPEN, List.of(gone, THURSDAY), Map.of(), null);
+        when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, poll)));
+
+        StepVerifier.create(pollService.fix("e1", "org", "gone"))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_IN_PAST))
+                .verify();
+        verify(eventRepository, never()).fixPollDate(any(), any(), any(), any());
+    }
+
+    @Test
     void getMyPolls_shouldAskTheRepositoryForTheUsersOpenPolls() {
         Event event = polling(Visibility.PUBLIC, openPoll(Map.of()));
         when(eventRepository.findOpenPollsInvolving("lea")).thenReturn(Flux.just(event));

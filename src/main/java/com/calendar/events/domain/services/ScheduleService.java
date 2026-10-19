@@ -89,18 +89,22 @@ public class ScheduleService {
     }
 
     /**
-     * Moves the event to {@code range}, for the organizer only. When others take part, the move is
+     * Moves the event to {@code range}, for the organizer only, never to a date already past
+     * (EVT-BUS-038). When others take part, the move is
      * flagged in the same write for wely-chat to announce in the event's group. The write matches
      * the start that was read, so two moves at once cannot both land.
      */
     public Mono<Event> reschedule(String eventId, String organizerId, TimeRange range) {
-        if (range.duration().compareTo(MAX_RANGE) > 0 || range.start().isBefore(clock.instant())) {
+        if (range.duration().compareTo(MAX_RANGE) > 0) {
             return Mono.error(new EventException(EventErrorCode.SCHEDULE_INVALID));
         }
         return requireMovable(eventId, organizerId)
                 .flatMap(event -> {
                     if (range.start().equals(event.getStartDate()) && range.end().equals(event.getEndDate())) {
                         return Mono.just(event);
+                    }
+                    if (eventService.isInPast(event.isAllDay(), range.start(), range.end())) {
+                        return Mono.error(new EventException(EventErrorCode.EVENT_IN_PAST));
                     }
                     boolean shared = event.getParticipantIds().stream().anyMatch(id -> !id.equals(organizerId));
                     return eventRepository.reschedule(event, range, shared)

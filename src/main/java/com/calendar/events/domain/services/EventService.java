@@ -165,12 +165,19 @@ public class EventService {
         return isMidnightUtc(event.getEndDate()) && event.getEndDate().isAfter(start);
     }
 
-    /** A fixed date already behind: an all-day event once its last day is over, any other once it started. */
     private boolean isInPast(Event event) {
+        return isInPast(event.isAllDay(), event.getStartDate(), event.getEndDate());
+    }
+
+    /**
+     * A date already behind, for a new event or a move: all day, once the last day is over; otherwise
+     * once it started, {@link #START_GRACE} aside.
+     */
+    boolean isInPast(boolean allDay, Instant start, Instant end) {
         Instant now = clock.instant();
-        return event.isAllDay()
-                ? !event.getEndDate().isAfter(now)
-                : event.getStartDate() != null && event.getStartDate().isBefore(now.minus(START_GRACE));
+        return allDay
+                ? end != null && !end.isAfter(now)
+                : start != null && start.isBefore(now.minus(START_GRACE));
     }
 
     private static boolean isMidnightUtc(Instant instant) {

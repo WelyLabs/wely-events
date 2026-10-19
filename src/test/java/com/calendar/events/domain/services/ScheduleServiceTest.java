@@ -295,17 +295,41 @@ class ScheduleServiceTest {
     }
 
     @Test
-    void reschedule_shouldRefuseThePast_orARangeWiderThanAMonthGrid() {
-        TimeRange past = new TimeRange(NOW.minus(Duration.ofHours(2)), NOW.minus(Duration.ofHours(1)));
+    void reschedule_shouldRefuseARangeWiderThanAMonthGrid() {
         TimeRange tooWide = new TimeRange(BOWLING_START, BOWLING_START.plus(Duration.ofDays(63)));
 
-        StepVerifier.create(scheduleService.reschedule("bowling", "me", past))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.SCHEDULE_INVALID))
-                .verify();
         StepVerifier.create(scheduleService.reschedule("bowling", "me", tooWide))
                 .expectErrorMatches(error -> hasCode(error, EventErrorCode.SCHEDULE_INVALID))
                 .verify();
         verifyNoInteractions(eventRepository);
+    }
+
+    @Test
+    void reschedule_shouldRefuseADateAlreadyPast() {
+        when(eventRepository.findById("bowling")).thenReturn(Mono.just(bowling("me")));
+        TimeRange past = new TimeRange(NOW.minus(Duration.ofHours(2)), NOW.minus(Duration.ofHours(1)));
+
+        StepVerifier.create(scheduleService.reschedule("bowling", "me", past))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_IN_PAST))
+                .verify();
+        verify(eventRepository, never()).reschedule(any(), any(), anyBoolean());
+    }
+
+    @Test
+    void reschedule_shouldMoveAnAllDayEventToToday_butNotToADayGone() {
+        Event allDay = bowling("me");
+        allDay.setAllDay(true);
+        allDay.setStartDate(Instant.parse("2026-10-16T00:00:00Z"));
+        allDay.setEndDate(Instant.parse("2026-10-17T00:00:00Z"));
+        when(eventRepository.findById("bowling")).thenReturn(Mono.just(allDay));
+        TimeRange today = new TimeRange(Instant.parse("2026-10-14T00:00:00Z"), Instant.parse("2026-10-15T00:00:00Z"));
+        TimeRange yesterday = new TimeRange(Instant.parse("2026-10-13T00:00:00Z"), Instant.parse("2026-10-14T00:00:00Z"));
+        when(eventRepository.reschedule(any(), any(), anyBoolean())).thenAnswer(call -> Mono.just(call.getArgument(0)));
+
+        StepVerifier.create(scheduleService.reschedule("bowling", "me", today)).expectNextCount(1).verifyComplete();
+        StepVerifier.create(scheduleService.reschedule("bowling", "me", yesterday))
+                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_IN_PAST))
+                .verify();
     }
 
     @Test

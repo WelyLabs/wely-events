@@ -109,7 +109,7 @@ public enum EventErrorCode {
     SCHEDULE_INVALID(
             "EVT-BUS-017",
             "Invalid schedule",
-            "Give a start and an end after it, over at most 62 days; a new date cannot be in the past.",
+            "Give a start and an end after it, over at most 62 days.",
             HttpStatus.BAD_REQUEST),
 
     SCHEDULE_LOCKED(
@@ -237,7 +237,7 @@ public enum EventErrorCode {
     EVENT_IN_PAST(
             "EVT-BUS-038",
             "Event in the past",
-            "A new event starts now or later; an all-day event, today or later.",
+            "An event is created, moved or fixed on a date now or later; an all-day event, today or later.",
             HttpStatus.BAD_REQUEST),
 
     SOCIAL_UNAVAILABLE(

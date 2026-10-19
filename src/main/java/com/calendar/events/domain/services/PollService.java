@@ -65,6 +65,10 @@ public class PollService {
                     if (slot == null) {
                         return Mono.error(new EventException(EventErrorCode.POLL_SLOT_UNKNOWN));
                     }
+                    if (eventService.isInPast(false, slot.start(), slot.end())) {
+                        // A slot gone by while the poll stayed open: the date is fixed on one to come.
+                        return Mono.error(new EventException(EventErrorCode.EVENT_IN_PAST));
+                    }
                     List<String> yesVoters = poll.yesVotersOf(slotId);
                     return accountGuard.deletedAmong(yesVoters)
                             .flatMap(deleted -> eventRepository.fixPollDate(eventId, organizerId, slot,

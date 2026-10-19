@@ -444,7 +444,7 @@ The birthday job (08:00 Paris time, plus the hourly catch-up) runs the friendshi
 | `EVT-BUS-014` | 400 | Sondage invalide : 2 à 5 créneaux distincts, à venir, qui finissent après avoir commencé |
 | `EVT-BUS-015` | 409 | Pas de sondage ouvert : la date est déjà fixée |
 | `EVT-BUS-016` | 400 | Réponse pour un créneau que le sondage ne propose pas |
-| `EVT-BUS-017` | 400 | Nouvelle date invalide : fin avant le début, plus de 62 jours, ou dans le passé |
+| `EVT-BUS-017` | 400 | Invalid new date: an end before the start, or more than 62 days (a date already past is `EVT-BUS-038`) |
 | `EVT-BUS-018` | 409 | Sondage de date ouvert : la date se fixe dans le sondage |
 | `EVT-BUS-019` | 409 | Date modifiée entre-temps par quelqu'un d'autre |
 | `EVT-BUS-020` | 409 | L'organisateur part en laissant des participants : il doit nommer son successeur (ou quelqu'un vient de rejoindre) |
@@ -461,7 +461,7 @@ The birthday job (08:00 Paris time, plus the hourly catch-up) runs the friendshi
 | `EVT-BUS-035` | 400 | Unknown feed rank: only `affinity` is known |
 | `EVT-BUS-036` | 404 | Not a friend of the caller (reunions, memories) |
 | `EVT-BUS-037` | 400 | Circle range backwards or longer than 62 days |
-| `EVT-BUS-038` | 400 | New event already past: a start more than 5 minutes behind, or an all-day event whose last day is over. Surprises included; a poll's slots answer `EVT-BUS-014` |
+| `EVT-BUS-038` | 400 | Date already past, on creating, moving (`PUT /{id}/schedule`) or fixing a poll's slot: a start more than 5 minutes behind, or an all-day event whose last day is over. Surprises included; a new poll's slots answer `EVT-BUS-014` |
 | `EVT-TEC-001` | 502 | `wely-social` unreachable: a community's membership cannot be checked (friendships never call it) |
 | `EVT-TEC-002` | 502 | Kafka injoignable pour le relais des groupes (en arrière-plan, jamais renvoyé à un client) |
 | `EVT-TEC-003` | 502 | `wely-media` injoignable ou mal configuré : l'image n'a pas pu être enregistrée |

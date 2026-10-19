@@ -72,7 +72,7 @@ public class ScheduleController {
         return scheduleService.proposalsFor(id, jwt.getClaimAsString("businessId")).map(rangeMapper::toResponse);
     }
 
-    /** Organizer only: moves the event; the others taking part are told in its group. */
+    /** Organizer only: moves the event, never into the past (400 EVT-BUS-038); the others taking part are told in its group. */
     @PutMapping("/{id}/schedule")
     public Mono<EventResponse> reschedule(@PathVariable String id, @Valid @RequestBody ScheduleRequest request,
                                           @AuthenticationPrincipal Jwt jwt) {
