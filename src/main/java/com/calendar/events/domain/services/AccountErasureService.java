@@ -75,6 +75,7 @@ public class AccountErasureService {
                         .flatMap(report -> releaseOrganizedEvents(userId, at, report))
                         .flatMap(report -> eventRepository.leaveUpcoming(userId, at).map(report::withEventsLeft))
                         .flatMap(report -> eventRepository.clearUpcomingResponses(userId, at).map(report::withResponsesCleared))
+                        .flatMap(report -> eventRepository.forgetInvitations(userId).map(report::withInvitationsWithdrawn))
                         .flatMap(report -> dropReceipts(userId).map(report::withReceiptsDropped)))
                 .flatMap(report -> Mono.defer(() -> markers.markErased(userId, clock.instant())).thenReturn(report));
     }

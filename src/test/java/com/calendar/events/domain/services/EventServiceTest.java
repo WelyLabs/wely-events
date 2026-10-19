@@ -193,7 +193,7 @@ class EventServiceTest {
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of("dave")));
 
         StepVerifier.create(eventService.getParticipants("1", "alice"))
-                .expectNext(new Participants(3, List.of("alice", "bob", "dave"), List.of("dave")))
+                .expectNext(new Participants(3, List.of("alice", "bob", "dave"), List.of("dave"), List.of()))
                 .verifyComplete();
     }
 
@@ -203,7 +203,7 @@ class EventServiceTest {
         when(socialGraph.friendIdsOf("erin")).thenReturn(Mono.just(Set.of("bob")));
 
         StepVerifier.create(eventService.getParticipants("1", "erin"))
-                .expectNext(new Participants(2, List.of(), List.of("bob")))
+                .expectNext(new Participants(2, List.of(), List.of("bob"), List.of()))
                 .verifyComplete();
     }
 

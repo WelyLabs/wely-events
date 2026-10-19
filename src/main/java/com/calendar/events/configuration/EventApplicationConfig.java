@@ -35,6 +35,7 @@ import com.calendar.events.domain.services.FriendOverviewService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.PollService;
 import com.calendar.events.domain.services.ProfileSummaryService;
+import com.calendar.events.domain.services.InvitationService;
 import com.calendar.events.domain.services.ScheduleService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -128,6 +129,12 @@ public class EventApplicationConfig {
                 .filter(id -> !id.isEmpty())
                 .map(id -> id.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    @Bean
+    public InvitationService invitationService(EventRepository eventRepository, EventService eventService,
+                                               SocialGraph socialGraph) {
+        return new InvitationService(eventRepository, eventService, socialGraph, Clock.systemUTC());
     }
 
     @Bean

@@ -59,4 +59,34 @@ class ParticipantsTest {
         assertThat(seen.participantIds()).isEmpty();
         assertThat(seen.friendsGoingIds()).isEmpty();
     }
+
+    private static Event inviting(String... invitees) {
+        Event event = organizedBy("carol", "alice");
+        event.setInvitedIds(new ArrayList<>(List.of(invitees)));
+        return event;
+    }
+
+    @Test
+    void seenBy_shouldListEveryInvitation_forTheOrganizer() {
+        assertThat(Participants.seenBy(inviting("bob", "dave"), "carol", Set.of()).invitedIds()).containsExactly("bob", "dave");
+    }
+
+    @Test
+    void seenBy_shouldListOnlyTheirOwnInvitation_forAnInvitee() {
+        assertThat(Participants.seenBy(inviting("bob", "dave"), "bob", Set.of()).invitedIds()).containsExactly("bob");
+    }
+
+    @Test
+    void seenBy_shouldListNoInvitation_forAParticipantOrAnyoneElse() {
+        assertThat(Participants.seenBy(inviting("bob"), "alice", Set.of()).invitedIds()).isEmpty();
+        assertThat(Participants.seenBy(inviting("bob"), "erin", Set.of()).invitedIds()).isEmpty();
+    }
+
+    @Test
+    void seenBy_shouldListNoInvitation_onAnEventStoredBeforeThem() {
+        Event event = organizedBy("carol");
+        event.setInvitedIds(null);
+
+        assertThat(Participants.seenBy(event, "carol", Set.of()).invitedIds()).isEmpty();
+    }
 }

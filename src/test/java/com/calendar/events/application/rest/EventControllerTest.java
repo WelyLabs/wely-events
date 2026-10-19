@@ -160,8 +160,8 @@ class EventControllerTest {
     @Test
     void getParticipants_shouldAskOnBehalfOfTheCaller() {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
-        Participants participants = new Participants(2, List.of(), List.of("user2"));
-        ParticipantsResponse response = new ParticipantsResponse(2, List.of(), List.of("user2"));
+        Participants participants = new Participants(2, List.of(), List.of("user2"), List.of());
+        ParticipantsResponse response = new ParticipantsResponse(2, List.of(), List.of("user2"), List.of());
 
         when(eventService.getParticipants("1", "user1")).thenReturn(Mono.just(participants));
         when(mapper.toResponse(participants)).thenReturn(response);

@@ -104,6 +104,21 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
+    public Mono<Event> invite(String eventId, String organizerId, String inviteeId) {
+        return mongoRepository.invite(eventId, organizerId, inviteeId).then(findById(eventId));
+    }
+
+    @Override
+    public Mono<Event> withdrawInvitation(String eventId, String inviteeId) {
+        return mongoRepository.withdrawInvitation(eventId, inviteeId).then(findById(eventId));
+    }
+
+    @Override
+    public Mono<Long> forgetInvitations(String userId) {
+        return mongoRepository.forgetInvitations(userId);
+    }
+
+    @Override
     public Mono<Event> removeParticipant(String eventId, String userId) {
         return mongoRepository.removeParticipant(eventId, userId).then(findById(eventId));
     }

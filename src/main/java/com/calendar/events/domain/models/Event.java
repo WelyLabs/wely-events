@@ -63,6 +63,12 @@ public class Event {
     private EventKind kind;
     /** Whose birthday a BIRTHDAY or a SURPRISE celebrates; null on a standard event. */
     private String honoreeId;
+    /**
+     * Friends the organizer invited one by one and who have not answered yet: they see the event
+     * whatever its visibility, so a PRIVATE one too, and may join it. Joining takes them off the list.
+     */
+    @Builder.Default
+    private List<String> invitedIds = new ArrayList<>();
     /** Users every query keeps the event from, as if it did not exist: a surprise's honoree. */
     @Builder.Default
     private List<String> hiddenFrom = new ArrayList<>();
@@ -96,6 +102,10 @@ public class Event {
 
     public boolean isSurprise() {
         return effectiveKind() == EventKind.SURPRISE;
+    }
+
+    public boolean isInvited(String userId) {
+        return invitedIds != null && invitedIds.contains(userId);
     }
 
     public boolean isHiddenFrom(String userId) {
@@ -153,14 +163,14 @@ public class Event {
 
     /**
      * Whether the user may see this event, given who the user's friends are. Never whoever it is
-     * hidden from; those taking part always can; a surprise, the honoree's friends; otherwise it
+     * hidden from; those taking part or invited always can; a surprise, the honoree's friends; otherwise it
      * depends on the visibility.
      */
     public boolean isVisibleTo(String userId, Set<String> friendIdsOfUser) {
         if (isHiddenFrom(userId)) {
             return false;
         }
-        if (involves(userId)) {
+        if (involves(userId) || isInvited(userId)) {
             return true;
         }
         if (isSurprise()) {
