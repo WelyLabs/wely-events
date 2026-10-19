@@ -13,6 +13,7 @@ import com.calendar.events.exception.EventException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -41,14 +42,16 @@ public class BirthdayService {
     private final SocialGraph socialGraph;
     private final BirthdayNoticeOutbox noticeOutbox;
     private final AccountGuard accountGuard;
+    private final Clock clock;
 
     public BirthdayService(EventRepository eventRepository, EventService eventService, SocialGraph socialGraph,
-                           BirthdayNoticeOutbox noticeOutbox, AccountGuard accountGuard) {
+                           BirthdayNoticeOutbox noticeOutbox, AccountGuard accountGuard, Clock clock) {
         this.eventRepository = eventRepository;
         this.eventService = eventService;
         this.socialGraph = socialGraph;
         this.noticeOutbox = noticeOutbox;
         this.accountGuard = accountGuard;
+        this.clock = clock;
     }
 
     /** Creates or updates the user's birthday; empty for a deleted account, which must not get one back. */
@@ -115,15 +118,17 @@ public class BirthdayService {
                 ? Mono.just(Map.of())
                 : eventRepository.findSurprisesFor(friendKeys, viewerId)
                         .collectMap(Event::getOccurrenceKey, Function.identity());
+        // Birthdays are UTC dates, as all-day events: one already gone is no longer to organize.
+        LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
         return surprises.flatMapIterable(found -> byKey.entrySet().stream()
-                .map(entry -> toOccurrence(viewerId, friends, entry.getValue(), found.get(entry.getKey())))
+                .map(entry -> toOccurrence(viewerId, friends, entry.getValue(), found.get(entry.getKey()), today))
                 .sorted(Comparator.comparing(BirthdayOccurrence::date).thenComparing(BirthdayOccurrence::name,
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList());
     }
 
     private static BirthdayOccurrence toOccurrence(String viewerId, Map<String, Closeness> friends,
-                                                   Occurrence occurrence, Event surprise) {
+                                                   Occurrence occurrence, Event surprise, LocalDate today) {
         String userId = occurrence.birthday().getOrganizerId();
         String name = occurrence.birthday().getHonoreeName();
         if (userId.equals(viewerId)) {
@@ -132,7 +137,8 @@ public class BirthdayService {
         Closeness closeness = friends.get(userId);
         BirthdayOccurrence.Surprise shown = surprise == null ? null
                 : new BirthdayOccurrence.Surprise(surprise.getId(), surprise.getOrganizerId(), surprise.involves(viewerId));
-        boolean canOrganize = surprise == null && closeness != null && closeness.compareTo(Closeness.CLOSE) >= 0;
+        boolean canOrganize = surprise == null && closeness != null && closeness.compareTo(Closeness.CLOSE) >= 0
+                && !occurrence.date().isBefore(today);
         return new BirthdayOccurrence(userId, name, occurrence.date(), false, closeness, canOrganize, shown);
     }
 

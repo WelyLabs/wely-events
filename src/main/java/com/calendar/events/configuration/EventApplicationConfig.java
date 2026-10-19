@@ -203,8 +203,8 @@ public class EventApplicationConfig {
     @Bean
     public BirthdayService birthdayService(EventRepository eventRepository, EventService eventService,
                                            SocialGraph socialGraph, BirthdayNoticeOutbox noticeOutbox,
-                                           AccountGuard accountGuard) {
-        return new BirthdayService(eventRepository, eventService, socialGraph, noticeOutbox, accountGuard);
+                                           AccountGuard accountGuard, Clock clock) {
+        return new BirthdayService(eventRepository, eventService, socialGraph, noticeOutbox, accountGuard, clock);
     }
 
     @Bean

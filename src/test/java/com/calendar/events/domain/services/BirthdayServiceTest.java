@@ -71,7 +71,8 @@ class BirthdayServiceTest {
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
                 new PictureService(org.mockito.Mockito.mock(MediaStore.class)), deletionOutbox,
                 org.mockito.Mockito.mock(CommunityDirectory.class), guard, Clock.fixed(NOW, ZoneOffset.UTC));
-        service = new BirthdayService(eventRepository, eventService, socialGraph, noticeOutbox, guard);
+        service = new BirthdayService(eventRepository, eventService, socialGraph, noticeOutbox, guard,
+                Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(deletionOutbox.record(any())).thenReturn(Mono.empty());
     }
 
@@ -143,6 +144,19 @@ class BirthdayServiceTest {
                         null, false, null))
                 .expectNext(new BirthdayOccurrence("zoe", "Zoé", LocalDate.parse("2027-03-28"), false,
                         Closeness.INTIMATE, false, new BirthdayOccurrence.Surprise("s1", "bob", true)))
+                .verifyComplete();
+    }
+
+    @Test
+    void birthdaysFor_shouldNotOfferToOrganizeABirthdayAlreadyPast_butStillToday() {
+        when(socialGraph.friendsOf("me")).thenReturn(Mono.just(Map.of("lea", Closeness.CLOSE, "zoe", Closeness.INTIMATE)));
+        when(eventRepository.findBirthdaysOf(Set.of("me", "lea", "zoe")))
+                .thenReturn(Flux.just(birthdayOf("lea", "Léa", 10, 12), birthdayOf("zoe", "Zoé", 10, 18)));
+        when(eventRepository.findSurprisesFor(anyCollection(), anyString())).thenReturn(Flux.empty());
+
+        StepVerifier.create(service.birthdaysFor("me", Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-11-01T00:00:00Z")))
+                .assertNext(lea -> assertThat(lea.canOrganize()).isFalse())
+                .assertNext(zoe -> assertThat(zoe.canOrganize()).isTrue())
                 .verifyComplete();
     }
 

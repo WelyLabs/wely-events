@@ -7,7 +7,7 @@ import java.time.LocalDate;
  * of birth.
  *
  * @param closeness   how close the viewer is to this friend; null on the viewer's own birthday
- * @param canOrganize whether the viewer may create a surprise for it: a close friend, none yet
+ * @param canOrganize whether the viewer may create a surprise for it: a close friend, none yet, not past
  * @param surprise    the surprise organized for it; always null on the viewer's own birthday
  */
 public record BirthdayOccurrence(

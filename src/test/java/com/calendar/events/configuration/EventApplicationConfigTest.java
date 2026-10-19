@@ -183,7 +183,7 @@ class EventApplicationConfigTest {
         assertThat(config.friendshipService(friendships, mock(com.calendar.events.domain.ports.FriendshipHistory.class),
                 mock(com.calendar.events.domain.ports.FriendshipNoticeOutbox.class),
                 mock(com.calendar.events.domain.ports.ReunionSnoozes.class), surpriseService, guard(), clock)).isNotNull();
-        assertThat(config.birthdayService(repository, eventService, socialGraph, outbox, guard())).isNotNull();
+        assertThat(config.birthdayService(repository, eventService, socialGraph, outbox, guard(), clock)).isNotNull();
         assertThat(config.birthdayReminderService(repository, friendships, outbox, guard(), clock)).isNotNull();
     }
 
