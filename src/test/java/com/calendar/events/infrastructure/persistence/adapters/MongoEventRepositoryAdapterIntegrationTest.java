@@ -249,6 +249,84 @@ class MongoEventRepositoryAdapterIntegrationTest {
         assertThat(feedTitles("alice", List.of())).containsExactly("Nobody yet");
     }
 
+    private String privateDinnerOf(String organizer) {
+        return adapter.save(Event.builder()
+                .title("Private dinner")
+                .organizerId(organizer)
+                .startDate(Instant.parse("2026-10-17T10:00:00Z"))
+                .location("Lyon")
+                .participantIds(new ArrayList<>())
+                .visibility(Visibility.PRIVATE)
+                .build()).block().getId();
+    }
+
+    @Test
+    @DisplayName("an invitation shows a private event in the invitee's feed, until they answer it")
+    void findFeed_shouldShowAPrivateEventToItsInvitees() {
+        String id = privateDinnerOf("bob");
+
+        assertThat(adapter.invite(id, "bob", "alice").block().getInvitedIds()).containsExactly("alice");
+        assertThat(feedTitles("alice", List.of())).containsExactly("Private dinner");
+        assertThat(feedTitles("carol", List.of("bob"))).isEmpty();
+
+        adapter.withdrawInvitation(id, "alice").block();
+        assertThat(feedTitles("alice", List.of())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("inviting twice is one invitation, and only the organizer invites")
+    void invite_shouldBeIdempotent_andFilterOnTheOrganizer() {
+        String id = privateDinnerOf("bob");
+
+        adapter.invite(id, "bob", "alice").block();
+        adapter.invite(id, "bob", "alice").block();
+        adapter.invite(id, "carol", "dave").block();
+
+        assertThat(adapter.findById(id).block().getInvitedIds()).containsExactly("alice");
+    }
+
+    @Test
+    @DisplayName("nobody is invited to an event they already joined")
+    void invite_shouldSkipSomeoneTakingPart() {
+        String id = privateDinnerOf("bob");
+        adapter.addParticipant(id, "alice").block();
+
+        assertThat(adapter.invite(id, "bob", "alice").block().getInvitedIds()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("joining answers the invitation: the invitee leaves the invited for the participants")
+    void addParticipant_shouldTakeTheUserOffTheInvited() {
+        String id = privateDinnerOf("bob");
+        adapter.invite(id, "bob", "alice").block();
+        adapter.invite(id, "bob", "carol").block();
+
+        Event joined = adapter.addParticipant(id, "alice").block();
+
+        assertThat(joined.getParticipantIds()).containsExactly("alice");
+        assertThat(joined.getInvitedIds()).containsExactly("carol");
+    }
+
+    @Test
+    @DisplayName("an erasure takes the user off every invitation")
+    void forgetInvitations_shouldPullTheUserEverywhere() {
+        String first = privateDinnerOf("bob");
+        String second = privateDinnerOf("carol");
+        adapter.invite(first, "bob", "alice").block();
+        adapter.invite(second, "carol", "alice").block();
+        adapter.invite(second, "carol", "dave").block();
+
+        assertThat(adapter.forgetInvitations("alice").block()).isEqualTo(2);
+        assertThat(adapter.findById(first).block().getInvitedIds()).isEmpty();
+        assertThat(adapter.findById(second).block().getInvitedIds()).containsExactly("dave");
+    }
+
+    @Test
+    @DisplayName("withdrawing an invitation of an unknown event yields nothing")
+    void withdrawInvitation_shouldBeEmpty_forAnUnknownEvent() {
+        StepVerifier.create(adapter.withdrawInvitation("64b7f9f2e4b0a1c2d3e4f5a6", "alice")).verifyComplete();
+    }
+
     @Test
     @DisplayName("visibility round-trips, and an event saved without one stores none")
     void save_shouldStoreTheVisibility() {
@@ -616,6 +694,16 @@ class MongoEventRepositoryAdapterIntegrationTest {
         placed("Private dinner", "zoe", Visibility.PRIVATE, TRANSBORDEUR, "2026-10-12T19:00:00Z", null);
         String id = adapter.findOnMap("zoe", List.of(), LYON, MAP_NOW, 10).blockFirst().getId();
         adapter.addParticipant(id, "camille").block();
+
+        assertThat(mapTitles("camille", List.of(), 200)).containsExactly("Private dinner");
+    }
+
+    @Test
+    @DisplayName("the map shows a private event to whoever is invited to it")
+    void findOnMap_shouldShowInvitedEvents() {
+        placed("Private dinner", "zoe", Visibility.PRIVATE, TRANSBORDEUR, "2026-10-12T19:00:00Z", null);
+        String id = adapter.findOnMap("zoe", List.of(), LYON, MAP_NOW, 10).blockFirst().getId();
+        adapter.invite(id, "zoe", "camille").block();
 
         assertThat(mapTitles("camille", List.of(), 200)).containsExactly("Private dinner");
     }

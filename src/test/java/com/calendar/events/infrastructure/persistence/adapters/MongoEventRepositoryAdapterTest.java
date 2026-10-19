@@ -407,6 +407,35 @@ class MongoEventRepositoryAdapterTest {
     }
 
     @Test
+    void invite_shouldReadTheEventBack() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().id("1").build();
+        when(mongoRepository.invite("1", "org", "lea")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("1")).thenReturn(Mono.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.invite("1", "org", "lea")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void withdrawInvitation_shouldReadTheEventBack() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().id("1").build();
+        when(mongoRepository.withdrawInvitation("1", "lea")).thenReturn(Mono.just(0L));
+        when(mongoRepository.findById("1")).thenReturn(Mono.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.withdrawInvitation("1", "lea")).expectNext(domain).verifyComplete();
+    }
+
+    @Test
+    void forgetInvitations_shouldPassTheCountOn() {
+        when(mongoRepository.forgetInvitations("lea")).thenReturn(Mono.just(3L));
+
+        StepVerifier.create(adapter.forgetInvitations("lea")).expectNext(3L).verifyComplete();
+    }
+
+    @Test
     void setImage_shouldReadTheEventBack_whenTheOrganizersUpdateMatched() {
         EventEntity entity = new EventEntity();
         Event domain = Event.builder().id("1").image("events/1/cover-a.jpg").build();

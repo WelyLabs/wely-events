@@ -240,6 +240,18 @@ public enum EventErrorCode {
             "An event is created, moved or fixed on a date now or later; an all-day event, today or later.",
             HttpStatus.BAD_REQUEST),
 
+    INVITATION_NOT_ALLOWED(
+            "EVT-BUS-039",
+            "Invitation not allowed",
+            "Invite to an event of your own that is not over, outside a community, and never whoever it is kept from.",
+            HttpStatus.CONFLICT),
+
+    ALREADY_TAKING_PART(
+            "EVT-BUS-040",
+            "Already taking part",
+            "This person already takes part in the event: there is nothing to invite them to.",
+            HttpStatus.CONFLICT),
+
     SOCIAL_UNAVAILABLE(
             "EVT-TEC-001",
             "Social service unavailable",

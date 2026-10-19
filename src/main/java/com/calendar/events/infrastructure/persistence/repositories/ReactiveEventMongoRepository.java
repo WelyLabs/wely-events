@@ -30,8 +30,8 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     Mono<EventEntity> findShownTo(String eventId, String viewerId);
 
     /**
-     * The feed: not taken part in, and either mine, public, or shared with friends by one of
-     * mine. A missing visibility counts as FRIENDS, which {@code $in} with null matches. A surprise
+     * The feed: not taken part in, and either mine, one I am invited to, public, or shared with
+     * friends by one of mine. A missing visibility counts as FRIENDS, which {@code $in} with null matches. A surprise
      * is for the honoree's friends, whoever organizes it.
      */
     @Query("""
@@ -41,6 +41,7 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
                 { hiddenFrom: { $ne: ?0 } },
                 { $or: [
                     { organizerId: ?0 },
+                    { invitedIds: ?0 },
                     { visibility: 'PUBLIC', kind: { $ne: 'SURPRISE' } },
                     { organizerId: { $in: ?1 }, visibility: { $in: [ 'FRIENDS', null ] }, kind: { $ne: 'SURPRISE' } },
                     { kind: 'SURPRISE', honoreeId: { $in: ?1 } }
@@ -63,6 +64,7 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
                 { $or: [
                     { organizerId: ?0 },
                     { participantIds: ?0 },
+                    { invitedIds: ?0 },
                     { visibility: 'PUBLIC', kind: { $ne: 'SURPRISE' } },
                     { organizerId: { $in: ?1 }, visibility: { $in: [ 'FRIENDS', null ] }, kind: { $ne: 'SURPRISE' } },
                     { kind: 'SURPRISE', honoreeId: { $in: ?1 } }
@@ -75,9 +77,24 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     // $addToSet and $pull touch only the array, so concurrent subscriptions cannot overwrite each other.
     // The same update marks the group for the relay: no window where the change exists unannounced.
     // Matching on the absent participant (or present one) keeps a repeated click from bumping the version.
+    // Joining answers an invitation: the same update takes the user off the invited.
     @Query("{ '_id': ?0, 'participantIds': { $ne: ?1 } }")
-    @Update("{ '$addToSet': { 'participantIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
+    @Update("{ '$addToSet': { 'participantIds': ?1 }, '$pull': { 'invitedIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
     Mono<Long> addParticipant(String eventId, String userId);
+
+    // Filtered on the organizer, who alone invites, and on the absent participant: nobody is invited to what they already joined.
+    @Query("{ '_id': ?0, 'organizerId': ?1, 'participantIds': { $ne: ?2 } }")
+    @Update("{ '$addToSet': { 'invitedIds': ?2 } }")
+    Mono<Long> invite(String eventId, String organizerId, String inviteeId);
+
+    @Query("{ '_id': ?0 }")
+    @Update("{ '$pull': { 'invitedIds': ?1 } }")
+    Mono<Long> withdrawInvitation(String eventId, String inviteeId);
+
+    /** Takes the user off every invitation, past or not, for an erasure. */
+    @Query("{ 'invitedIds': ?0 }")
+    @Update("{ '$pull': { 'invitedIds': ?0 } }")
+    Mono<Long> forgetInvitations(String userId);
 
     // Never the organizer: leaving the organizer's seat empty is a hand-over or a deletion.
     @Query("{ '_id': ?0, 'participantIds': ?1, 'organizerId': { $ne: ?1 } }")

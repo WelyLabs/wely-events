@@ -109,6 +109,7 @@ class AccountErasureServiceTest {
         lenient().when(eventRepository.findOrganizedBy(anyString())).thenReturn(Flux.empty());
         lenient().when(eventRepository.leaveUpcoming(anyString(), any())).thenReturn(Mono.just(0L));
         lenient().when(eventRepository.clearUpcomingResponses(anyString(), any())).thenReturn(Mono.just(0L));
+        lenient().when(eventRepository.forgetInvitations(anyString())).thenReturn(Mono.just(0L));
         lenient().when(expenseRepository.findWithReceiptRecordedBy(anyString())).thenReturn(Flux.empty());
         lenient().when(deletionOutbox.record(any())).thenReturn(Mono.empty());
     }
@@ -474,6 +475,13 @@ class AccountErasureServiceTest {
 
         assertThat(report.eventsLeft()).isEqualTo(3);
         assertThat(report.responsesCleared()).isEqualTo(2);
+    }
+
+    @Test
+    void erase_shouldWithdrawEveryInvitationOfTheUser() {
+        when(eventRepository.forgetInvitations(USER)).thenReturn(Mono.just(4L));
+
+        assertThat(erase().invitationsWithdrawn()).isEqualTo(4);
     }
 
     private static Expense receiptOf(String id, String key) {

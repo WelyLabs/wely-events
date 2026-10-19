@@ -45,6 +45,7 @@ public interface EventRestMapper {
     @Mapping(target = "responses", ignore = true)
     // Set by the domain: who a surprise is hidden from, and what it is for.
     @Mapping(target = "hiddenFrom", ignore = true)
+    @Mapping(target = "invitedIds", ignore = true)
     @Mapping(target = "birthMonth", ignore = true)
     @Mapping(target = "birthDay", ignore = true)
     @Mapping(target = "honoreeName", ignore = true)

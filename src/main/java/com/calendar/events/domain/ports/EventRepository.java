@@ -58,6 +58,18 @@ public interface EventRepository {
     Mono<Event> addParticipant(String eventId, String userId);
 
     /**
+     * Invites the user to the event and returns it, unless they took part or the organizer changed
+     * meanwhile: the event comes back unchanged. Inviting twice is one invitation.
+     */
+    Mono<Event> invite(String eventId, String organizerId, String inviteeId);
+
+    /** Takes the user off the event's invited, idempotently; empty when the event is gone. */
+    Mono<Event> withdrawInvitation(String eventId, String inviteeId);
+
+    /** Takes the user off every invitation; returns how many events had one. */
+    Mono<Long> forgetInvitations(String userId);
+
+    /**
      * Removes the user from the event's participants, idempotently, unless they organize it: an
      * organizer leaves through {@link #handOver} or {@link #deleteIfAlone}. Returns the event as it
      * stands after the write.

@@ -90,6 +90,9 @@ public class EventEntity {
     /** Whose birthday a BIRTHDAY (its organizer) or a SURPRISE celebrates. */
     @Indexed(sparse = true)
     private String honoreeId;
+    /** Friends invited and not answered yet; absent on events stored before invitations. */
+    @Indexed(sparse = true)
+    private List<String> invitedIds;
     /** Users every read query leaves the event out for: a surprise's honoree. */
     private List<String> hiddenFrom;
     /** A BIRTHDAY's month (1-12) and day; its dates sit in the placeholder year 2000. */

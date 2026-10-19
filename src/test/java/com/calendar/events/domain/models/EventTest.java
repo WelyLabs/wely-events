@@ -72,6 +72,34 @@ class EventTest {
     }
 
     @Test
+    void isVisibleTo_shouldShowAPrivateEventToWhoeverIsInvited_andNobodyElse() {
+        Event event = by("bob", Visibility.PRIVATE);
+        event.setInvitedIds(new ArrayList<>(List.of("lea")));
+
+        assertThat(event.isVisibleTo("lea", Set.of())).isTrue();
+        assertThat(event.isVisibleTo("carol", Set.of("bob"))).isFalse();
+    }
+
+    @Test
+    void isVisibleTo_shouldStillHideAnEventFromItsHonoree_evenInvited() {
+        Event event = by("bob", Visibility.PRIVATE);
+        event.setInvitedIds(new ArrayList<>(List.of("lea")));
+        event.setHiddenFrom(List.of("lea"));
+
+        assertThat(event.isVisibleTo("lea", Set.of())).isFalse();
+    }
+
+    @Test
+    void isInvited_shouldNameOnlyThoseListed_andToleratePreviouslyStoredEvents() {
+        Event event = by("bob", Visibility.PRIVATE);
+        event.setInvitedIds(new ArrayList<>(List.of("lea")));
+
+        assertThat(event.isInvited("lea")).isTrue();
+        assertThat(event.isInvited("carol")).isFalse();
+        assertThat(Event.builder().invitedIds(null).build().isInvited("lea")).isFalse();
+    }
+
+    @Test
     void isVisibleTo_shouldHideACommunityEventFromAnyoneNotTakingPart_membershipBeingDecidedElsewhere() {
         Event event = by("bob", Visibility.COMMUNITY, "lea");
         event.setCommunityId("c1");
