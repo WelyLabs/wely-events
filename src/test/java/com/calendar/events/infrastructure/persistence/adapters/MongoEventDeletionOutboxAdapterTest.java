@@ -15,6 +15,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.argThat;
@@ -42,7 +43,7 @@ class MongoEventDeletionOutboxAdapterTest {
                 && "Quiz".equals(entity.getTitle()) && NOW.equals(entity.getDeletedAt()))))
                 .thenAnswer(call -> Mono.just(call.getArgument(0)));
 
-        StepVerifier.create(outbox.record(new EventDeletion("e1", "Quiz", 4L, NOW))).verifyComplete();
+        StepVerifier.create(outbox.record(new EventDeletion("e1", "Quiz", 4L, NOW))).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -51,7 +52,7 @@ class MongoEventDeletionOutboxAdapterTest {
                 .thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
         StepVerifier.create(outbox.record(new EventDeletion("e1", "Quiz", 4L, NOW)))
-                .verifyError(IllegalStateException.class);
+                .expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -61,14 +62,14 @@ class MongoEventDeletionOutboxAdapterTest {
 
         StepVerifier.create(outbox.findPending(10))
                 .expectNext(new EventDeletion("e1", "Quiz", 4L, NOW))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void markPublished_shouldRemoveTheTombstone() {
         when(mongoRepository.deleteTombstone("e1")).thenReturn(Mono.just(1L));
 
-        StepVerifier.create(outbox.markPublished("e1")).verifyComplete();
+        StepVerifier.create(outbox.markPublished("e1")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mongoRepository).deleteTombstone("e1");
     }

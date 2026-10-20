@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -97,7 +98,7 @@ class MediaApiAdapterTest {
 
         StepVerifier.create(adapter.store("events/1/cover-a.jpg", "JPEGDATA".getBytes(StandardCharsets.ISO_8859_1), MediaProfile.COVER))
                 .expectNext(new StoredMedia("events/1/cover-a.jpg", 1600, 900))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(method).isEqualTo("POST");
         assertThat(path).isEqualTo(MediaApiAdapter.MEDIA_PATH);
@@ -115,7 +116,7 @@ class MediaApiAdapterTest {
 
         StepVerifier.create(adapter.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -124,7 +125,7 @@ class MediaApiAdapterTest {
 
         StepVerifier.create(adapter.store("events/1/receipts/x1-a.jpg", new byte[]{1}, MediaProfile.RECEIPT))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.RECEIPT_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -133,7 +134,7 @@ class MediaApiAdapterTest {
 
         StepVerifier.create(adapter.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.MEDIA_TOO_LARGE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -145,7 +146,7 @@ class MediaApiAdapterTest {
             StepVerifier.create(adapter.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
                     .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE)
                             && error.getCause() == null)
-                    .verify();
+                    .verify(Duration.ofSeconds(10));
         }
     }
 
@@ -157,7 +158,7 @@ class MediaApiAdapterTest {
 
         StepVerifier.create(adapter.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
                 .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -168,14 +169,14 @@ class MediaApiAdapterTest {
         StepVerifier.create(unreachable.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
                 .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE)
                         && error.getCause() instanceof WebClientRequestException)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
     void delete_shouldNameTheKeyInTheQuery() {
         status = 204;
 
-        StepVerifier.create(adapter.delete("events/1/cover-a.jpg")).verifyComplete();
+        StepVerifier.create(adapter.delete("events/1/cover-a.jpg")).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(method).isEqualTo("DELETE");
         assertThat(path).isEqualTo(MediaApiAdapter.MEDIA_PATH);
@@ -189,7 +190,7 @@ class MediaApiAdapterTest {
 
         StepVerifier.create(adapter.delete("events/1/cover-a.jpg"))
                 .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -198,7 +199,7 @@ class MediaApiAdapterTest {
 
         StepVerifier.create(adapter.urls(List.of("events/1/cover-a.jpg", "events/2/cover-b.jpg")))
                 .expectNext(Map.of("events/1/cover-a.jpg", "https://media/a"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(method).isEqualTo("POST");
         assertThat(path).isEqualTo(MediaApiAdapter.URLS_PATH);
@@ -211,7 +212,7 @@ class MediaApiAdapterTest {
     void urls_shouldBeEmpty_whenTheAnswerHasNoUrls() {
         body = "{}";
 
-        StepVerifier.create(adapter.urls(List.of("events/1/cover-a.jpg"))).expectNext(Map.of()).verifyComplete();
+        StepVerifier.create(adapter.urls(List.of("events/1/cover-a.jpg"))).expectNext(Map.of()).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -220,7 +221,7 @@ class MediaApiAdapterTest {
 
         StepVerifier.create(adapter.urls(List.of("events/1/cover-a.jpg")))
                 .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test

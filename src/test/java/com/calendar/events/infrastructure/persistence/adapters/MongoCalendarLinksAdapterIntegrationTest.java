@@ -19,6 +19,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,8 +61,8 @@ class MongoCalendarLinksAdapterIntegrationTest {
 
         adapter.save(link).block();
 
-        StepVerifier.create(adapter.findByToken("tok")).expectNext(link).verifyComplete();
-        StepVerifier.create(adapter.findByToken("other")).verifyComplete();
+        StepVerifier.create(adapter.findByToken("tok")).expectNext(link).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.findByToken("other")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test

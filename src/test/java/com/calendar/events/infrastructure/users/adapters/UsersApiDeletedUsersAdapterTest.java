@@ -106,7 +106,7 @@ class UsersApiDeletedUsersAdapterTest {
         StepVerifier.create(adapter().page(null, 500))
                 .expectNext(new DeletedUsersPage(
                         List.of(new DeletedUser(ID, Instant.parse("2026-10-15T14:03:27.123Z"))), "MjAyNg"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(requestedUri.get()).isEqualTo(UsersApiDeletedUsersAdapter.PATH + "?limit=500");
         assertThat(secretHeader.get()).isEqualTo(SECRET);
@@ -118,7 +118,7 @@ class UsersApiDeletedUsersAdapterTest {
 
         StepVerifier.create(adapter().page("a+b/c=", 2))
                 .expectNext(new DeletedUsersPage(List.of(), null))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(requestedUri.get()).isEqualTo(UsersApiDeletedUsersAdapter.PATH + "?limit=2&after=a%2Bb%2Fc%3D");
     }
@@ -128,7 +128,7 @@ class UsersApiDeletedUsersAdapterTest {
         StepVerifier.create(adapter(url, " ").page(null, 500))
                 // Nothing failed underneath: the adapter refused on its own, so there is no cause.
                 .expectErrorMatches(error -> usersUnavailable(error) && error.getCause() == null)
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         assertThat(calls).hasValue(0);
     }
@@ -137,7 +137,7 @@ class UsersApiDeletedUsersAdapterTest {
     void page_shouldFailWithoutCalling_whenTheUrlIsBlank() {
         StepVerifier.create(adapter("", SECRET).page(null, 500))
                 .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         assertThat(calls).hasValue(0);
     }
@@ -149,7 +149,7 @@ class UsersApiDeletedUsersAdapterTest {
 
         StepVerifier.create(adapter().page(null, 500))
                 .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         assertThat(output).contains("Could not list deleted accounts").doesNotContain(SECRET);
     }
@@ -162,7 +162,7 @@ class UsersApiDeletedUsersAdapterTest {
                 .expectErrorMatches(error -> usersUnavailable(error)
                         && error.getCause() instanceof WebClientResponseException response
                         && response.getStatusCode().value() == 503)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -193,7 +193,7 @@ class UsersApiDeletedUsersAdapterTest {
 
         StepVerifier.create(adapter().page(null, 500))
                 .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -202,7 +202,7 @@ class UsersApiDeletedUsersAdapterTest {
 
         StepVerifier.create(adapter().page(null, 500))
                 .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -212,7 +212,7 @@ class UsersApiDeletedUsersAdapterTest {
 
         StepVerifier.create(adapter().page(null, 500))
                 .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -221,7 +221,7 @@ class UsersApiDeletedUsersAdapterTest {
 
         StepVerifier.create(adapter().page(null, 500))
                 .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -230,7 +230,7 @@ class UsersApiDeletedUsersAdapterTest {
 
         StepVerifier.create(adapter().page(null, 500))
                 .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -239,6 +239,6 @@ class UsersApiDeletedUsersAdapterTest {
 
         StepVerifier.create(adapter().page(null, 500))
                 .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

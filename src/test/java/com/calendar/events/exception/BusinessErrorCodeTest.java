@@ -34,7 +34,7 @@ class BusinessErrorCodeTest {
 
     @Test
     void values_shouldNotReuseACodeTheHandlerWritesItself() {
-        assertThat(codes()).doesNotContainAnyElementsOf(GlobalErrorHandler.LITERAL_CODES);
+        assertThat(codes()).doesNotContainAnyElementsOf(GlobalErrorHandler.HANDLER_CODES);
     }
 
     @Test

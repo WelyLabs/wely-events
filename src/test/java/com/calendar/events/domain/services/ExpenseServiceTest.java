@@ -27,6 +27,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -112,7 +113,7 @@ class ExpenseServiceTest {
         Expense expense = stored("x1", "alice", ExpenseKind.EXPENSE);
         when(expenseRepository.findByEvent(EVENT)).thenReturn(Flux.just(expense));
 
-        StepVerifier.create(service.list(EVENT, "bob")).expectNext(expense).verifyComplete();
+        StepVerifier.create(service.list(EVENT, "bob")).expectNext(expense).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -121,7 +122,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.list(EVENT, "mallory"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).findByEvent(any());
     }
 
@@ -131,7 +132,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.list(EVENT, "alice"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -147,7 +148,7 @@ class ExpenseServiceTest {
                     assertThat(expense.spentAt()).isEqualTo(NOW);
                     assertThat(expense.eventId()).isEqualTo(EVENT);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -156,7 +157,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.add(EVENT, "alice", draft("alice", "alice", "mallory")))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).save(any());
     }
 
@@ -166,7 +167,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.add(EVENT, "alice", draft("mallory", "alice")))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -175,7 +176,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.add(EVENT, "mallory", draft("mallory", "mallory")))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -193,7 +194,7 @@ class ExpenseServiceTest {
                     assertThat(expense.createdBy()).isEqualTo("alice");
                     assertThat(expense.version()).isEqualTo(2L);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -204,7 +205,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.update(EVENT, "x1", "alice", draft("alice", "alice", "bob")))
                 .assertNext(expense -> assertThat(expense.version()).isEqualTo(3L))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -215,7 +216,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.update(EVENT, "x1", "olivia", draft("alice", "alice", "bob")))
                 .expectNextCount(1)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -225,7 +226,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.update(EVENT, "x1", "bob", draft("alice", "alice", "bob")))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).save(any());
     }
 
@@ -236,7 +237,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.update(EVENT, "s1", "alice", draft("alice", "alice", "bob")))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -246,7 +247,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.update(EVENT, "elsewhere", "alice", draft("alice", "alice")))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -255,7 +256,7 @@ class ExpenseServiceTest {
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
         when(expenseRepository.delete(EVENT, "x1")).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.delete(EVENT, "x1", "alice")).verifyComplete();
+        StepVerifier.create(service.delete(EVENT, "x1", "alice")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(expenseRepository).delete(EVENT, "x1");
     }
@@ -267,7 +268,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.delete(EVENT, "x1", "bob"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).delete(any(), any());
     }
 
@@ -283,7 +284,7 @@ class ExpenseServiceTest {
                     assertThat(ledger.totalCents()).isEqualTo(3000);
                     assertThat(ledger.balances()).containsEntry("alice", 2000L).containsEntry("bob", -1000L);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -292,7 +293,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.ledger(EVENT, "mallory"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -307,7 +308,7 @@ class ExpenseServiceTest {
                     assertThat(settlement.createdBy()).isEqualTo("alice");
                     assertThat(settlement.spentAt()).isEqualTo(NOW);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -316,7 +317,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.settle(EVENT, "olivia", "bob", "alice", 1000))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).save(any());
     }
 
@@ -326,7 +327,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.settle(EVENT, "alice", "alice", "mallory", 1000))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     /** Alice paid for Gone, whose account was deleted since and who is no longer a member. */
@@ -344,7 +345,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.settle(EVENT, "alice", "alice", "gone", 1000))
                 .assertNext(settlement -> assertThat(settlement.people()).containsExactlyInAnyOrder("alice", "gone"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -355,7 +356,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.settle(EVENT, "alice", "alice", "gone", 1000))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).save(any());
     }
 
@@ -371,7 +372,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.update(EVENT, "x9", "alice", edit))
                 .assertNext(expense -> assertThat(expense.title()).isEqualTo("Billets de train"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -382,7 +383,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.add(EVENT, "alice", draft("alice", "alice", "gone")))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(markers, never()).deletedAmong(any());
         verify(expenseRepository, never()).save(any());
     }
@@ -394,7 +395,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.update(EVENT, "x1", "alice", draft("alice", "alice", "mallory")))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).findByEvent(any());
         verify(expenseRepository, never()).save(any());
     }
@@ -406,7 +407,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.settle(EVENT, "alice", "alice", "bob", 1000))
                 .expectNextCount(1)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(markers, never()).deletedAmong(any());
     }
 
@@ -417,7 +418,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.settle(EVENT, "alice", "alice", "gone", 1000))
                 .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.STORE_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).save(any());
     }
 
@@ -427,7 +428,7 @@ class ExpenseServiceTest {
         savesWhatItIsGiven();
         ArgumentCaptor<Expense> saved = ArgumentCaptor.forClass(Expense.class);
 
-        StepVerifier.create(service.add(EVENT, "alice", draft("alice", "alice", "bob"))).expectNextCount(1).verifyComplete();
+        StepVerifier.create(service.add(EVENT, "alice", draft("alice", "alice", "bob"))).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(expenseRepository).save(saved.capture());
         assertThat(saved.getValue().id()).isNull();
@@ -444,7 +445,7 @@ class ExpenseServiceTest {
                     assertThat(expense.receiptKey()).isEqualTo("events/ev-1/receipts/x1-a.jpg");
                     assertThat(expense.receiptAddedBy()).isEqualTo("alice");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -454,7 +455,7 @@ class ExpenseServiceTest {
         when(expenseRepository.delete(EVENT, "x1")).thenReturn(Mono.empty());
         when(mediaStore.delete("events/ev-1/receipts/x1-a.jpg")).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.delete(EVENT, "x1", "alice")).verifyComplete();
+        StepVerifier.create(service.delete(EVENT, "x1", "alice")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore).delete("events/ev-1/receipts/x1-a.jpg");
     }
@@ -466,7 +467,7 @@ class ExpenseServiceTest {
         when(expenseRepository.delete(EVENT, "x1")).thenReturn(Mono.empty());
         when(mediaStore.delete(anyString())).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
 
-        StepVerifier.create(service.delete(EVENT, "x1", "alice")).verifyComplete();
+        StepVerifier.create(service.delete(EVENT, "x1", "alice")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -475,7 +476,7 @@ class ExpenseServiceTest {
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
         when(expenseRepository.delete(EVENT, "x1")).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.delete(EVENT, "x1", "alice")).verifyComplete();
+        StepVerifier.create(service.delete(EVENT, "x1", "alice")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore, never()).delete(anyString());
     }
@@ -495,7 +496,7 @@ class ExpenseServiceTest {
         when(mediaStore.delete("events/ev-1/receipts/x1-old.jpg")).thenReturn(Mono.empty());
         ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
 
-        StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1})).expectNext(updated).verifyComplete();
+        StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1})).expectNext(updated).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(expenseRepository).setReceipt(eq(EVENT), eq("x1"), key.capture(), eq("alice"));
         assertThat(key.getValue()).matches("events/ev-1/receipts/x1-[0-9a-f-]{36}\\.jpg");
@@ -510,7 +511,7 @@ class ExpenseServiceTest {
         when(expenseRepository.setReceipt(eq(EVENT), eq("x1"), anyString(), eq("olivia")))
                 .thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
 
-        StepVerifier.create(service.attachReceipt(EVENT, "x1", "olivia", new byte[]{1})).expectNextCount(1).verifyComplete();
+        StepVerifier.create(service.attachReceipt(EVENT, "x1", "olivia", new byte[]{1})).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(expenseRepository).setReceipt(eq(EVENT), eq("x1"), startsWith("events/ev-1/receipts/x1-"), eq("olivia"));
         verify(mediaStore, never()).delete(anyString());
@@ -523,7 +524,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.attachReceipt(EVENT, "x1", "bob", new byte[]{1}))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).store(any(), any(), any());
     }
 
@@ -533,7 +534,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.attachReceipt(EVENT, "x1", "mallory", new byte[]{1}))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).store(any(), any(), any());
     }
 
@@ -544,7 +545,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.attachReceipt(EVENT, "s1", "alice", new byte[]{1}))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).store(any(), any(), any());
     }
 
@@ -557,7 +558,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1}))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.RECEIPT_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).setReceipt(any(), any(), any(), any());
     }
 
@@ -571,7 +572,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1}))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore).delete(startsWith("events/ev-1/receipts/x1-"));
     }
 
@@ -584,7 +585,7 @@ class ExpenseServiceTest {
                 .thenReturn(Mono.error(new IllegalStateException("mongo down")));
         when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1})).verifyError(IllegalStateException.class);
+        StepVerifier.create(service.attachReceipt(EVENT, "x1", "alice", new byte[]{1})).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
         verify(mediaStore).delete(startsWith("events/ev-1/receipts/x1-"));
     }
 
@@ -595,7 +596,7 @@ class ExpenseServiceTest {
         when(expenseRepository.setReceipt(EVENT, "x1", null, null)).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
         when(mediaStore.delete("events/ev-1/receipts/x1-a.jpg")).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.removeReceipt(EVENT, "x1", "olivia")).verifyComplete();
+        StepVerifier.create(service.removeReceipt(EVENT, "x1", "olivia")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore).delete("events/ev-1/receipts/x1-a.jpg");
     }
@@ -605,7 +606,7 @@ class ExpenseServiceTest {
         eventExists();
         when(expenseRepository.findByIdInEvent(EVENT, "x1")).thenReturn(Mono.just(stored("x1", "alice", ExpenseKind.EXPENSE)));
 
-        StepVerifier.create(service.removeReceipt(EVENT, "x1", "alice")).verifyComplete();
+        StepVerifier.create(service.removeReceipt(EVENT, "x1", "alice")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(expenseRepository, never()).setReceipt(any(), any(), any(), any());
         verify(mediaStore, never()).delete(anyString());
@@ -618,7 +619,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.removeReceipt(EVENT, "x1", "bob"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).delete(anyString());
     }
 
@@ -628,7 +629,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.removeReceipt(EVENT, "x1", "mallory"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -639,7 +640,7 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.removeReceipt(EVENT, "x1", "alice"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EXPENSE_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).delete(anyString());
     }
 
@@ -651,6 +652,6 @@ class ExpenseServiceTest {
 
         StepVerifier.create(service.list(EVENT, "alice"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

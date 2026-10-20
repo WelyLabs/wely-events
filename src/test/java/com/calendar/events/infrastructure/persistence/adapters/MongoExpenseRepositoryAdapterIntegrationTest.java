@@ -23,6 +23,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -65,9 +66,9 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
     void findByIdInEvent_shouldIgnoreAnExpenseOfAnotherEvent() {
         Expense theirs = stored("ev-other", "Leur dépense", Instant.parse("2026-10-13T10:00:00Z"));
 
-        StepVerifier.create(adapter.findByIdInEvent("ev-mine", theirs.id())).verifyComplete();
-        StepVerifier.create(adapter.delete("ev-mine", theirs.id())).verifyComplete();
-        StepVerifier.create(adapter.findByIdInEvent("ev-other", theirs.id())).expectNextCount(1).verifyComplete();
+        StepVerifier.create(adapter.findByIdInEvent("ev-mine", theirs.id())).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.delete("ev-mine", theirs.id())).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.findByIdInEvent("ev-other", theirs.id())).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -78,7 +79,7 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.findByEvent("ev-1").map(Expense::title).collectList())
                 .assertNext(titles -> assertThat(titles).containsExactly("Samedi", "Vendredi"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -90,11 +91,11 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
         Expense secondEdit = new Expense(original.id(), "ev-1", "Courses du soir", 1500, "EUR", "alice", "alice",
                 ExpenseKind.EXPENSE, SplitMode.EQUAL, original.shares(), original.spentAt(), null, null, original.version());
 
-        StepVerifier.create(adapter.save(firstEdit)).expectNextCount(1).verifyComplete();
+        StepVerifier.create(adapter.save(firstEdit)).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.save(secondEdit))
                 .expectErrorMatches(error -> error instanceof BusinessException exception
                         && exception.getErrorCode() == BusinessErrorCode.EXPENSE_CONFLICT)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -102,10 +103,10 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
         stored("ev-1", "Courses", Instant.parse("2026-10-13T10:00:00Z"));
         stored("ev-2", "Essence", Instant.parse("2026-10-13T10:00:00Z"));
 
-        StepVerifier.create(adapter.deleteByEvent("ev-1")).verifyComplete();
+        StepVerifier.create(adapter.deleteByEvent("ev-1")).expectComplete().verify(Duration.ofSeconds(10));
 
-        StepVerifier.create(adapter.findByEvent("ev-1")).verifyComplete();
-        StepVerifier.create(adapter.findByEvent("ev-2")).expectNextCount(1).verifyComplete();
+        StepVerifier.create(adapter.findByEvent("ev-1")).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.findByEvent("ev-2")).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -114,14 +115,14 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
         Expense original = stored("ev-1", "Courses", Instant.parse("2026-10-13T10:00:00Z"));
 
         StepVerifier.create(adapter.setReceipt("ev-other", original.id(), "events/ev-1/receipts/r.jpg", "alice"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.setReceipt("ev-1", original.id(), "events/ev-1/receipts/r.jpg", "alice"))
                 .assertNext(updated -> {
                     assertThat(updated.receiptKey()).isEqualTo("events/ev-1/receipts/r.jpg");
                     assertThat(updated.receiptAddedBy()).isEqualTo("alice");
                     assertThat(updated.version()).isEqualTo(original.version() + 1);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -135,7 +136,7 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
         StepVerifier.create(adapter.save(staleEdit))
                 .expectErrorMatches(error -> error instanceof BusinessException exception
                         && exception.getErrorCode() == BusinessErrorCode.EXPENSE_CONFLICT)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     private Expense recordedBy(String eventId, String author) {
@@ -157,7 +158,7 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
         StepVerifier.create(adapter.findWithReceiptRecordedBy("gone").map(Expense::receiptKey).collectList())
                 .assertNext(keys -> assertThat(keys)
                         .containsExactlyInAnyOrder("events/ev-1/receipts/a.jpg", "events/ev-2/receipts/b.jpg"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -175,7 +176,7 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
         StepVerifier.create(adapter.findWithReceiptRecordedBy("gone").map(Expense::receiptKey).collectList())
                 .assertNext(keys -> assertThat(keys)
                         .containsExactlyInAnyOrder("events/ev-1/receipts/own.jpg", "events/ev-1/receipts/legacy.jpg"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -185,11 +186,11 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
         Expense withReceipt = adapter.setReceipt("ev-1", expense.id(), "events/ev-1/receipts/a.jpg", "gone").block();
 
         StepVerifier.create(adapter.clearReceipt("ev-1", expense.id(), "events/ev-1/receipts/other.jpg"))
-                .expectNext(false).verifyComplete();
+                .expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.clearReceipt("ev-other", expense.id(), "events/ev-1/receipts/a.jpg"))
-                .expectNext(false).verifyComplete();
+                .expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.clearReceipt("ev-1", expense.id(), "events/ev-1/receipts/a.jpg"))
-                .expectNext(true).verifyComplete();
+                .expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
 
         StepVerifier.create(adapter.findByIdInEvent("ev-1", expense.id()))
                 .assertNext(cleared -> {
@@ -197,10 +198,10 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
                     assertThat(cleared.receiptAddedBy()).isNull();
                     assertThat(cleared.version()).isEqualTo(withReceipt.version() + 1);
                 })
-                .verifyComplete();
-        StepVerifier.create(adapter.findWithReceiptRecordedBy("gone")).verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.findWithReceiptRecordedBy("gone")).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.clearReceipt("ev-1", expense.id(), "events/ev-1/receipts/a.jpg"))
-                .expectNext(false).verifyComplete();
+                .expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -213,6 +214,6 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
                     assertThat(updated.receiptKey()).isNull();
                     assertThat(updated.receiptAddedBy()).isNull();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 }

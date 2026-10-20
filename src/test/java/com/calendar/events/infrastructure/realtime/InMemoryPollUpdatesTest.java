@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import reactor.core.Disposable;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -55,7 +56,7 @@ class InMemoryPollUpdatesTest {
                 .then(() -> updates.publish("e1", SECOND))
                 .expectNext(SECOND)
                 .thenCancel()
-                .verify();
+                .verify(Duration.ofSeconds(10));
         first.dispose();
     }
 

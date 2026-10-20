@@ -13,6 +13,7 @@ import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.messaging.MessageDeliveryException;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,7 +40,7 @@ class KafkaEventDateFixedPublisherTest {
     void publish_shouldSendTheDateOnItsBinding() {
         when(streamBridge.send(KafkaEventDateFixedPublisher.DESTINATION, FIXED)).thenReturn(true);
 
-        StepVerifier.create(publisher.publish(FIXED)).verifyComplete();
+        StepVerifier.create(publisher.publish(FIXED)).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(streamBridge).send(KafkaEventDateFixedPublisher.DESTINATION, FIXED);
         assertThat(KafkaEventDateFixedPublisher.DESTINATION).isEqualTo("eventDateFixed-out-0");
@@ -51,7 +52,7 @@ class KafkaEventDateFixedPublisherTest {
 
         StepVerifier.create(publisher.publish(FIXED))
                 .expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == null)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -63,6 +64,6 @@ class KafkaEventDateFixedPublisherTest {
 
         StepVerifier.create(publisher.publish(FIXED))
                 .expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == failure)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

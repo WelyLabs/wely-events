@@ -25,6 +25,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -64,7 +65,7 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(result)
                 .expectNext(domain)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -79,7 +80,7 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(result)
                 .expectNext(domain)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -97,7 +98,7 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(result)
                 .expectNext(domainOutput)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -107,14 +108,14 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.deleteByOrganizer("1", "org")).thenReturn(Mono.just(removed));
         when(mapper.toDomain(removed)).thenReturn(domain);
 
-        StepVerifier.create(adapter.deleteByOrganizer("1", "org")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.deleteByOrganizer("1", "org")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void deleteByOrganizer_shouldBeEmpty_whenNothingMatched() {
         when(mongoRepository.deleteByOrganizer("1", "org")).thenReturn(Mono.empty());
 
-        StepVerifier.create(adapter.deleteByOrganizer("1", "org")).verifyComplete();
+        StepVerifier.create(adapter.deleteByOrganizer("1", "org")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -124,21 +125,21 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.deleteIfOnlyAmong("1", "org", Set.of("org"))).thenReturn(Mono.just(removed));
         when(mapper.toDomain(removed)).thenReturn(domain);
 
-        StepVerifier.create(adapter.deleteIfAlone("1", "org", Set.of())).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone("1", "org", Set.of())).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void deleteIfAlone_shouldBeEmpty_whenSomeoneElseTakesPart() {
         when(mongoRepository.deleteIfOnlyAmong("1", "org", Set.of("org"))).thenReturn(Mono.empty());
 
-        StepVerifier.create(adapter.deleteIfAlone("1", "org", List.of())).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone("1", "org", List.of())).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void deleteIfAlone_shouldCountTheOrganizerAmongTheIdsToIgnore() {
         when(mongoRepository.deleteIfOnlyAmong("1", "org", Set.of("gone", "demo", "org"))).thenReturn(Mono.empty());
 
-        StepVerifier.create(adapter.deleteIfAlone("1", "org", List.of("gone", "demo"))).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone("1", "org", List.of("gone", "demo"))).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository).deleteIfOnlyAmong("1", "org", Set.of("gone", "demo", "org"));
     }
 
@@ -149,7 +150,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findOrganizedBy("org")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findOrganizedBy("org")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findOrganizedBy("org")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -160,14 +161,14 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findById("1")).thenReturn(Mono.just(updated));
         when(mapper.toDomain(updated)).thenReturn(domain);
 
-        StepVerifier.create(adapter.handOverKeepingFormer("1", "org", "lea")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.handOverKeepingFormer("1", "org", "lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void handOverKeepingFormer_shouldBeEmpty_whenNothingMatched() {
         when(mongoRepository.handOverKeepingFormer("1", "org", "lea")).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(adapter.handOverKeepingFormer("1", "org", "lea")).verifyComplete();
+        StepVerifier.create(adapter.handOverKeepingFormer("1", "org", "lea")).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).findById("1");
     }
 
@@ -176,7 +177,7 @@ class MongoEventRepositoryAdapterTest {
         Instant at = Instant.parse("2026-10-15T14:00:00Z");
         when(mongoRepository.leaveUpcoming("lea", at, Instant.parse("2026-10-15T13:00:00Z"))).thenReturn(Mono.just(2L));
 
-        StepVerifier.create(adapter.leaveUpcoming("lea", at)).expectNext(2L).verifyComplete();
+        StepVerifier.create(adapter.leaveUpcoming("lea", at)).expectNext(2L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -185,14 +186,14 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.clearUpcomingResponses("lea", at, Instant.parse("2026-10-15T13:00:00Z")))
                 .thenReturn(Mono.just(1L));
 
-        StepVerifier.create(adapter.clearUpcomingResponses("lea", at)).expectNext(1L).verifyComplete();
+        StepVerifier.create(adapter.clearUpcomingResponses("lea", at)).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void clearUpcomingResponses_shouldRejectAnIdUnusableAsAFieldName() {
         StepVerifier.create(adapter.clearUpcomingResponses("lea.$x", Instant.parse("2026-10-15T14:00:00Z")))
                 .expectError(IllegalArgumentException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).clearUpcomingResponses(any(), any(), any());
     }
 
@@ -204,7 +205,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findById("1")).thenReturn(Mono.just(updated));
         when(mapper.toDomain(updated)).thenReturn(domain);
 
-        StepVerifier.create(adapter.handOver("1", "org", "lea")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.handOver("1", "org", "lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).save(any());
     }
 
@@ -212,7 +213,7 @@ class MongoEventRepositoryAdapterTest {
     void handOver_shouldBeEmpty_whenNothingMatched() {
         when(mongoRepository.handOver("1", "org", "lea")).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(adapter.handOver("1", "org", "lea")).verifyComplete();
+        StepVerifier.create(adapter.handOver("1", "org", "lea")).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).findById("1");
     }
 
@@ -228,7 +229,7 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(result)
                 .expectNext(domain)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -245,7 +246,7 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(adapter.findOccupying(users, from, to, "viewer"))
                 .expectNext(domain)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -260,7 +261,7 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(result)
                 .expectNext(domain)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -274,7 +275,7 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(adapter.addParticipant("1", "user123"))
                 .expectNext(domain)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         // No save: a full rewrite would lose a concurrent subscription.
         verify(mongoRepository, never()).save(any());
@@ -286,7 +287,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findById("missing")).thenReturn(Mono.empty());
 
         StepVerifier.create(adapter.addParticipant("missing", "user123"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -300,7 +301,7 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(adapter.removeParticipant("1", "user123"))
                 .expectNext(domain)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mongoRepository, never()).save(any());
     }
@@ -316,7 +317,7 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(adapter.findOnMap("u", List.of("f"), new GeoBox(45.70, 4.77, 45.81, 4.92), now, 200))
                 .expectNext(domain)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -326,7 +327,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findInvolving("user1")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findInvolving("user1")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findInvolving("user1")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     private static final Instant NOW = Instant.parse("2026-10-14T12:00:00Z");
@@ -340,7 +341,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findUpcomingInvolving("bob", NOW, AN_HOUR_AGO, "alice")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findUpcomingInvolving("bob", "alice", NOW)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findUpcomingInvolving("bob", "alice", NOW)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -351,7 +352,7 @@ class MongoEventRepositoryAdapterTest {
                 .thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findUpcomingInvolvingBoth("alice", "bob", NOW, 5)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findUpcomingInvolvingBoth("alice", "bob", NOW, 5)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -362,14 +363,14 @@ class MongoEventRepositoryAdapterTest {
                 .thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findPastInvolvingBoth("alice", "bob", NOW, 6)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findPastInvolvingBoth("alice", "bob", NOW, 6)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void countPastInvolvingBoth_shouldLetEventsWithoutAnEndLastTheDefaultDuration() {
         when(mongoRepository.countPastInvolvingBoth("alice", "bob", NOW, AN_HOUR_AGO)).thenReturn(Mono.just(4L));
 
-        StepVerifier.create(adapter.countPastInvolvingBoth("alice", "bob", NOW)).expectNext(4L).verifyComplete();
+        StepVerifier.create(adapter.countPastInvolvingBoth("alice", "bob", NOW)).expectNext(4L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -379,7 +380,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findSharedOutings("alice", "bob", NOW, Limit.unlimited())).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findSharedOutings("alice", "bob", NOW)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findSharedOutings("alice", "bob", NOW)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -389,21 +390,21 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findSharedOutings("alice", "bob", NOW, Limit.of(1))).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findLastSharedOuting("alice", "bob", NOW)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findLastSharedOuting("alice", "bob", NOW)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void findLastSharedOuting_shouldBeEmpty_withoutOne() {
         when(mongoRepository.findSharedOutings("alice", "bob", NOW, Limit.of(1))).thenReturn(Flux.empty());
 
-        StepVerifier.create(adapter.findLastSharedOuting("alice", "bob", NOW)).verifyComplete();
+        StepVerifier.create(adapter.findLastSharedOuting("alice", "bob", NOW)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void hasUpcomingShared_shouldAskWhetherOneExists() {
         when(mongoRepository.existsUpcomingShared("alice", "bob", NOW)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(adapter.hasUpcomingShared("alice", "bob", NOW)).expectNext(true).verifyComplete();
+        StepVerifier.create(adapter.hasUpcomingShared("alice", "bob", NOW)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -414,7 +415,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findById("1")).thenReturn(Mono.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.invite("1", "org", "lea")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.invite("1", "org", "lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -425,14 +426,14 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findById("1")).thenReturn(Mono.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.withdrawInvitation("1", "lea")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.withdrawInvitation("1", "lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void forgetInvitations_shouldPassTheCountOn() {
         when(mongoRepository.forgetInvitations("lea")).thenReturn(Mono.just(3L));
 
-        StepVerifier.create(adapter.forgetInvitations("lea")).expectNext(3L).verifyComplete();
+        StepVerifier.create(adapter.forgetInvitations("lea")).expectNext(3L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -443,14 +444,14 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findById("1")).thenReturn(Mono.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.setImage("1", "org", "events/1/cover-a.jpg")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.setImage("1", "org", "events/1/cover-a.jpg")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void setImage_shouldBeEmpty_whenNoEventOfThatOrganizerMatched() {
         when(mongoRepository.setImage("1", "someone-else", null)).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(adapter.setImage("1", "someone-else", null)).verifyComplete();
+        StepVerifier.create(adapter.setImage("1", "someone-else", null)).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mongoRepository, never()).findById("1");
     }
@@ -464,7 +465,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.updateDetails("1", "org", "T", "L", point, "D", "PRIVATE")).thenReturn(Mono.just(1L));
         readBack(domain);
 
-        StepVerifier.create(adapter.updateDetails("1", "org", details, false)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.updateDetails("1", "org", details, false)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).updateDetailsAndGroup(any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -475,7 +476,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.updateDetailsAndGroup("1", "org", "T", "L", null, null, null)).thenReturn(Mono.just(1L));
         readBack(domain);
 
-        StepVerifier.create(adapter.updateDetails("1", "org", details, true)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.updateDetails("1", "org", details, true)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -483,7 +484,7 @@ class MongoEventRepositoryAdapterTest {
         EventDetails details = new EventDetails("T", "L", null, null, null);
         when(mongoRepository.updateDetails("1", "someone-else", "T", "L", null, null, null)).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(adapter.updateDetails("1", "someone-else", details, false)).verifyComplete();
+        StepVerifier.create(adapter.updateDetails("1", "someone-else", details, false)).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).findById("1");
     }
 
@@ -508,7 +509,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.castBallot("1", "lea", Map.of("fri", "YES"))).thenReturn(Mono.just(1L));
         readBack(after);
 
-        StepVerifier.create(adapter.castBallot("1", "lea", Map.of("fri", PollAnswer.YES))).expectNext(after).verifyComplete();
+        StepVerifier.create(adapter.castBallot("1", "lea", Map.of("fri", PollAnswer.YES))).expectNext(after).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -517,7 +518,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.withdrawBallot("1", "lea")).thenReturn(Mono.just(0L));
         readBack(after);
 
-        StepVerifier.create(adapter.castBallot("1", "lea", Map.of())).expectNext(after).verifyComplete();
+        StepVerifier.create(adapter.castBallot("1", "lea", Map.of())).expectNext(after).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).castBallot(any(), any(), any());
     }
 
@@ -529,7 +530,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.castBallot("1", "lea", Map.of("fri", "YES"))).thenReturn(Mono.just(0L));
         readBack(after);
 
-        StepVerifier.create(adapter.castBallot("1", "lea", Map.of("fri", PollAnswer.YES))).expectNext(after).verifyComplete();
+        StepVerifier.create(adapter.castBallot("1", "lea", Map.of("fri", PollAnswer.YES))).expectNext(after).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -538,17 +539,17 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.castBallot("1", "lea", Map.of("fri", "YES"))).thenReturn(Mono.just(0L));
         readBack(withPoll(PollStatus.CLOSED));
 
-        StepVerifier.create(adapter.castBallot("1", "lea", Map.of("fri", PollAnswer.YES))).verifyComplete();
+        StepVerifier.create(adapter.castBallot("1", "lea", Map.of("fri", PollAnswer.YES))).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void castBallot_shouldRefuseAVoterIdThatWouldChangeTheFieldPath() {
         StepVerifier.create(adapter.castBallot("1", "a.b", Map.of()))
                 .expectError(IllegalArgumentException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.castBallot("1", "$where", Map.of()))
                 .expectError(IllegalArgumentException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -558,14 +559,14 @@ class MongoEventRepositoryAdapterTest {
                 .thenReturn(Mono.just(1L));
         readBack(after);
 
-        StepVerifier.create(adapter.fixPollDate("1", "org", FRIDAY, List.of("lea"))).expectNext(after).verifyComplete();
+        StepVerifier.create(adapter.fixPollDate("1", "org", FRIDAY, List.of("lea"))).expectNext(after).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void fixPollDate_shouldBeEmpty_whenNoOpenPollMatched() {
         when(mongoRepository.fixPollDate("1", "org", FRIDAY.start(), FRIDAY.end(), "fri", List.of())).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(adapter.fixPollDate("1", "org", FRIDAY, List.of())).verifyComplete();
+        StepVerifier.create(adapter.fixPollDate("1", "org", FRIDAY, List.of())).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).findById("1");
     }
 
@@ -578,7 +579,7 @@ class MongoEventRepositoryAdapterTest {
         readBack(after);
 
         StepVerifier.create(adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), true))
-                .expectNext(after).verifyComplete();
+                .expectNext(after).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -589,7 +590,7 @@ class MongoEventRepositoryAdapterTest {
         readBack(read);
 
         StepVerifier.create(adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), false))
-                .expectNext(read).verifyComplete();
+                .expectNext(read).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -598,7 +599,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.reschedule("1", "org", THURSDAY_START, FRIDAY.start(), FRIDAY.end(), THURSDAY_END, false))
                 .thenReturn(Mono.just(0L));
 
-        StepVerifier.create(adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), true)).verifyComplete();
+        StepVerifier.create(adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), true)).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).findById("1");
     }
 
@@ -609,12 +610,12 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findOpenPollsInvolving("lea")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findOpenPollsInvolving("lea")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findOpenPollsInvolving("lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void findOpenPollsInvolving_shouldRefuseAUserIdThatWouldChangeTheFieldPath() {
-        StepVerifier.create(adapter.findOpenPollsInvolving("a.b")).expectError(IllegalArgumentException.class).verify();
+        StepVerifier.create(adapter.findOpenPollsInvolving("a.b")).expectError(IllegalArgumentException.class).verify(Duration.ofSeconds(10));
     }
 
     // --- Communities ------------------------------------------------------------------------------
@@ -631,7 +632,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findUpcomingInCommunity("c1", now, now.minus(Event.DEFAULT_DURATION), "alice")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(domain);
 
-        StepVerifier.create(adapter.findUpcomingInCommunity("c1", "alice", now)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findUpcomingInCommunity("c1", "alice", now)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -640,7 +641,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.respondYes("1", "lea")).thenReturn(Mono.just(1L));
         readBack(after);
 
-        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.YES)).expectNext(after).verifyComplete();
+        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.YES)).expectNext(after).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -649,7 +650,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.respondAndLeave("1", "lea", "MAYBE")).thenReturn(Mono.just(1L));
         readBack(after);
 
-        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.MAYBE)).expectNext(after).verifyComplete();
+        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.MAYBE)).expectNext(after).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).respondFromOutside(any(), any(), any());
     }
 
@@ -660,7 +661,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.respondFromOutside("1", "lea", "NO")).thenReturn(Mono.just(1L));
         readBack(after);
 
-        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.NO)).expectNext(after).verifyComplete();
+        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.NO)).expectNext(after).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -669,7 +670,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.respondFromOutside("1", "bob", "NO")).thenReturn(Mono.just(0L));
         readBack(communityEvent("bob"));
 
-        StepVerifier.create(adapter.respond("1", "bob", PollAnswer.NO)).verifyComplete();
+        StepVerifier.create(adapter.respond("1", "bob", PollAnswer.NO)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -677,14 +678,14 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.respondYes("1", "lea")).thenReturn(Mono.just(0L));
         readBack(Event.builder().id("1").organizerId("bob").build());
 
-        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.YES)).verifyComplete();
+        StepVerifier.create(adapter.respond("1", "lea", PollAnswer.YES)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void respond_shouldRefuseAnIdUnusableAsAFieldName() {
         StepVerifier.create(adapter.respond("1", "lea.$x", PollAnswer.NO))
                 .expectError(IllegalArgumentException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mongoRepository, never()).respondAndLeave(any(), any(), any());
     }
 
@@ -702,7 +703,7 @@ class MongoEventRepositoryAdapterTest {
         Event domain = mapped(entity);
         when(mongoRepository.findShownTo("1", "lea")).thenReturn(Mono.just(entity));
 
-        StepVerifier.create(adapter.findShownTo("1", "lea")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findShownTo("1", "lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -714,7 +715,7 @@ class MongoEventRepositoryAdapterTest {
         Event saved = Event.builder().build();
         when(mapper.toDomain(entity)).thenReturn(saved);
 
-        StepVerifier.create(adapter.upsertBirthday(birthday)).expectNext(saved).verifyComplete();
+        StepVerifier.create(adapter.upsertBirthday(birthday)).expectNext(saved).expectComplete().verify(Duration.ofSeconds(10));
         org.assertj.core.api.Assertions.assertThat(entity.getId()).isEqualTo("birthday-lea");
     }
 
@@ -724,7 +725,7 @@ class MongoEventRepositoryAdapterTest {
         Event domain = mapped(entity);
         when(mongoRepository.findBirthdayOf("lea")).thenReturn(Mono.just(entity));
 
-        StepVerifier.create(adapter.findBirthdayOf("lea")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findBirthdayOf("lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -733,7 +734,7 @@ class MongoEventRepositoryAdapterTest {
         Event domain = mapped(entity);
         when(mongoRepository.findBirthdaysOf(java.util.List.of("lea", "bob"))).thenReturn(Flux.just(entity));
 
-        StepVerifier.create(adapter.findBirthdaysOf(java.util.List.of("lea", "bob"))).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findBirthdaysOf(java.util.List.of("lea", "bob"))).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -742,14 +743,14 @@ class MongoEventRepositoryAdapterTest {
         Event domain = mapped(entity);
         when(mongoRepository.findAllBirthdays()).thenReturn(Flux.just(entity));
 
-        StepVerifier.create(adapter.findAllBirthdays()).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findAllBirthdays()).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void deleteBirthdayOf_shouldCountWhatWent() {
         when(mongoRepository.deleteBirthdayOf("lea")).thenReturn(Mono.just(1L));
 
-        StepVerifier.create(adapter.deleteBirthdayOf("lea")).expectNext(1L).verifyComplete();
+        StepVerifier.create(adapter.deleteBirthdayOf("lea")).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -760,7 +761,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.insert(entity)).thenReturn(Mono.just(entity));
         Event domain = mapped(entity);
 
-        StepVerifier.create(adapter.insertSurprise(surprise)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.insertSurprise(surprise)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -771,7 +772,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.insert(entity))
                 .thenReturn(Mono.error(new org.springframework.dao.DuplicateKeyException("occurrenceKey")));
 
-        StepVerifier.create(adapter.insertSurprise(surprise)).verifyComplete();
+        StepVerifier.create(adapter.insertSurprise(surprise)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -783,7 +784,7 @@ class MongoEventRepositoryAdapterTest {
                 .thenReturn(Mono.error(new org.springframework.dao.DataAccessResourceFailureException("down")));
 
         StepVerifier.create(adapter.insertSurprise(surprise))
-                .expectError(org.springframework.dao.DataAccessResourceFailureException.class).verify();
+                .expectError(org.springframework.dao.DataAccessResourceFailureException.class).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -792,7 +793,7 @@ class MongoEventRepositoryAdapterTest {
         Event domain = mapped(entity);
         when(mongoRepository.findSurprisesFor(java.util.List.of("lea:2027"), "bob")).thenReturn(Flux.just(entity));
 
-        StepVerifier.create(adapter.findSurprisesFor(java.util.List.of("lea:2027"), "bob")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findSurprisesFor(java.util.List.of("lea:2027"), "bob")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -801,7 +802,7 @@ class MongoEventRepositoryAdapterTest {
         Event domain = mapped(entity);
         when(mongoRepository.findSurpriseByOccurrence("lea:2027")).thenReturn(Mono.just(entity));
 
-        StepVerifier.create(adapter.findSurpriseByOccurrence("lea:2027")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findSurpriseByOccurrence("lea:2027")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -813,7 +814,7 @@ class MongoEventRepositoryAdapterTest {
         when(mongoRepository.findSurprisesStartingBetween("lea", from, to, org.springframework.data.domain.Limit.of(1)))
                 .thenReturn(Flux.just(entity));
 
-        StepVerifier.create(adapter.findSurpriseStartingBetween("lea", from, to)).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findSurpriseStartingBetween("lea", from, to)).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -822,6 +823,6 @@ class MongoEventRepositoryAdapterTest {
         Event domain = mapped(entity);
         when(mongoRepository.findSurprisesHonoring("lea")).thenReturn(Flux.just(entity));
 
-        StepVerifier.create(adapter.findSurprisesHonoring("lea")).expectNext(domain).verifyComplete();
+        StepVerifier.create(adapter.findSurprisesHonoring("lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

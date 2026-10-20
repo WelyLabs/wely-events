@@ -24,6 +24,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -85,7 +86,7 @@ class FriendshipServiceTest {
                 .thenReturn(Mono.just(tracked(new Friendship("alice", "bob", true, Closeness.FRIEND, SINCE, 6), 6L)));
         when(directory.record(FRIENDS)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.applyState(FRIENDS)).expectNext(true).verifyComplete();
+        StepVerifier.create(service.applyState(FRIENDS)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
         verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
         verify(history, never()).append(any());
     }
@@ -96,7 +97,7 @@ class FriendshipServiceTest {
         when(directory.trackedPairOf("alice", "bob")).thenReturn(Mono.empty());
         when(directory.record(FRIENDS)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.applyState(FRIENDS)).expectNext(true).verifyComplete();
+        StepVerifier.create(service.applyState(FRIENDS)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -106,7 +107,7 @@ class FriendshipServiceTest {
                 .thenReturn(Mono.just(tracked(new Friendship("alice", "bob", true, Closeness.INTIMATE, SINCE, 9), 9L)));
         when(directory.markStreamed("alice", "bob", 7)).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.applyState(FRIENDS)).expectNext(false).verifyComplete();
+        StepVerifier.create(service.applyState(FRIENDS)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         verify(directory).markStreamed("alice", "bob", 7);
         verify(directory, never()).record(any());
     }
@@ -119,7 +120,7 @@ class FriendshipServiceTest {
         when(surpriseService.releaseAfterFriendshipEnded("alice", "bob")).thenReturn(Mono.just(1L));
         when(directory.record(parted)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.applyState(parted)).expectNext(true).verifyComplete();
+        StepVerifier.create(service.applyState(parted)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
         InOrder order = inOrder(surpriseService, directory);
         order.verify(surpriseService).releaseAfterFriendshipEnded("alice", "bob");
         order.verify(directory).record(parted);
@@ -129,7 +130,7 @@ class FriendshipServiceTest {
     void applyState_shouldIgnoreAPairNamingADeletedAccount() {
         when(markers.deletedAmong(List.of("alice", "bob"))).thenReturn(Mono.just(Set.of("bob")));
 
-        StepVerifier.create(service.applyState(FRIENDS)).expectNext(false).verifyComplete();
+        StepVerifier.create(service.applyState(FRIENDS)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         verify(directory, never()).trackedPairOf(anyString(), anyString());
         verify(directory, never()).record(any());
     }
@@ -138,7 +139,7 @@ class FriendshipServiceTest {
     void applyState_shouldFail_whenTheRegisterCannotBeRead() {
         when(markers.deletedAmong(List.of("alice", "bob"))).thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.applyState(FRIENDS)).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.applyState(FRIENDS)).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
         verify(directory, never()).record(any());
     }
 
@@ -148,7 +149,7 @@ class FriendshipServiceTest {
         when(surpriseService.releaseAfterFriendshipEnded("alice", "bob")).thenReturn(Mono.just(2L));
         when(directory.end(FRIENDS)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.applyTombstone("bob", "alice")).expectNext(true).verifyComplete();
+        StepVerifier.create(service.applyTombstone("bob", "alice")).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
         InOrder order = inOrder(surpriseService, directory);
         order.verify(surpriseService).releaseAfterFriendshipEnded("alice", "bob");
         order.verify(directory).end(FRIENDS);
@@ -160,7 +161,7 @@ class FriendshipServiceTest {
         when(surpriseService.releaseAfterFriendshipEnded("alice", "bob")).thenReturn(Mono.just(0L));
         when(directory.end(FRIENDS)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(true).verifyComplete();
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -168,7 +169,7 @@ class FriendshipServiceTest {
         when(directory.trackedPairOf("alice", "bob"))
                 .thenReturn(Mono.just(tracked(new Friendship("alice", "bob", false, null, null, 7), 7L)));
 
-        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(false).verifyComplete();
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
         verify(directory, never()).end(any());
     }
@@ -177,7 +178,7 @@ class FriendshipServiceTest {
     void applyTombstone_shouldKeepTheStoredFriendship_whenTheValueBeforeItWasStale() {
         when(directory.trackedPairOf("alice", "bob")).thenReturn(Mono.just(tracked(FRIENDS, 3L)));
 
-        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(false).verifyComplete();
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
         verify(directory, never()).end(any());
     }
@@ -186,7 +187,7 @@ class FriendshipServiceTest {
     void applyTombstone_shouldDoNothing_forAnUnknownPair() {
         when(directory.trackedPairOf("alice", "bob")).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(false).verifyComplete();
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
     }
 
@@ -196,7 +197,7 @@ class FriendshipServiceTest {
         when(surpriseService.releaseAfterFriendshipEnded("alice", "bob"))
                 .thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.applyTombstone("alice", "bob")).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.applyTombstone("alice", "bob")).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
         verify(directory, never()).end(any());
     }
 
@@ -205,7 +206,7 @@ class FriendshipServiceTest {
         nobodyDeleted();
         when(history.append(FriendshipHistoryEntry.of(UPGRADE))).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.recordHistory(UPGRADE)).expectNext(true).verifyComplete();
+        StepVerifier.create(service.recordHistory(UPGRADE)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
         verify(directory, never()).record(any());
         verify(directory, never()).trackedPairOf(anyString(), anyString());
         verify(surpriseService, never()).releaseAfterFriendshipEnded(anyString(), anyString());
@@ -217,7 +218,7 @@ class FriendshipServiceTest {
         FriendshipChange undated = new FriendshipChange(FriendshipChangeType.ACCEPTED, FRIENDS, null, null);
         when(history.append(any())).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.recordHistory(undated)).expectNext(true).verifyComplete();
+        StepVerifier.create(service.recordHistory(undated)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
         verify(history).append(FriendshipHistoryEntry.of(undated.datedOrAt(NOW)));
     }
 
@@ -226,14 +227,14 @@ class FriendshipServiceTest {
         nobodyDeleted();
         when(history.append(FriendshipHistoryEntry.of(REMOVAL))).thenReturn(Mono.just(false));
 
-        StepVerifier.create(service.recordHistory(REMOVAL)).expectNext(false).verifyComplete();
+        StepVerifier.create(service.recordHistory(REMOVAL)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void recordHistory_shouldIgnoreAChangeNamingADeletedAccount() {
         when(markers.deletedAmong(List.of("alice", "bob"))).thenReturn(Mono.just(Set.of("alice")));
 
-        StepVerifier.create(service.recordHistory(UPGRADE)).expectNext(false).verifyComplete();
+        StepVerifier.create(service.recordHistory(UPGRADE)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         verify(history, never()).append(any());
     }
 
@@ -244,21 +245,21 @@ class FriendshipServiceTest {
 
         StepVerifier.create(service.viewerFriends("alice"))
                 .expectNext(new ViewerFriends(Map.of("bob", Closeness.CLOSE, "zoe", Closeness.FRIEND)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void viewerFriends_shouldBeNone_withoutFriends() {
         when(directory.friendsOf("alice")).thenReturn(Flux.empty());
 
-        StepVerifier.create(service.viewerFriends("alice")).expectNext(ViewerFriends.NONE).verifyComplete();
+        StepVerifier.create(service.viewerFriends("alice")).expectNext(ViewerFriends.NONE).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void viewerFriends_shouldPassAReadFailureOn() {
         when(directory.friendsOf("alice")).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.viewerFriends("alice")).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.viewerFriends("alice")).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -268,7 +269,7 @@ class FriendshipServiceTest {
         when(noticeOutbox.forget("alice")).thenReturn(Mono.empty());
         when(snoozes.forget("alice")).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.forget("alice")).verifyComplete();
+        StepVerifier.create(service.forget("alice")).expectComplete().verify(Duration.ofSeconds(10));
         InOrder order = inOrder(directory, history, noticeOutbox, snoozes);
         order.verify(directory).forget("alice");
         order.verify(history).forget("alice");
@@ -281,7 +282,7 @@ class FriendshipServiceTest {
         when(directory.forget("alice")).thenReturn(Mono.just(2L));
         when(history.forget("alice")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.forget("alice")).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.forget("alice")).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
         verify(noticeOutbox, never()).forget(anyString());
         verify(snoozes, never()).forget(anyString());
     }

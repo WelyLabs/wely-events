@@ -29,6 +29,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -96,13 +97,13 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(found.getLocation()).isEqualTo("Room 1");
                     assertThat(found.getCoordinates()).isEqualTo(new GeoPoint(45.764, 4.8357));
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     @DisplayName("an unknown id yields nothing rather than a blank event")
     void findById_shouldBeEmptyForAnUnknownId() {
-        StepVerifier.create(adapter.findById("64b7f9f2e4b0a1c2d3e4f5a6")).verifyComplete();
+        StepVerifier.create(adapter.findById("64b7f9f2e4b0a1c2d3e4f5a6")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -114,7 +115,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.addParticipant(saved.getId(), "alice"))
                 .assertNext(updated -> assertThat(updated.getParticipantIds()).containsExactly("alice"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -128,7 +129,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.findById(saved.getId()))
                 .assertNext(found -> assertThat(found.getParticipantIds()).containsExactly("alice"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -142,11 +143,11 @@ class MongoEventRepositoryAdapterIntegrationTest {
                         Flux.range(1, 20)
                                 .flatMap(i -> adapter.addParticipant(saved.getId(), "user-" + i), 10))
                 .expectNextCount(20)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         StepVerifier.create(adapter.findById(saved.getId()))
                 .assertNext(found -> assertThat(found.getParticipantIds()).hasSize(20))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -158,7 +159,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.removeParticipant(saved.getId(), "alice"))
                 .assertNext(updated -> assertThat(updated.getParticipantIds()).containsExactly("bob"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -169,7 +170,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.removeParticipant(saved.getId(), "bob"))
                 .assertNext(updated -> assertThat(updated.getParticipantIds()).containsExactly("alice"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -178,9 +179,9 @@ class MongoEventRepositoryAdapterIntegrationTest {
         // An update without upsert: subscribing to an event that does not exist must not
         // bring it into being.
         StepVerifier.create(adapter.addParticipant("64b7f9f2e4b0a1c2d3e4f5a6", "alice"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
-        StepVerifier.create(adapter.findAll()).verifyComplete();
+        StepVerifier.create(adapter.findAll()).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -192,7 +193,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.findByParticipantId("alice"))
                 .assertNext(event -> assertThat(event.getId()).isEqualTo(subscribed.getId()))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     private void visible(String title, String organizer, Visibility visibility, List<String> participants) {
@@ -324,7 +325,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
     @Test
     @DisplayName("withdrawing an invitation of an unknown event yields nothing")
     void withdrawInvitation_shouldBeEmpty_forAnUnknownEvent() {
-        StepVerifier.create(adapter.withdrawInvitation("64b7f9f2e4b0a1c2d3e4f5a6", "alice")).verifyComplete();
+        StepVerifier.create(adapter.withdrawInvitation("64b7f9f2e4b0a1c2d3e4f5a6", "alice")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -349,15 +350,15 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(removed.getTitle()).isEqualTo("Standup");
                     assertThat(removed.getGroupVersion()).isEqualTo(1L);
                 })
-                .verifyComplete();
-        StepVerifier.create(adapter.findById(saved.getId())).verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.findById(saved.getId())).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void deleteByOrganizer_shouldLeaveSomeoneElsesEvent() {
         Event saved = anEvent("Standup");
 
-        StepVerifier.create(adapter.deleteByOrganizer(saved.getId(), "alice")).verifyComplete();
+        StepVerifier.create(adapter.deleteByOrganizer(saved.getId(), "alice")).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(saved.getId()).block()).isNotNull();
     }
 
@@ -369,10 +370,10 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.deleteIfAlone(listed, ORGANIZER, Set.of()))
                 .assertNext(removed -> assertThat(removed.getId()).isEqualTo(listed))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.deleteIfAlone(unlisted, ORGANIZER, Set.of()))
                 .assertNext(removed -> assertThat(removed.getId()).isEqualTo(unlisted))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findAll().collectList().block()).isEmpty();
     }
 
@@ -382,8 +383,8 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.addParticipant(id, ORGANIZER).block();
         adapter.addParticipant(id, "alice").block();
 
-        StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER, Set.of())).verifyComplete();
-        StepVerifier.create(adapter.deleteIfAlone(id, "alice", Set.of())).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER, Set.of())).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.deleteIfAlone(id, "alice", Set.of())).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(id).block()).isNotNull();
     }
 
@@ -396,7 +397,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER, Set.of("gone", "demo")))
                 .assertNext(removed -> assertThat(removed.getId()).isEqualTo(id))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(id).block()).isNull();
     }
 
@@ -407,7 +408,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.addParticipant(id, "gone").block();
         adapter.addParticipant(id, "alice").block();
 
-        StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER, Set.of("gone"))).verifyComplete();
+        StepVerifier.create(adapter.deleteIfAlone(id, ORGANIZER, Set.of("gone"))).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(id).block()).isNotNull();
     }
 
@@ -447,7 +448,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(event.getOrganizerId()).isEqualTo("alice");
                     assertThat(event.getParticipantIds()).containsExactly(ORGANIZER, "alice");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         EventEntity stored = stored(id);
         assertThat(stored.getGroupVersion()).isEqualTo(3L);
         assertThat(stored.getGroupSynced()).isFalse();
@@ -459,8 +460,8 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.addParticipant(id, ORGANIZER).block();
         adapter.addParticipant(id, "alice").block();
 
-        StepVerifier.create(adapter.handOverKeepingFormer(id, ORGANIZER, "bob")).verifyComplete();
-        StepVerifier.create(adapter.handOverKeepingFormer(id, "alice", ORGANIZER)).verifyComplete();
+        StepVerifier.create(adapter.handOverKeepingFormer(id, ORGANIZER, "bob")).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.handOverKeepingFormer(id, "alice", ORGANIZER)).expectComplete().verify(Duration.ofSeconds(10));
         EventEntity stored = stored(id);
         assertThat(stored.getOrganizerId()).isEqualTo(ORGANIZER);
         assertThat(stored.getGroupVersion()).isEqualTo(2L);
@@ -489,7 +490,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                 DELETED_AT.minusSeconds(1800), null, List.of("gone", "alice"));
         List.of(endsLater, endsExactlyThen, noEndStartedLessThanAnHourAgo).forEach(this::markGroupSynced);
 
-        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(3L).verifyComplete();
+        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(3L).expectComplete().verify(Duration.ofSeconds(10));
 
         for (String id : List.of(endsLater, endsExactlyThen, noEndStartedLessThanAnHourAgo)) {
             EventEntity stored = stored(id);
@@ -509,7 +510,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         String elsewhere = dated("someone else's", "alice", DELETED_AT.plusSeconds(3600), null, List.of("alice"));
         List.of(endedBefore, noEndStartedOverAnHourAgo, organized, elsewhere).forEach(this::markGroupSynced);
 
-        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(0L).verifyComplete();
+        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(0L).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(stored(endedBefore).getParticipantIds()).containsExactly("alice", "gone");
         assertThat(stored(noEndStartedOverAnHourAgo).getParticipantIds()).containsExactly("alice", "gone");
@@ -526,7 +527,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                 new Update().set("startDate", DELETED_AT.minusSeconds(86_400)).set("endDate", DELETED_AT.minusSeconds(82_800)),
                 EventEntity.class).block();
 
-        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(1L).verifyComplete();
+        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(stored(open).getParticipantIds()).containsExactly("alice");
     }
 
@@ -536,7 +537,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.leaveUpcoming("gone", DELETED_AT).block();
         Long version = stored(id).getGroupVersion();
 
-        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(0L).verifyComplete();
+        StepVerifier.create(adapter.leaveUpcoming("gone", DELETED_AT)).expectNext(0L).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(stored(id).getGroupVersion()).isEqualTo(version);
     }
 
@@ -548,7 +549,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.removeParticipant(id, ORGANIZER))
                 .assertNext(event -> assertThat(event.getParticipantIds()).containsExactly(ORGANIZER))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(stored(id).getGroupVersion()).isEqualTo(version);
     }
 
@@ -565,7 +566,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(event.getOrganizerId()).isEqualTo("alice");
                     assertThat(event.getParticipantIds()).containsExactly("alice");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         EventEntity stored = stored(id);
         assertThat(stored.getGroupVersion()).isEqualTo(3L);
         assertThat(stored.getGroupSynced()).isFalse();
@@ -577,8 +578,8 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.addParticipant(id, ORGANIZER).block();
         adapter.addParticipant(id, "alice").block();
 
-        StepVerifier.create(adapter.handOver(id, ORGANIZER, "bob")).verifyComplete();
-        StepVerifier.create(adapter.handOver(id, "alice", ORGANIZER)).verifyComplete();
+        StepVerifier.create(adapter.handOver(id, ORGANIZER, "bob")).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.handOver(id, "alice", ORGANIZER)).expectComplete().verify(Duration.ofSeconds(10));
         EventEntity stored = stored(id);
         assertThat(stored.getOrganizerId()).isEqualTo(ORGANIZER);
         assertThat(stored.getParticipantIds()).containsExactly(ORGANIZER, "alice");
@@ -731,10 +732,10 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.findInvolving("guest-1").map(Event::getTitle).collectList())
                 .assertNext(titles -> assertThat(titles).containsExactly("Joined"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.findInvolving(ORGANIZER).count())
                 .expectNext(3L)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -742,10 +743,10 @@ class MongoEventRepositoryAdapterIntegrationTest {
     void setImage_shouldFilterOnTheOrganizer() {
         Event saved = anEvent("Standup");
 
-        StepVerifier.create(adapter.setImage(saved.getId(), "someone-else", "events/x/cover-1.jpg")).verifyComplete();
+        StepVerifier.create(adapter.setImage(saved.getId(), "someone-else", "events/x/cover-1.jpg")).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.setImage(saved.getId(), ORGANIZER, "events/x/cover-1.jpg"))
                 .assertNext(updated -> assertThat(updated.getImage()).isEqualTo("events/x/cover-1.jpg"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -755,12 +756,12 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.setImage(saved.getId(), ORGANIZER, null))
                 .assertNext(updated -> assertThat(updated.getImage()).isNull())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void setImage_shouldBeEmpty_forAnUnknownEvent() {
-        StepVerifier.create(adapter.setImage("64b7f9f2e4b0a1c2d3e4f5a6", ORGANIZER, "events/x/cover-1.jpg")).verifyComplete();
+        StepVerifier.create(adapter.setImage("64b7f9f2e4b0a1c2d3e4f5a6", ORGANIZER, "events/x/cover-1.jpg")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -770,7 +771,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         EventDetails details = new EventDetails("Standup", "Ninkasi", new GeoPoint(45.73, 4.83), "Bring snacks", Visibility.PRIVATE);
         Long versionBefore = stored(saved.getId()).getGroupVersion();
 
-        StepVerifier.create(adapter.updateDetails(saved.getId(), "someone-else", details, false)).verifyComplete();
+        StepVerifier.create(adapter.updateDetails(saved.getId(), "someone-else", details, false)).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.updateDetails(saved.getId(), ORGANIZER, details, false))
                 .assertNext(updated -> {
                     assertThat(updated.getLocation()).isEqualTo("Ninkasi");
@@ -778,7 +779,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(updated.getDescription()).isEqualTo("Bring snacks");
                     assertThat(updated.getVisibility()).isEqualTo(Visibility.PRIVATE);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(stored(saved.getId()).getGroupVersion()).isEqualTo(versionBefore);
 
         StepVerifier.create(adapter.updateDetails(saved.getId(), ORGANIZER,
@@ -787,7 +788,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(updated.getTitle()).isEqualTo("Daily");
                     assertThat(updated.getCoordinates()).isNull();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         EventEntity renamed = stored(saved.getId());
         assertThat(renamed.getGroupVersion()).isEqualTo(versionBefore == null ? 1L : versionBefore + 1);
         assertThat(renamed.getGroupSynced()).isFalse();
@@ -823,7 +824,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(found.getPoll().slots()).containsExactly(THURSDAY, FRIDAY);
                     assertThat(found.getPoll().ballots()).isEmpty();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(stored(saved.getId()).getDateFixSynced()).isNull();
     }
 
@@ -835,7 +836,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         StepVerifier.create(adapter.castBallot(id, "lea", Map.of("fri", PollAnswer.MAYBE)))
                 .assertNext(updated -> assertThat(updated.getPoll().ballots())
                         .containsExactly(Map.entry("lea", Map.of("fri", PollAnswer.MAYBE))))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -845,14 +846,14 @@ class MongoEventRepositoryAdapterIntegrationTest {
         StepVerifier.create(Flux.range(1, 20)
                         .flatMap(i -> adapter.castBallot(id, "voter-" + i, Map.of("thu", PollAnswer.YES)), 10))
                 .expectNextCount(20)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         StepVerifier.create(adapter.findById(id))
                 .assertNext(found -> {
                     assertThat(found.getPoll().ballots()).hasSize(20);
                     assertThat(found.getPoll().yesVotersOf("thu")).hasSize(20);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -862,7 +863,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.castBallot(id, "lea", Map.of("thu", PollAnswer.YES)))
                 .assertNext(updated -> assertThat(updated.getPoll().yesVotersOf("thu")).containsExactly("lea"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -873,7 +874,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.castBallot(id, "lea", Map.of()))
                 .assertNext(updated -> assertThat(updated.getPoll().ballots()).containsOnlyKeys("hugo"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -882,8 +883,8 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.fixPollDate(id, ORGANIZER, THURSDAY, List.of()).block();
         String withoutPoll = anEvent("Standup").getId();
 
-        StepVerifier.create(adapter.castBallot(id, "lea", Map.of("thu", PollAnswer.YES))).verifyComplete();
-        StepVerifier.create(adapter.castBallot(withoutPoll, "lea", Map.of("thu", PollAnswer.YES))).verifyComplete();
+        StepVerifier.create(adapter.castBallot(id, "lea", Map.of("thu", PollAnswer.YES))).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.castBallot(withoutPoll, "lea", Map.of("thu", PollAnswer.YES))).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(id).block().getPoll().ballots()).isEmpty();
     }
 
@@ -903,7 +904,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(fixed.getEndDate()).isEqualTo(FRIDAY.end());
                     assertThat(fixed.getParticipantIds()).containsExactly("hugo", "lea");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         EventEntity stored = stored(id);
         assertThat(stored.getGroupVersion()).isEqualTo(4L);
         assertThat(stored.getGroupSynced()).isFalse();
@@ -915,7 +916,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
         adapter.fixPollDate(id, ORGANIZER, THURSDAY, List.of()).block();
 
-        StepVerifier.create(adapter.fixPollDate(id, ORGANIZER, FRIDAY, List.of("lea"))).verifyComplete();
+        StepVerifier.create(adapter.fixPollDate(id, ORGANIZER, FRIDAY, List.of("lea"))).expectComplete().verify(Duration.ofSeconds(10));
         Event found = adapter.findById(id).block();
         assertThat(found.getPoll().fixedSlotId()).isEqualTo("thu");
         assertThat(found.getParticipantIds()).isEmpty();
@@ -926,7 +927,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
     void fixPollDate_shouldBeEmpty_forSomeoneOtherThanTheOrganizer() {
         String id = aPoll("Dinner", ORGANIZER, List.of()).getId();
 
-        StepVerifier.create(adapter.fixPollDate(id, "lea", FRIDAY, List.of())).verifyComplete();
+        StepVerifier.create(adapter.fixPollDate(id, "lea", FRIDAY, List.of())).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(id).block().isPolling()).isTrue();
     }
 
@@ -956,7 +957,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                     assertThat(moved.getEndDate()).isEqualTo(later.end());
                     assertThat(moved.getParticipantIds()).containsExactly("lea");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         EventEntity stored = stored(read.getId());
         assertThat(stored.getRescheduledFromStart()).isEqualTo(Instant.parse("2026-10-16T17:00:00Z"));
         assertThat(stored.getRescheduledFromEnd()).isEqualTo(Instant.parse("2026-10-16T19:00:00Z"));
@@ -981,7 +982,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.reschedule(read, new TimeRange(FRIDAY.start(), FRIDAY.end()), false).block();
 
         StepVerifier.create(adapter.reschedule(read, new TimeRange(THURSDAY.start().plusSeconds(3600),
-                THURSDAY.end().plusSeconds(3600)), false)).verifyComplete();
+                THURSDAY.end().plusSeconds(3600)), false)).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(read.getId()).block().getStartDate()).isEqualTo(FRIDAY.start());
     }
 
@@ -991,8 +992,8 @@ class MongoEventRepositoryAdapterIntegrationTest {
         Event plain = saveAt("Bowling", ORGANIZER, List.of(), "2026-10-16T17:00:00Z", "2026-10-16T19:00:00Z");
         Event notMine = Event.builder().id(plain.getId()).organizerId("lea").startDate(plain.getStartDate()).build();
 
-        StepVerifier.create(adapter.reschedule(poll, new TimeRange(FRIDAY.start(), FRIDAY.end()), false)).verifyComplete();
-        StepVerifier.create(adapter.reschedule(notMine, new TimeRange(FRIDAY.start(), FRIDAY.end()), false)).verifyComplete();
+        StepVerifier.create(adapter.reschedule(poll, new TimeRange(FRIDAY.start(), FRIDAY.end()), false)).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.reschedule(notMine, new TimeRange(FRIDAY.start(), FRIDAY.end()), false)).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(poll.getId()).block().getStartDate()).isEqualTo(THURSDAY.start());
         assertThat(adapter.findById(plain.getId()).block().getStartDate()).isEqualTo(THURSDAY.start());
     }
@@ -1084,8 +1085,8 @@ class MongoEventRepositoryAdapterIntegrationTest {
         saveAt("upcoming together", "lea", List.of("hugo"), "2026-10-20T10:00:00Z", null);
         saveAt("lea alone", "lea", List.of("zoe"), "2026-09-10T10:00:00Z", null);
 
-        StepVerifier.create(adapter.countPastInvolvingBoth("lea", "hugo", OVERVIEW_NOW)).expectNext(8L).verifyComplete();
-        StepVerifier.create(adapter.countPastInvolvingBoth("lea", "nobody", OVERVIEW_NOW)).expectNext(0L).verifyComplete();
+        StepVerifier.create(adapter.countPastInvolvingBoth("lea", "hugo", OVERVIEW_NOW)).expectNext(8L).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.countPastInvolvingBoth("lea", "nobody", OVERVIEW_NOW)).expectNext(0L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1143,7 +1144,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
         assertThat(back.getParticipantIds()).containsExactly(ORGANIZER, "lea");
         assertThat(back.getResponses()).doesNotContainKey("lea");
 
-        StepVerifier.create(adapter.respond(id, ORGANIZER, PollAnswer.NO)).verifyComplete();
+        StepVerifier.create(adapter.respond(id, ORGANIZER, PollAnswer.NO)).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(id).block().getParticipantIds()).contains(ORGANIZER);
     }
 
@@ -1156,12 +1157,12 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.respond(past, "gone", PollAnswer.NO).block();
         Long version = stored(upcoming).getGroupVersion();
 
-        StepVerifier.create(adapter.clearUpcomingResponses("gone", DELETED_AT)).expectNext(1L).verifyComplete();
+        StepVerifier.create(adapter.clearUpcomingResponses("gone", DELETED_AT)).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(adapter.findById(upcoming).block().getResponses()).containsOnlyKeys("lea");
         assertThat(adapter.findById(past).block().getResponses()).containsEntry("gone", PollAnswer.NO);
         assertThat(stored(upcoming).getGroupVersion()).isEqualTo(version);
-        StepVerifier.create(adapter.clearUpcomingResponses("gone", DELETED_AT)).expectNext(0L).verifyComplete();
+        StepVerifier.create(adapter.clearUpcomingResponses("gone", DELETED_AT)).expectNext(0L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1169,7 +1170,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
     void respond_shouldIgnoreAnEventOutsideAnyCommunity() {
         Event event = anEvent("Standup");
 
-        StepVerifier.create(adapter.respond(event.getId(), "lea", PollAnswer.YES)).verifyComplete();
+        StepVerifier.create(adapter.respond(event.getId(), "lea", PollAnswer.YES)).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findById(event.getId()).block().getParticipantIds()).doesNotContain("lea");
     }
 
@@ -1222,8 +1223,8 @@ class MongoEventRepositoryAdapterIntegrationTest {
         Instant from = PARTY.minusSeconds(3600);
         Instant to = PARTY.plusSeconds(86_400);
 
-        StepVerifier.create(adapter.findShownTo(surprise.getId(), "lea")).verifyComplete();
-        StepVerifier.create(adapter.findShownTo(surprise.getId(), "hugo")).expectNextCount(1).verifyComplete();
+        StepVerifier.create(adapter.findShownTo(surprise.getId(), "lea")).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.findShownTo(surprise.getId(), "hugo")).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findOccupying(List.of("bob"), from, to, "lea").collectList().block()).isEmpty();
         assertThat(adapter.findOccupying(List.of("bob"), from, to, "hugo").collectList().block()).hasSize(1);
         assertThat(adapter.findUpcomingInvolving("bob", "lea", MAP_NOW).collectList().block()).isEmpty();
@@ -1252,10 +1253,10 @@ class MongoEventRepositoryAdapterIntegrationTest {
                 .containsExactly("Léa M.");
         StepVerifier.create(adapter.findBirthdayOf("lea"))
                 .assertNext(birthday -> assertThat(birthday.getId()).isEqualTo("birthday-lea"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findAllBirthdays().collectList().block()).hasSize(2);
-        StepVerifier.create(adapter.deleteBirthdayOf("lea")).expectNext(1L).verifyComplete();
-        StepVerifier.create(adapter.findBirthdayOf("lea")).verifyComplete();
+        StepVerifier.create(adapter.deleteBirthdayOf("lea")).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.findBirthdayOf("lea")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1267,7 +1268,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
 
         assertThat(adapter.findFeed("hugo", List.of("lea")).collectList().block()).isEmpty();
         assertThat(adapter.findFeed("lea", List.of()).collectList().block()).isEmpty();
-        StepVerifier.create(adapter.findShownTo(birthday.getId(), "lea")).verifyComplete();
+        StepVerifier.create(adapter.findShownTo(birthday.getId(), "lea")).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findOccupying(List.of("lea"), from, to, "hugo").collectList().block()).isEmpty();
         assertThat(adapter.findInvolving("lea").collectList().block()).isEmpty();
         assertThat(adapter.findByParticipantId("lea").collectList().block()).isEmpty();
@@ -1286,15 +1287,15 @@ class MongoEventRepositoryAdapterIntegrationTest {
                 .honoreeId("lea").hiddenFrom(new ArrayList<>(List.of("lea"))).occurrenceKey("lea:2027")
                 .startDate(PARTY.plusSeconds(3600)).participantIds(new ArrayList<>(List.of("zoe"))).build();
 
-        StepVerifier.create(adapter.insertSurprise(first)).expectNextCount(1).verifyComplete();
-        StepVerifier.create(adapter.insertSurprise(second)).verifyComplete();
+        StepVerifier.create(adapter.insertSurprise(first)).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.insertSurprise(second)).expectComplete().verify(Duration.ofSeconds(10));
         // A standard event has no occurrence key: the sparse index lets any number of them in.
         anEvent("one");
         anEvent("two");
 
         StepVerifier.create(adapter.findSurpriseByOccurrence("lea:2027"))
                 .assertNext(found -> assertThat(found.getTitle()).isEqualTo("first"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1305,9 +1306,9 @@ class MongoEventRepositoryAdapterIntegrationTest {
         assertThat(adapter.findSurprisesFor(List.of("lea:2026"), "hugo").collectList().block()).hasSize(1);
         assertThat(adapter.findSurprisesFor(List.of("lea:2026"), "lea").collectList().block()).isEmpty();
         StepVerifier.create(adapter.findSurpriseStartingBetween("lea", PARTY.minusSeconds(60), PARTY.plusSeconds(60)))
-                .expectNextCount(1).verifyComplete();
+                .expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.findSurpriseStartingBetween("lea", PARTY.plusSeconds(60), PARTY.plusSeconds(120)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.findSurprisesHonoring("lea").collectList().block()).hasSize(1);
         assertThat(adapter.findSurprisesHonoring("bob").collectList().block()).isEmpty();
     }
@@ -1362,7 +1363,7 @@ class MongoEventRepositoryAdapterIntegrationTest {
                 .containsExactly("still running", "newer, hugo organizes", "zoe's surprise", "older");
         assertThat(adapter.findLastSharedOuting("lea", "hugo", SHARED_NOW).map(Event::getTitle).block())
                 .isEqualTo("still running");
-        StepVerifier.create(adapter.findLastSharedOuting("lea", "max", SHARED_NOW)).verifyComplete();
+        StepVerifier.create(adapter.findLastSharedOuting("lea", "max", SHARED_NOW)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test

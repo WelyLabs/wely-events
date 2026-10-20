@@ -36,6 +36,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -196,7 +197,7 @@ class AccountErasureServiceTest {
     void erase_shouldFailForARetry_whenTheFriendshipsCannotBeForgotten() {
         when(friendshipService.forget(USER)).thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.erase(USER, DELETED_AT)).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.erase(USER, DELETED_AT)).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
         verify(markers, never()).markErased(anyString(), any());
     }
 
@@ -204,7 +205,7 @@ class AccountErasureServiceTest {
     void erase_shouldFailForARetry_whenTheBirthdayCannotBeForgotten() {
         when(birthdayService.forget(USER)).thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.erase(USER, DELETED_AT)).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.erase(USER, DELETED_AT)).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
         verify(markers, never()).markErased(anyString(), any());
     }
 
@@ -236,7 +237,7 @@ class AccountErasureServiceTest {
 
     @Test
     void erase_shouldLeaveAProtectedAccountAlone() {
-        StepVerifier.create(service.erase(DEMO, DELETED_AT)).expectNext(ErasureReport.NONE).verifyComplete();
+        StepVerifier.create(service.erase(DEMO, DELETED_AT)).expectNext(ErasureReport.NONE).expectComplete().verify(Duration.ofSeconds(10));
 
         verifyNoInteractions(markers, eventRepository, expenseRepository, mediaStore, pollUpdates, birthdayService);
     }
@@ -464,7 +465,7 @@ class AccountErasureServiceTest {
 
         StepVerifier.create(service.erase(USER, DELETED_AT))
                 .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.ERASURE_INCOMPLETE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, times(AccountErasureService.MAX_RELEASE_ATTEMPTS))
                 .handOver("e1", USER, "lea");
         verify(markers, never()).markErased(anyString(), any());
@@ -525,7 +526,7 @@ class AccountErasureServiceTest {
 
         StepVerifier.create(service.erase(USER, DELETED_AT))
                 .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.MEDIA_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).clearReceipt(anyString(), anyString(), anyString());
         verify(markers, never()).markErased(anyString(), any());
     }
@@ -549,7 +550,7 @@ class AccountErasureServiceTest {
 
         StepVerifier.create(service.erase(USER, DELETED_AT))
                 .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.STORE_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(markers, never()).markErased(anyString(), any());
     }
 
@@ -559,13 +560,13 @@ class AccountErasureServiceTest {
 
         StepVerifier.create(service.erase(USER, DELETED_AT))
                 .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.STORE_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(eventRepository, pollUpdates);
     }
 
     @Test
     void erase_shouldReportZeroChanges_whenReplayedAfterCompletion() {
-        StepVerifier.create(service.erase(USER, DELETED_AT)).expectNext(ErasureReport.NONE).verifyComplete();
+        StepVerifier.create(service.erase(USER, DELETED_AT)).expectNext(ErasureReport.NONE).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(markers).markErased(eq(USER), eq(NOW));
     }

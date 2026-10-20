@@ -111,7 +111,7 @@ class EventServiceTest {
 
         StepVerifier.create(result)
                 .expectNext(event)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     private static Event by(String organizer, Visibility visibility) {
@@ -133,7 +133,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectNext(event)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verifyNoInteractions(socialGraph);
     }
 
@@ -145,7 +145,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectNext(event)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -155,7 +155,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -164,7 +164,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(socialGraph);
     }
 
@@ -175,7 +175,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectNext(event)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -184,7 +184,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("missing", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     private static Event withParticipants(String organizer, Visibility visibility, String... participants) {
@@ -200,7 +200,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getParticipants("1", "alice"))
                 .expectNext(new Participants(3, List.of("alice", "bob", "dave"), List.of("dave"), List.of()))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -210,7 +210,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getParticipants("1", "erin"))
                 .expectNext(new Participants(2, List.of(), List.of("bob"), List.of()))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -220,7 +220,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getParticipants("1", "carol"))
                 .expectError(IllegalStateException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -229,7 +229,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getParticipants("1", "erin"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -238,7 +238,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getParticipants("1", "erin"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -281,7 +281,7 @@ class EventServiceTest {
 
         StepVerifier.create(result)
                 .expectNext(savedEvent)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     private static PollSlot candidate(String start, String end) {
@@ -297,7 +297,7 @@ class EventServiceTest {
                         candidate("2026-10-17T18:00:00Z", "2026-10-17T21:00:00Z"),
                         candidate("2026-10-16T18:00:00Z", "2026-10-16T21:00:00Z"))))
                 .expectNext(event)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(event.isPolling()).isTrue();
         assertThat(event.getPoll().slots()).hasSize(2);
@@ -312,7 +312,7 @@ class EventServiceTest {
         StepVerifier.create(eventService.createEvent(event, List.of(
                         candidate("2026-10-17T18:00:00Z", "2026-10-17T21:00:00Z"))))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).save(any());
     }
 
@@ -324,7 +324,7 @@ class EventServiceTest {
                         candidate("2026-10-10T18:00:00Z", "2026-10-10T21:00:00Z"),
                         candidate("2026-10-17T18:00:00Z", "2026-10-17T21:00:00Z"))))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -346,7 +346,7 @@ class EventServiceTest {
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, times(1)).deleteByOrganizer("1", "organizer");
     }
 
@@ -358,7 +358,7 @@ class EventServiceTest {
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
-        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(expenseRepository).deleteByEvent("1");
     }
@@ -369,7 +369,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyError(IllegalStateException.class);
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
 
         verify(expenseRepository, never()).deleteByEvent(any());
     }
@@ -382,7 +382,7 @@ class EventServiceTest {
         StepVerifier.create(eventService.deleteEvent("1", "someone-else"))
                 .expectErrorMatches(e -> e instanceof BusinessException
                         && ((BusinessException) e).getErrorCode() == BusinessErrorCode.EVENT_ACCESS_DENIED)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).deleteByOrganizer(any(), any());
     }
 
@@ -393,7 +393,7 @@ class EventServiceTest {
         StepVerifier.create(eventService.deleteEvent("missing", "organizer"))
                 .expectErrorMatches(e -> e instanceof BusinessException
                         && ((BusinessException) e).getErrorCode() == BusinessErrorCode.EVENT_NOT_FOUND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).deleteByOrganizer(any(), any());
     }
 
@@ -408,7 +408,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.toggleSubscription("1", "user123"))
                 .expectNextMatches(evt -> evt.getParticipantIds().contains("user123"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(eventRepository).addParticipant("1", "user123");
         verify(eventRepository, never()).removeParticipant(any(), any());
@@ -423,7 +423,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.toggleSubscription("1", "user123"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).addParticipant(any(), any());
     }
 
@@ -436,7 +436,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.toggleSubscription("1", "user123"))
                 .expectNextCount(1)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -449,7 +449,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.toggleSubscription("1", "user123"))
                 .expectNextMatches(evt -> !evt.getParticipantIds().contains("user123"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(eventRepository).removeParticipant("1", "user123");
         verify(eventRepository, never()).addParticipant(any(), any());
@@ -463,7 +463,7 @@ class EventServiceTest {
         StepVerifier.create(eventService.toggleSubscription("missing", "user123"))
                 .expectErrorMatches(e -> e instanceof BusinessException
                         && ((BusinessException) e).getErrorCode() == BusinessErrorCode.EVENT_NOT_FOUND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -475,7 +475,7 @@ class EventServiceTest {
 
         StepVerifier.create(result)
                 .expectNext(event)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -487,7 +487,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getFeedEvents("user123", friends, FeedRank.DEFAULT))
                 .expectNext(later, sooner)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -504,7 +504,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getFeedEvents("user123", friends, FeedRank.AFFINITY).map(Event::getId))
                 .expectNext("intimate-sooner", "intimate-later", "friend", "none")
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -513,7 +513,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getFeedEvents("user123", ViewerFriends.NONE, FeedRank.AFFINITY))
                 .expectError(IllegalStateException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -524,7 +524,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getMapEvents("user123", LYON))
                 .expectNext(event)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -533,7 +533,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getMapEvents("user123", LYON))
                 .expectError(IllegalStateException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     private static Expense expenseWithReceipt(String id, String receiptKey) {
@@ -551,7 +551,7 @@ class EventServiceTest {
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
         when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
 
-        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore).delete("events/1/cover-a.jpg");
         verify(mediaStore).delete("events/1/receipts/x1-a.jpg");
@@ -567,7 +567,7 @@ class EventServiceTest {
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
         when(mediaStore.delete(anyString())).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
 
-        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -578,7 +578,7 @@ class EventServiceTest {
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
-        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore, never()).delete(anyString());
     }
@@ -615,7 +615,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -624,7 +624,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).removeParticipant(any(), any());
     }
 
@@ -635,7 +635,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
                 .expectNext(LeaveOutcome.left(event))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).removeParticipant(any(), any());
     }
 
@@ -647,7 +647,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
                 .expectNext(LeaveOutcome.left(after))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -658,7 +658,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -668,7 +668,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -677,10 +677,10 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         StepVerifier.create(eventService.leave("1", "org", " ", true))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).handOver(any(), any(), any());
         verify(eventRepository, never()).deleteIfAlone(any(), any(), any());
     }
@@ -691,7 +691,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", "hugo", false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).handOver(any(), any(), any());
     }
 
@@ -701,7 +701,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", "org", false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -712,7 +712,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
                 .expectNext(LeaveOutcome.left(handedOver))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).removeParticipant(any(), any());
     }
 
@@ -724,7 +724,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -735,7 +735,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -745,7 +745,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -754,7 +754,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", null, false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.LAST_MEMBER))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).deleteIfAlone(any(), any(), any());
     }
 
@@ -770,7 +770,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
                 .expectNext(LeaveOutcome.eventDeleted())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(deletionOutbox).record(new EventDeletion("1", "Quiz", 4L, NOW));
         verify(expenseRepository).deleteByEvent("1");
@@ -788,7 +788,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
                 .expectNext(LeaveOutcome.eventDeleted())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -798,7 +798,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(deletionOutbox, never()).record(any());
         verify(expenseRepository, never()).deleteByEvent(any());
     }
@@ -810,7 +810,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -824,7 +824,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
                 .expectNext(LeaveOutcome.eventDeleted())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).handOver(any(), any(), any());
     }
 
@@ -835,7 +835,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", null, false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.LAST_MEMBER))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).deleteIfAlone(any(), any(), any());
     }
 
@@ -846,7 +846,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", "gone", false))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).handOver(any(), any(), any());
     }
 
@@ -859,7 +859,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
                 .expectNext(LeaveOutcome.left(handedOver))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -870,7 +870,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
                 .expectErrorMatches(e -> hasCode(e, TechnicalErrorCode.STORE_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).handOver(any(), any(), any());
     }
 
@@ -880,7 +880,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.toggleSubscription("1", "org"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).removeParticipant(any(), any());
     }
 
@@ -891,7 +891,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.toggleSubscription("1", "lea"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -902,7 +902,7 @@ class EventServiceTest {
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
-        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(deletionOutbox).record(new EventDeletion("1", "Quiz", 4L, NOW));
     }
@@ -916,7 +916,7 @@ class EventServiceTest {
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
-        StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
+        StepVerifier.create(eventService.deleteEvent("1", "organizer")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(expenseRepository).deleteByEvent("1");
     }
@@ -929,7 +929,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(deletionOutbox, never()).record(any());
         verify(expenseRepository, never()).deleteByEvent(any());
     }
@@ -949,7 +949,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.updateDetails("1", "organizer", NEW_DETAILS, true)).thenReturn(Mono.just(updated));
 
-        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS)).expectNext(updated).verifyComplete();
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS)).expectNext(updated).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -958,7 +958,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.updateDetails("1", "organizer", NEW_DETAILS, false)).thenReturn(Mono.just(event));
 
-        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS)).expectNextCount(1).verifyComplete();
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS)).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -967,8 +967,8 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.updateDetails(eq("1"), eq("organizer"), any(), eq(false))).thenReturn(Mono.just(event));
 
-        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS.withVisibility(null))).expectNextCount(1).verifyComplete();
-        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS.withVisibility(Visibility.COMMUNITY))).expectNextCount(1).verifyComplete();
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS.withVisibility(null))).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS.withVisibility(Visibility.COMMUNITY))).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(eventRepository, times(2)).updateDetails("1", "organizer", NEW_DETAILS.withVisibility(Visibility.PRIVATE), false);
     }
@@ -980,7 +980,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.updateDetails(eq("1"), eq("organizer"), any(), eq(false))).thenReturn(Mono.just(event));
 
-        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS)).expectNextCount(1).verifyComplete();
+        StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS)).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(eventRepository).updateDetails("1", "organizer", NEW_DETAILS.withVisibility(Visibility.COMMUNITY), false);
     }
@@ -992,7 +992,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.updateDetails("1", "alice", NEW_DETAILS))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).updateDetails(any(), any(), any(), anyBoolean());
     }
 
@@ -1002,7 +1002,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.updateDetails("1", "mallory", NEW_DETAILS))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1012,7 +1012,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1025,7 +1025,7 @@ class EventServiceTest {
         when(mediaStore.delete("events/1/cover-old.jpg")).thenReturn(Mono.empty());
         ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
 
-        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1})).expectNext(updated).verifyComplete();
+        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1})).expectNext(updated).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(eventRepository).setImage(eq("1"), eq("organizer"), key.capture());
         assertThat(key.getValue()).matches("events/1/cover-[0-9a-f-]{36}\\.jpg");
@@ -1039,7 +1039,7 @@ class EventServiceTest {
         storesUnderTheKeyGiven();
         when(eventRepository.setImage(eq("1"), eq("organizer"), anyString())).thenReturn(Mono.just(event));
 
-        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1})).expectNextCount(1).verifyComplete();
+        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1})).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore, never()).delete(anyString());
     }
@@ -1051,7 +1051,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.setCover("1", "alice", new byte[]{1}))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).store(any(), any(), any());
     }
 
@@ -1061,7 +1061,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.setCover("1", "mallory", new byte[]{1}))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).store(any(), any(), any());
     }
 
@@ -1073,7 +1073,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1}))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.COVER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).setImage(any(), any(), any());
     }
 
@@ -1086,7 +1086,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1}))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore).delete(startsWith("events/1/cover-"));
     }
 
@@ -1098,7 +1098,7 @@ class EventServiceTest {
                 .thenReturn(Mono.error(new IllegalStateException("mongo down")));
         when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
 
-        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1})).verifyError(IllegalStateException.class);
+        StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1})).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
         verify(mediaStore).delete(startsWith("events/1/cover-"));
     }
 
@@ -1109,7 +1109,7 @@ class EventServiceTest {
         when(eventRepository.setImage("1", "organizer", null)).thenReturn(Mono.just(by("organizer", Visibility.FRIENDS)));
         when(mediaStore.delete("events/1/cover-a.jpg")).thenReturn(Mono.empty());
 
-        StepVerifier.create(eventService.removeCover("1", "organizer")).verifyComplete();
+        StepVerifier.create(eventService.removeCover("1", "organizer")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore).delete("events/1/cover-a.jpg");
     }
@@ -1121,7 +1121,7 @@ class EventServiceTest {
         when(eventRepository.setImage("1", "organizer", null)).thenReturn(Mono.just(by("organizer", Visibility.FRIENDS)));
         when(mediaStore.delete("events/1/cover-a.jpg")).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
 
-        StepVerifier.create(eventService.removeCover("1", "organizer")).verifyComplete();
+        StepVerifier.create(eventService.removeCover("1", "organizer")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1132,7 +1132,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.removeCover("1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).setImage(any(), any(), any());
     }
 
@@ -1142,7 +1142,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.removeCover("1", "organizer"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1152,7 +1152,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.removeCover("1", "organizer"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).delete(anyString());
     }
 
@@ -1170,7 +1170,7 @@ class EventServiceTest {
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
         when(eventRepository.save(event)).thenReturn(Mono.just(event));
 
-        StepVerifier.create(eventService.createEvent(event, null)).expectNext(event).verifyComplete();
+        StepVerifier.create(eventService.createEvent(event, null)).expectNext(event).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(event.getVisibility()).isEqualTo(Visibility.COMMUNITY);
         assertThat(event.getParticipantIds()).containsExactly("alice");
@@ -1184,7 +1184,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.createEvent(event, null))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.COMMUNITY_MEMBERS_ONLY))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).save(any());
     }
 
@@ -1204,7 +1204,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
 
-        StepVerifier.create(eventService.getEventById("1", "alice")).expectNext(event).verifyComplete();
+        StepVerifier.create(eventService.getEventById("1", "alice")).expectNext(event).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1214,7 +1214,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1224,7 +1224,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(communityDirectory, never()).roleOf(anyString(), anyString());
     }
 
@@ -1234,7 +1234,7 @@ class EventServiceTest {
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
         when(eventRepository.findUpcomingInCommunity("c1", "alice", NOW)).thenReturn(Flux.just(event));
 
-        StepVerifier.create(eventService.getCommunityEvents("c1", "alice")).expectNext(event).verifyComplete();
+        StepVerifier.create(eventService.getCommunityEvents("c1", "alice")).expectNext(event).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1243,7 +1243,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getCommunityEvents("c1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.COMMUNITY_MEMBERS_ONLY))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).findUpcomingInCommunity(anyString(), any(), any());
     }
 
@@ -1256,7 +1256,7 @@ class EventServiceTest {
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
 
-        StepVerifier.create(eventService.deleteEvent("1", "admin")).verifyComplete();
+        StepVerifier.create(eventService.deleteEvent("1", "admin")).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository).deleteByOrganizer("1", "bob");
     }
 
@@ -1267,7 +1267,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.deleteEvent("1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).deleteByOrganizer(anyString(), anyString());
     }
 
@@ -1278,7 +1278,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.deleteEvent("1", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1289,7 +1289,7 @@ class EventServiceTest {
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
         when(eventRepository.respond("1", "alice", PollAnswer.YES)).thenReturn(Mono.just(answered));
 
-        StepVerifier.create(eventService.respond("1", "alice", PollAnswer.YES)).expectNext(answered).verifyComplete();
+        StepVerifier.create(eventService.respond("1", "alice", PollAnswer.YES)).expectNext(answered).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1299,7 +1299,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.respond("1", "alice", PollAnswer.NO))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1308,7 +1308,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.respond("1", "alice", PollAnswer.YES))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NOT_A_COMMUNITY_EVENT))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).respond(anyString(), anyString(), any());
     }
 
@@ -1317,7 +1317,7 @@ class EventServiceTest {
         Event event = inCommunity("bob", "bob");
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
 
-        StepVerifier.create(eventService.respond("1", "bob", PollAnswer.YES)).expectNext(event).verifyComplete();
+        StepVerifier.create(eventService.respond("1", "bob", PollAnswer.YES)).expectNext(event).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).respond(anyString(), anyString(), any());
     }
 
@@ -1327,7 +1327,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.respond("1", "bob", PollAnswer.MAYBE))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1337,7 +1337,7 @@ class EventServiceTest {
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
         when(eventRepository.respond("1", "alice", PollAnswer.YES)).thenReturn(Mono.just(event));
 
-        StepVerifier.create(eventService.toggleSubscription("1", "alice")).expectNext(event).verifyComplete();
+        StepVerifier.create(eventService.toggleSubscription("1", "alice")).expectNext(event).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1346,7 +1346,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.respond("1", "alice", PollAnswer.NO)).thenReturn(Mono.just(event));
 
-        StepVerifier.create(eventService.toggleSubscription("1", "alice")).expectNext(event).verifyComplete();
+        StepVerifier.create(eventService.toggleSubscription("1", "alice")).expectNext(event).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     // --- Kinds, all-day events and hidden events --------------------------------------------------
@@ -1358,7 +1358,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.getEventById("1", "lea"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository).findShownTo("1", "lea");
         verify(eventRepository, never()).findById(anyString());
     }
@@ -1368,7 +1368,7 @@ class EventServiceTest {
         for (EventKind kind : List.of(EventKind.BIRTHDAY, EventKind.SURPRISE)) {
             StepVerifier.create(eventService.createEvent(Event.builder().title("x").kind(kind).build(), null))
                     .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_KIND_INVALID))
-                    .verify();
+                    .verify(Duration.ofSeconds(10));
         }
         verify(eventRepository, never()).save(any());
     }
@@ -1408,7 +1408,7 @@ class EventServiceTest {
                 .endDate(Instant.parse("2026-11-06T00:00:00Z")).build();
         when(eventRepository.save(event)).thenReturn(Mono.just(event));
 
-        StepVerifier.create(eventService.createEvent(event)).expectNext(event).verifyComplete();
+        StepVerifier.create(eventService.createEvent(event)).expectNext(event).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1422,13 +1422,13 @@ class EventServiceTest {
         for (Event event : invalid) {
             StepVerifier.create(eventService.createEvent(event))
                     .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.ALL_DAY_INVALID))
-                    .verify();
+                    .verify(Duration.ofSeconds(10));
         }
         List<PollSlot> slots = List.of(new PollSlot(null, NOW.plusSeconds(86_400), NOW.plusSeconds(90_000)),
                 new PollSlot(null, NOW.plusSeconds(172_800), NOW.plusSeconds(176_400)));
         StepVerifier.create(eventService.createEvent(Event.builder().title("e").allDay(true).startDate(midnight).build(), slots))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.ALL_DAY_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).save(any());
     }
 
@@ -1441,7 +1441,7 @@ class EventServiceTest {
         for (Event event : past) {
             StepVerifier.create(eventService.createEvent(event))
                     .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_IN_PAST))
-                    .verify();
+                    .verify(Duration.ofSeconds(10));
         }
         verify(eventRepository, never()).save(any());
     }
@@ -1452,10 +1452,10 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.createEvent(Event.builder().title("now")
                         .startDate(NOW.minus(Duration.ofMinutes(4))).build()))
-                .expectNextCount(1).verifyComplete();
+                .expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(eventService.createEvent(Event.builder().title("today").allDay(true)
                         .startDate(Instant.parse("2026-10-11T00:00:00Z")).build()))
-                .expectNextCount(1).verifyComplete();
+                .expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -1466,7 +1466,7 @@ class EventServiceTest {
         StepVerifier.create(eventService.updateDetails("1", "organizer",
                         new EventDetails("Afterwork", " ", null, null, Visibility.PUBLIC)))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.LOCATION_REQUIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).updateDetails(anyString(), anyString(), any(), anyBoolean());
     }
 
@@ -1479,6 +1479,6 @@ class EventServiceTest {
         when(eventRepository.updateDetails("1", "organizer", details.withVisibility(Visibility.FRIENDS), false))
                 .thenReturn(Mono.just(surprise));
 
-        StepVerifier.create(eventService.updateDetails("1", "organizer", details)).expectNext(surprise).verifyComplete();
+        StepVerifier.create(eventService.updateDetails("1", "organizer", details)).expectNext(surprise).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

@@ -18,6 +18,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,11 +54,11 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
     @Test
     void record_shouldInsertThenOverwriteWithANewerVersion() {
         StepVerifier.create(adapter.record(new Friendship("bob", "alice", true, Closeness.FRIEND, SINCE, 1)))
-                .expectNext(true).verifyComplete();
+                .expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.record(new Friendship("alice", "bob", true, Closeness.INTIMATE, SINCE, 2)))
-                .expectNext(true).verifyComplete();
+                .expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
 
-        StepVerifier.create(adapter.friendsOf("alice")).expectNext(new Friend("bob", Closeness.INTIMATE)).verifyComplete();
+        StepVerifier.create(adapter.friendsOf("alice")).expectNext(new Friend("bob", Closeness.INTIMATE)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -65,11 +66,11 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
         adapter.record(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5)).block();
 
         StepVerifier.create(adapter.record(new Friendship("alice", "bob", false, null, null, 4)))
-                .expectNext(false).verifyComplete();
+                .expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.record(new Friendship("alice", "bob", true, Closeness.FRIEND, SINCE, 5)))
-                .expectNext(false).verifyComplete();
+                .expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
 
-        StepVerifier.create(adapter.friendsOf("bob")).expectNext(new Friend("alice", Closeness.CLOSE)).verifyComplete();
+        StepVerifier.create(adapter.friendsOf("bob")).expectNext(new Friend("alice", Closeness.CLOSE)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -78,8 +79,8 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
         adapter.record(new Friendship("alice", "bob", false, null, null, 3)).block();
 
         StepVerifier.create(adapter.record(new Friendship("alice", "bob", true, Closeness.FRIEND, SINCE, 2)))
-                .expectNext(false).verifyComplete();
-        StepVerifier.create(adapter.friendsOf("alice")).verifyComplete();
+                .expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.friendsOf("alice")).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(mongoTemplate.count(new Query(), "friendships").block()).isEqualTo(1L);
     }
 
@@ -100,8 +101,8 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
         adapter.record(new Friendship("bob", "zoe", false, null, null, 1)).block();
         adapter.record(new Friendship("alice", "zoe", true, Closeness.FRIEND, SINCE, 1)).block();
 
-        StepVerifier.create(adapter.forget("bob")).expectNext(2L).verifyComplete();
-        StepVerifier.create(adapter.friendsOf("alice")).expectNext(new Friend("zoe", Closeness.FRIEND)).verifyComplete();
+        StepVerifier.create(adapter.forget("bob")).expectNext(2L).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.friendsOf("alice")).expectNext(new Friend("zoe", Closeness.FRIEND)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -111,7 +112,7 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.friendshipsOf("bob"))
                 .expectNext(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 1))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -129,8 +130,8 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
         adapter.record(new Friendship("alice", "bob", false, null, null, 4)).block();
 
         StepVerifier.create(adapter.pairOf("bob", "alice"))
-                .expectNext(new Friendship("alice", "bob", false, null, null, 4)).verifyComplete();
-        StepVerifier.create(adapter.pairOf("bob", "zoe")).verifyComplete();
+                .expectNext(new Friendship("alice", "bob", false, null, null, 4)).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.pairOf("bob", "zoe")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -139,17 +140,17 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.trackedPairOf("bob", "alice"))
                 .expectNext(new TrackedPair(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5), 5L))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
-        StepVerifier.create(adapter.markStreamed("bob", "alice", 3)).verifyComplete();
+        StepVerifier.create(adapter.markStreamed("bob", "alice", 3)).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.trackedPairOf("alice", "bob"))
                 .expectNext(new TrackedPair(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5), 3L))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void markStreamed_shouldNotCreateAnUnknownPair() {
-        StepVerifier.create(adapter.markStreamed("alice", "bob", 3)).verifyComplete();
+        StepVerifier.create(adapter.markStreamed("alice", "bob", 3)).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(mongoTemplate.count(new Query(), "friendships").block()).isZero();
     }
@@ -159,13 +160,13 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
         Friendship close = new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5);
         adapter.record(close).block();
 
-        StepVerifier.create(adapter.end(close)).expectNext(true).verifyComplete();
-        StepVerifier.create(adapter.end(close)).expectNext(false).verifyComplete();
+        StepVerifier.create(adapter.end(close)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.end(close)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
 
         StepVerifier.create(adapter.pairOf("alice", "bob"))
-                .expectNext(new Friendship("alice", "bob", false, null, null, 5)).verifyComplete();
+                .expectNext(new Friendship("alice", "bob", false, null, null, 5)).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.record(new Friendship("alice", "bob", true, Closeness.FRIEND, SINCE, 6)))
-                .expectNext(true).verifyComplete();
+                .expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -173,7 +174,7 @@ class MongoFriendshipDirectoryAdapterIntegrationTest {
         adapter.record(new Friendship("alice", "bob", true, Closeness.INTIMATE, SINCE, 6)).block();
 
         StepVerifier.create(adapter.end(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 5)))
-                .expectNext(false).verifyComplete();
-        StepVerifier.create(adapter.friendsOf("alice")).expectNext(new Friend("bob", Closeness.INTIMATE)).verifyComplete();
+                .expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.friendsOf("alice")).expectNext(new Friend("bob", Closeness.INTIMATE)).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

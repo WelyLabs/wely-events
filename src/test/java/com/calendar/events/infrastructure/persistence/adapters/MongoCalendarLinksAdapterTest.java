@@ -16,6 +16,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -49,7 +50,7 @@ class MongoCalendarLinksAdapterTest {
 
         StepVerifier.create(adapter.save(LINK))
                 .expectNext(LINK)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -60,7 +61,7 @@ class MongoCalendarLinksAdapterTest {
 
         StepVerifier.create(adapter.save(LINK))
                 .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -69,7 +70,7 @@ class MongoCalendarLinksAdapterTest {
 
         StepVerifier.create(adapter.findByToken("tok"))
                 .expectNext(LINK)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -77,7 +78,7 @@ class MongoCalendarLinksAdapterTest {
         when(mongoRepository.findById("nope")).thenReturn(Mono.empty());
 
         StepVerifier.create(adapter.findByToken("nope"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -87,6 +88,6 @@ class MongoCalendarLinksAdapterTest {
 
         StepVerifier.create(adapter.findByToken("tok"))
                 .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

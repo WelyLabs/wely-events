@@ -20,6 +20,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +79,7 @@ class FriendshipMemoriesControllerTest {
                     assertThat(response.highlights()).extracting(FriendshipMemoriesResponse.MemoryResponse::imageUrl)
                             .containsExactly("https://media/b", "https://media/a");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(mediaStore, times(1)).urls(any());
     }
 
@@ -93,7 +94,7 @@ class FriendshipMemoriesControllerTest {
                     assertThat(response.last()).isNull();
                     assertThat(response.highlights()).isEmpty();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).urls(any());
     }
 
@@ -105,6 +106,6 @@ class FriendshipMemoriesControllerTest {
         StepVerifier.create(controller.getMemories("stranger", jwt))
                 .expectErrorMatches(error -> error instanceof BusinessException e
                         && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

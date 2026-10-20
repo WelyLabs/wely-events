@@ -17,6 +17,8 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 import io.swagger.v3.oas.models.OpenAPI;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -40,7 +42,10 @@ class OpenApiConfigTest {
     private int port;
 
     private WebTestClient client() {
-        return WebTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
+        return WebTestClient.bindToServer()
+                .baseUrl("http://localhost:" + port)
+                .responseTimeout(Duration.ofSeconds(30))
+                .build();
     }
 
     @Test
@@ -99,7 +104,7 @@ class OpenApiConfigTest {
                 .expectBody()
                 .jsonPath("$.components.schemas.Problem.properties.code.enum").value(codes -> assertThat(
                         (java.util.List<Object>) codes).contains(BusinessErrorCode.EVENT_NOT_FOUND.getCode(),
-                        TechnicalErrorCode.MEDIA_UNAVAILABLE.getCode(), GlobalErrorHandler.UNEXPECTED_CODE))
+                        TechnicalErrorCode.MEDIA_UNAVAILABLE.getCode(), GlobalErrorHandler.UNEXPECTED_FAILURE_CODE))
                 .jsonPath("$.components.schemas.Problem.properties.requestId").exists()
                 .jsonPath("$.components.schemas.Problem.properties.errors").exists();
     }
@@ -136,8 +141,8 @@ class OpenApiConfigTest {
     void errorCodes_shouldListEveryCodeOnce() {
         assertThat(OpenApiConfig.errorCodes())
                 .hasSize(BusinessErrorCode.values().length + TechnicalErrorCode.values().length
-                        + GlobalErrorHandler.LITERAL_CODES.size())
+                        + GlobalErrorHandler.HANDLER_CODES.size())
                 .doesNotHaveDuplicates()
-                .containsAll(GlobalErrorHandler.LITERAL_CODES);
+                .containsAll(GlobalErrorHandler.HANDLER_CODES);
     }
 }

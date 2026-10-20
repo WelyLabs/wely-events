@@ -10,6 +10,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.MonthDay;
 import java.util.List;
 import java.util.Map;
@@ -44,12 +45,12 @@ class DisplayNamesTest {
         when(eventRepository.findBirthdaysOf(List.of("lea", "hugo", "max")))
                 .thenReturn(Flux.just(birthdayOf("lea", "Léa"), birthdayOf("hugo", "  ")));
 
-        StepVerifier.create(names.of(List.of("lea", "hugo", "max"))).expectNext(Map.of("lea", "Léa")).verifyComplete();
+        StepVerifier.create(names.of(List.of("lea", "hugo", "max"))).expectNext(Map.of("lea", "Léa")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void of_shouldReadNothing_forNobody() {
-        StepVerifier.create(names.of(List.of())).expectNext(Map.of()).verifyComplete();
+        StepVerifier.create(names.of(List.of())).expectNext(Map.of()).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).findBirthdaysOf(any());
     }
 
@@ -58,15 +59,15 @@ class DisplayNamesTest {
         when(eventRepository.findBirthdaysOf(List.of("lea"))).thenReturn(Flux.just(birthdayOf("lea", "Léa")));
         when(eventRepository.findBirthdaysOf(List.of("max"))).thenReturn(Flux.empty());
 
-        StepVerifier.create(names.of("lea")).expectNext("Léa").verifyComplete();
-        StepVerifier.create(names.of("max")).expectNext(DisplayNames.FALLBACK).verifyComplete();
+        StepVerifier.create(names.of("lea")).expectNext("Léa").expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(names.of("max")).expectNext(DisplayNames.FALLBACK).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void of_shouldPassAReadFailureOn() {
         when(eventRepository.findBirthdaysOf(List.of("lea"))).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(names.of("lea")).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(names.of("lea")).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
     }
 
     @Test

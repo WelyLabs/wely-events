@@ -26,6 +26,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.anyString;
@@ -76,7 +77,7 @@ class ScheduleControllerTest {
 
         StepVerifier.create(controller.checkConflicts(new ConflictCheckRequest(START, END, "bowling"), jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -85,7 +86,7 @@ class ScheduleControllerTest {
 
         StepVerifier.create(controller.checkConflicts(new ConflictCheckRequest(END, START, null), jwt))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.SCHEDULE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(scheduleService, never()).conflictsWith(any(), any(), any());
     }
 
@@ -97,7 +98,7 @@ class ScheduleControllerTest {
         when(scheduleService.conflictsOf("bowling", "me")).thenReturn(Flux.just(doctor));
         when(eventMapper.toResponse(doctor, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.getConflicts("bowling", jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.getConflicts("bowling", jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -107,7 +108,7 @@ class ScheduleControllerTest {
 
         StepVerifier.create(controller.getProposals("bowling", jwt))
                 .expectNext(new TimeRangeResponse(START, END))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -120,7 +121,7 @@ class ScheduleControllerTest {
 
         StepVerifier.create(controller.reschedule("bowling", new ScheduleRequest(START, END), jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -129,7 +130,7 @@ class ScheduleControllerTest {
 
         StepVerifier.create(controller.reschedule("bowling", new ScheduleRequest(START, START), jwt))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.SCHEDULE_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(scheduleService, never()).reschedule(any(), any(), any());
     }
 }

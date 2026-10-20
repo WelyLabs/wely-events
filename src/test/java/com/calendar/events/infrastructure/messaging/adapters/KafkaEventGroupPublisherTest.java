@@ -13,6 +13,7 @@ import org.springframework.cloud.stream.function.StreamBridge;
 import org.springframework.messaging.MessageDeliveryException;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
@@ -33,7 +34,7 @@ class KafkaEventGroupPublisherTest {
     void publish_shouldSendTheGroupOnItsBinding() {
         when(streamBridge.send(KafkaEventGroupPublisher.DESTINATION, GROUP)).thenReturn(true);
 
-        StepVerifier.create(publisher.publish(GROUP)).verifyComplete();
+        StepVerifier.create(publisher.publish(GROUP)).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(streamBridge).send(KafkaEventGroupPublisher.DESTINATION, GROUP);
     }
@@ -48,7 +49,7 @@ class KafkaEventGroupPublisherTest {
 
         StepVerifier.create(publisher.publish(GROUP))
                 .expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == null)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -60,6 +61,6 @@ class KafkaEventGroupPublisherTest {
 
         StepVerifier.create(publisher.publish(GROUP))
                 .expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == failure)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

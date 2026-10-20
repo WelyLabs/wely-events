@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
@@ -63,14 +64,14 @@ class PictureServiceTest {
         byte[] content = {1, 2};
         when(mediaStore.store("events/1/cover-a.jpg", content, MediaProfile.COVER)).thenReturn(Mono.just(stored));
 
-        StepVerifier.create(service.store("events/1/cover-a.jpg", content, MediaProfile.COVER)).expectNext(stored).verifyComplete();
+        StepVerifier.create(service.store("events/1/cover-a.jpg", content, MediaProfile.COVER)).expectNext(stored).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void discard_shouldDeleteEachKeyOnce_andSkipNulls() {
         when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.discard(Arrays.asList("events/a.jpg", null, "events/a.jpg", "events/b.jpg"))).verifyComplete();
+        StepVerifier.create(service.discard(Arrays.asList("events/a.jpg", null, "events/a.jpg", "events/b.jpg"))).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore).delete("events/a.jpg");
         verify(mediaStore).delete("events/b.jpg");
@@ -82,14 +83,14 @@ class PictureServiceTest {
         when(mediaStore.delete("events/a.jpg")).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
         when(mediaStore.delete("events/b.jpg")).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.discard(List.of("events/a.jpg", "events/b.jpg"))).verifyComplete();
+        StepVerifier.create(service.discard(List.of("events/a.jpg", "events/b.jpg"))).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore).delete("events/b.jpg");
     }
 
     @Test
     void discard_shouldDoNothing_forANullKey() {
-        StepVerifier.create(service.discard((String) null)).verifyComplete();
+        StepVerifier.create(service.discard((String) null)).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore, never()).delete(anyString());
     }
@@ -98,7 +99,7 @@ class PictureServiceTest {
     void discard_shouldDeleteASingleKey() {
         when(mediaStore.delete("events/a.jpg")).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.discard("events/a.jpg")).verifyComplete();
+        StepVerifier.create(service.discard("events/a.jpg")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore).delete("events/a.jpg");
     }
@@ -115,7 +116,7 @@ class PictureServiceTest {
                     assertThat(urls.urlOf("events/2/cover-b.jpg")).isEqualTo("https://media/events/2/cover-b.jpg");
                     assertThat(urls.byKey()).hasSize(2);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore).urls(List.of("events/1/cover-a.jpg", "events/2/cover-b.jpg"));
     }
@@ -124,7 +125,7 @@ class PictureServiceTest {
     void signCovers_shouldNotCallWelyMedia_whenNothingIsStored() {
         StepVerifier.create(service.signCovers(List.of(coveredBy("/demo/events/picnic.jpg"), coveredBy(null))))
                 .assertNext(urls -> assertThat(urls.byKey()).isEmpty())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore, never()).urls(any());
     }
@@ -136,7 +137,7 @@ class PictureServiceTest {
 
         StepVerifier.create(service.signCovers(events))
                 .assertNext(urls -> assertThat(urls.byKey()).hasSize(450))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mediaStore, times(3)).urls(any());
     }
@@ -147,7 +148,7 @@ class PictureServiceTest {
 
         StepVerifier.create(service.signCovers(List.of(coveredBy("events/1/cover-a.jpg"))))
                 .assertNext(urls -> assertThat(urls.urlOf("events/1/cover-a.jpg")).isNull())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -161,6 +162,6 @@ class PictureServiceTest {
 
         StepVerifier.create(service.signReceipts(List.of(withReceipt, without)))
                 .assertNext(urls -> assertThat(urls.urlOf("events/ev/receipts/x1-a.jpg")).isEqualTo("https://media/r"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 }

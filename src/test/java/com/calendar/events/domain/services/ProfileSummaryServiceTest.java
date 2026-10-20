@@ -25,6 +25,7 @@ import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -99,7 +100,7 @@ class ProfileSummaryServiceTest {
                     assertThat(summary.organizedThisYear()).isEqualTo(1);
                     assertThat(summary.placesThisYear()).isEqualTo(3);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -119,7 +120,7 @@ class ProfileSummaryServiceTest {
                     assertThat(summary.memories()).extracting(Event::getId).containsExactly("p2", "p1");
                     assertThat(summary.pastCount()).isEqualTo(2);
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -132,7 +133,7 @@ class ProfileSummaryServiceTest {
                     assertThat(summary.outingsThisYear()).isEqualTo(1);
                     assertThat(summary.memories()).isEmpty();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -150,7 +151,7 @@ class ProfileSummaryServiceTest {
                         new ProfileSummary.Companion("bob", 2),
                         new ProfileSummary.Companion("lea", 2),
                         new ProfileSummary.Companion("carol", 1)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -168,7 +169,7 @@ class ProfileSummaryServiceTest {
                     assertThat(summary.places().getFirst()).isEqualTo(
                             new ProfileSummary.Place("Chez Léa", new GeoPoint(45.77, 4.83), 2));
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -180,7 +181,7 @@ class ProfileSummaryServiceTest {
         StepVerifier.create(service.summaryOf(ME))
                 .assertNext(summary -> assertThat(summary.places())
                         .containsExactly(new ProfileSummary.Place("Bar du coin", null, 2)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -197,7 +198,7 @@ class ProfileSummaryServiceTest {
         StepVerifier.create(service.summaryOf(ME))
                 .assertNext(summary -> assertThat(summary.balances())
                         .containsExactly(new ProfileSummary.EventBalance("dinner", "Event dinner", -1500)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -211,7 +212,7 @@ class ProfileSummaryServiceTest {
                     assertThat(summary.circle()).isEmpty();
                     assertThat(summary.balances()).isEmpty();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(expenseRepository, never()).findByEvents(any());
     }
 
@@ -244,7 +245,7 @@ class ProfileSummaryServiceTest {
                 .assertNext(summary -> assertThat(summary.newFriendsThisYear()).containsExactly(
                         new ProfileSummary.NewFriend("lea", Instant.parse("2026-03-03T10:00:00Z")),
                         new ProfileSummary.NewFriend("zoe", Instant.parse("2025-12-31T23:30:00Z"))))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipHistory).involvingSince(ME, YEAR_START);
     }
 
@@ -267,7 +268,7 @@ class ProfileSummaryServiceTest {
                 .assertNext(summary -> assertThat(summary.upgradesThisYear()).containsExactly(
                         new ProfileSummary.Upgrade("bob", Closeness.CLOSE, Instant.parse("2026-02-10T10:00:00Z")),
                         new ProfileSummary.Upgrade("lea", Closeness.INTIMATE, Instant.parse("2026-03-15T10:00:00Z"))))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -291,7 +292,7 @@ class ProfileSummaryServiceTest {
                         new ProfileSummary.Companion("lea", 3),
                         new ProfileSummary.Companion("bob", 2),
                         new ProfileSummary.Companion("max", 2)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -299,6 +300,6 @@ class ProfileSummaryServiceTest {
         involvedIn();
         when(friendships.friendshipsOf(ME)).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.summaryOf(ME)).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.summaryOf(ME)).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
     }
 }

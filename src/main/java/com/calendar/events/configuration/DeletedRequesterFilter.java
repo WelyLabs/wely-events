@@ -4,26 +4,21 @@ import com.calendar.events.domain.services.AccountGuard;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
 import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.ProblemWriter;
 import com.calendar.events.exception.Problems;
 import com.calendar.events.exception.TechnicalException;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
-import org.springframework.http.codec.HttpMessageWriter;
-import org.springframework.http.codec.ServerCodecConfigurer;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
-import org.springframework.web.reactive.function.server.ServerResponse;
-import org.springframework.web.reactive.result.view.ViewResolver;
 import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -35,23 +30,13 @@ final class DeletedRequesterFilter implements WebFilter {
     static final String BUSINESS_ID_CLAIM = "businessId";
 
     private final AccountGuard accountGuard;
+    private final ProblemWriter problemWriter;
     private final MeterRegistry meterRegistry;
-    private final ServerResponse.Context context;
 
-    DeletedRequesterFilter(AccountGuard accountGuard, ServerCodecConfigurer codecs, MeterRegistry meterRegistry) {
+    DeletedRequesterFilter(AccountGuard accountGuard, ProblemWriter problemWriter, MeterRegistry meterRegistry) {
         this.accountGuard = accountGuard;
+        this.problemWriter = problemWriter;
         this.meterRegistry = meterRegistry;
-        this.context = new ServerResponse.Context() {
-            @Override
-            public List<HttpMessageWriter<?>> messageWriters() {
-                return codecs.getWriters();
-            }
-
-            @Override
-            public List<ViewResolver> viewResolvers() {
-                return List.of();
-            }
-        };
     }
 
     @Override
@@ -61,11 +46,13 @@ final class DeletedRequesterFilter implements WebFilter {
         }
         String path = exchange.getRequest().getPath().value();
         String requestId = exchange.getRequest().getId();
-        // Optional, not switchIfEmpty: refuse completes empty and would run the chain after it.
+        // Optional, not switchIfEmpty: writing the refusal completes empty and would run the chain after it.
         return refusal(path, requestId)
                 .map(Optional::of)
                 .defaultIfEmpty(Optional.empty())
-                .flatMap(refusal -> refusal.isPresent() ? refuse(exchange, refusal.get()) : chain.filter(exchange));
+                .flatMap(refusal -> refusal.isPresent()
+                        ? problemWriter.write(exchange, refusal.get())
+                        : chain.filter(exchange));
     }
 
     /**
@@ -96,12 +83,5 @@ final class DeletedRequesterFilter implements WebFilter {
         log.error("Technical failure {} on {} (request {})", code, path, requestId, ex);
         GlobalErrorHandler.countTechnicalFailure(meterRegistry, code);
         return Problems.of(ex.getErrorCode(), path, requestId);
-    }
-
-    private Mono<Void> refuse(ServerWebExchange exchange, ProblemDetail problem) {
-        return ServerResponse.status(problem.getStatus())
-                .contentType(MediaType.APPLICATION_PROBLEM_JSON)
-                .bodyValue(problem)
-                .flatMap(response -> response.writeTo(exchange, context));
     }
 }

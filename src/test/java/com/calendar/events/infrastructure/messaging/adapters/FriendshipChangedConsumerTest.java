@@ -75,7 +75,7 @@ class FriendshipChangedConsumerTest {
         FriendshipChange expected = applied("ACCEPTED", new Friendship(ALICE, BOB, true, Closeness.FRIEND, SINCE, 12));
         when(friendshipService.recordHistory(expected)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(consume(change("ACCEPTED", BOB, ALICE, "FRIEND", 12))).verifyComplete();
+        StepVerifier.create(consume(change("ACCEPTED", BOB, ALICE, "FRIEND", 12))).expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService).recordHistory(expected);
     }
 
@@ -84,7 +84,7 @@ class FriendshipChangedConsumerTest {
         when(friendshipService.recordHistory(any())).thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(change("SNAPSHOT", ALICE, BOB, "CLOSE", 1),
-                change("CLOSENESS_CHANGED", ALICE, BOB, "INTIMATE", 2))).verifyComplete();
+                change("CLOSENESS_CHANGED", ALICE, BOB, "INTIMATE", 2))).expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService).recordHistory(applied("SNAPSHOT", new Friendship(ALICE, BOB, true, Closeness.CLOSE, SINCE, 1)));
         verify(friendshipService).recordHistory(applied("CLOSENESS_CHANGED",
                 new Friendship(ALICE, BOB, true, Closeness.INTIMATE, SINCE, 2)));
@@ -95,7 +95,7 @@ class FriendshipChangedConsumerTest {
         when(friendshipService.recordHistory(any())).thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(change("REMOVED", ALICE, BOB, null, 3), change("REJECTED", ALICE, BOB, null, 4),
-                change("CANCELLED", ALICE, BOB, null, 5), change("REQUESTED", ALICE, BOB, null, 6))).verifyComplete();
+                change("CANCELLED", ALICE, BOB, null, 5), change("REQUESTED", ALICE, BOB, null, 6))).expectComplete().verify(Duration.ofSeconds(10));
         String[] types = {"REMOVED", "REJECTED", "CANCELLED", "REQUESTED"};
         for (int i = 0; i < types.length; i++) {
             verify(friendshipService).recordHistory(applied(types[i], new Friendship(ALICE, BOB, false, null, null, i + 3)));
@@ -110,7 +110,7 @@ class FriendshipChangedConsumerTest {
                 .thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(change("REMOVED", ALICE, BOB, null, 3), change("ACCEPTED", ZOE, ALICE, "FRIEND", 4)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService, times(2)).recordHistory(any());
     }
 
@@ -131,7 +131,7 @@ class FriendshipChangedConsumerTest {
                         record("{\"type\":\"ACCEPTED\",\"fromUserId\":\"" + ALICE + "\",\"toUserId\":\"" + BOB
                                 + "\",\"closeness\":\"FRIEND\",\"since\":\"yesterday\",\"version\":1}"),
                         change("ACCEPTED", ZOE, ALICE, "FRIEND", 9)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService).recordHistory(valid);
         verify(friendshipService, times(1)).recordHistory(any());
     }

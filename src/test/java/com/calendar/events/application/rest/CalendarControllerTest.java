@@ -16,6 +16,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,7 +48,7 @@ class CalendarControllerTest {
 
         StepVerifier.create(controller.issueLink("e1", jwt, "https://web.welylabs.app"))
                 .expectNext(new CalendarLinkResponse("tok", EXPIRY))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -58,7 +59,7 @@ class CalendarControllerTest {
 
         StepVerifier.create(controller.issueLink("e1", jwt, "https://evil.example/phish?x=1"))
                 .expectNext(new CalendarLinkResponse("tok", EXPIRY))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -74,7 +75,7 @@ class CalendarControllerTest {
                     assertThat(response.getHeaders().getCacheControl()).isEqualTo("no-store");
                     assertThat(response.getBody()).isEqualTo("BEGIN:VCALENDAR\r\n");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -85,7 +86,7 @@ class CalendarControllerTest {
         StepVerifier.create(controller.ics("old"))
                 .expectErrorMatches(error -> error instanceof BusinessException e
                         && e.getErrorCode() == BusinessErrorCode.CALENDAR_LINK_EXPIRED)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test

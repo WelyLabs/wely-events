@@ -77,7 +77,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(new ReconciliationReport(1, 1, 0))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(erasure).erase("u1", LONG_AGO);
     }
@@ -91,7 +91,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(new ReconciliationReport(2, 2, 0))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(erasure).erase("u1", RECENTLY);
         verify(erasure).erase("u2", NOW.minus(RECENT_WINDOW));
@@ -104,7 +104,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(new ReconciliationReport(1, 0, 0))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(erasure, never()).erase(any(), any());
     }
@@ -117,7 +117,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(new ReconciliationReport(1, 1, 0))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(erasure).erase("u1", null);
     }
@@ -133,7 +133,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(new ReconciliationReport(3, 2, 0))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(erasure).erase("u2", LONG_AGO);
         verify(erasure).erase("u3", LONG_AGO);
@@ -147,7 +147,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(ReconciliationReport.NONE)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(source, never()).page("c1", PAGE_SIZE);
         verifyNoInteractions(erasure);
@@ -162,7 +162,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(new ReconciliationReport(2, 0, 0))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         verify(source, times(1)).page("c1", PAGE_SIZE);
         verifyNoInteractions(erasure);
@@ -179,7 +179,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(new ReconciliationReport(2, 1, 1))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -190,7 +190,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(new ReconciliationReport(1, 0, 1))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -201,7 +201,7 @@ class AccountReconciliationServiceTest {
         StepVerifier.create(service.reconcile())
                 .expectErrorMatches(error -> error instanceof TechnicalException technical
                         && technical.getErrorCode() == TechnicalErrorCode.USERS_UNAVAILABLE)
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         verifyNoInteractions(markers, erasure);
     }
@@ -239,7 +239,7 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectError(TechnicalException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         verify(erasure, never()).erase(any(), any());
     }
@@ -251,6 +251,6 @@ class AccountReconciliationServiceTest {
 
         StepVerifier.create(service.reconcile())
                 .expectNext(ReconciliationReport.NONE)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 }

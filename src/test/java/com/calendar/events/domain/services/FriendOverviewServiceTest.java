@@ -107,7 +107,7 @@ class FriendOverviewServiceTest {
                     assertThat(overview.memoriesTogether()).containsExactly(memory);
                     assertThat(overview.friendUpcoming()).isEmpty();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(FriendOverviewService.UPCOMING_TOGETHER_SIZE).isEqualTo(5);
         assertThat(FriendOverviewService.MEMORIES_TOGETHER_SIZE).isEqualTo(6);
     }
@@ -153,7 +153,7 @@ class FriendOverviewServiceTest {
         StepVerifier.create(service.overviewOf("alice", "bob"))
                 .assertNext(overview -> assertThat(overview.friendUpcoming()).singleElement()
                         .satisfies(event -> assertThat(event.isPolling()).isTrue()))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -180,7 +180,7 @@ class FriendOverviewServiceTest {
 
         StepVerifier.create(service.overviewOf("alice", "carol"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NOT_A_FRIEND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).findUpcomingInvolving(any(), any(), any());
         verify(eventRepository, never()).countPastInvolvingBoth(any(), any(), any());
         verify(eventRepository, never()).findPastInvolvingBoth(any(), any(), any(), anyInt());
@@ -191,7 +191,7 @@ class FriendOverviewServiceTest {
     void overviewOf_shouldRefuseTheCallersOwnPage() {
         StepVerifier.create(service.overviewOf("alice", "alice"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_CALENDAR_REQUEST))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(socialGraph, eventRepository);
     }
 
@@ -203,7 +203,7 @@ class FriendOverviewServiceTest {
 
         StepVerifier.create(service.overviewOf("alice", "bob"))
                 .expectErrorMatches(e -> hasCode(e, TechnicalErrorCode.SOCIAL_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test

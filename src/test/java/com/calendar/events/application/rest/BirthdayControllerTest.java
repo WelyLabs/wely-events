@@ -17,6 +17,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -49,7 +50,7 @@ class BirthdayControllerTest {
         StepVerifier.create(controller.getMyBirthdays(FROM, TO, jwt))
                 .expectNext(new BirthdayOccurrenceResponse("lea", "Léa", LocalDate.parse("2027-03-12"), false,
                         Closeness.CLOSE, true, null))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -60,6 +61,6 @@ class BirthdayControllerTest {
         StepVerifier.create(controller.getMyBirthdays(TO, FROM, jwt))
                 .expectErrorMatches(e -> e instanceof BusinessException ex
                         && ex.getErrorCode() == BusinessErrorCode.INVALID_BIRTHDAY_RANGE)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

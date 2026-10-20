@@ -16,6 +16,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.mockito.Mockito.when;
@@ -47,7 +48,7 @@ class InvitationControllerTest {
 
         StepVerifier.create(controller.invite("e1", new InvitationRequest("lea"), jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -57,13 +58,13 @@ class InvitationControllerTest {
 
         StepVerifier.create(controller.invite("e1", new InvitationRequest("lea"), jwt))
                 .expectError(BusinessException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
     void withdraw_shouldWithdrawOnBehalfOfTheCaller() {
         when(invitationService.withdraw("e1", "robin", "lea")).thenReturn(Mono.empty());
 
-        StepVerifier.create(controller.withdraw("e1", "lea", jwt)).verifyComplete();
+        StepVerifier.create(controller.withdraw("e1", "lea", jwt)).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

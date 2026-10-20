@@ -19,6 +19,7 @@ import reactor.test.StepVerifier;
 
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -74,7 +75,7 @@ class CalendarExportServiceTest {
                     // 32 random bytes, base64url without padding.
                     assertThat(link.token()).hasSize(43).matches("[A-Za-z0-9_-]+");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -95,7 +96,7 @@ class CalendarExportServiceTest {
 
         StepVerifier.create(service.issueLink("e1", "me", null))
                 .assertNext(link -> assertThat(link.pageUrl()).isNull())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -107,7 +108,7 @@ class CalendarExportServiceTest {
 
         StepVerifier.create(service.issueLink("e1", "me", null))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.DATE_NOT_FIXED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         verify(calendarLinks, never()).save(any());
     }
@@ -119,7 +120,7 @@ class CalendarExportServiceTest {
 
         StepVerifier.create(service.issueLink("e1", "stranger", null))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         verify(calendarLinks, never()).save(any());
     }
@@ -135,7 +136,7 @@ class CalendarExportServiceTest {
                         .contains("SUMMARY:Soirée jeux")
                         .contains("DTSTAMP:20261017T100000Z")
                         .contains("URL:https://web.welylabs.app/event/e1"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -144,7 +145,7 @@ class CalendarExportServiceTest {
 
         StepVerifier.create(service.icsFor("t"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.CALENDAR_LINK_EXPIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         verify(eventRepository, never()).findById(any());
     }
@@ -155,7 +156,7 @@ class CalendarExportServiceTest {
 
         StepVerifier.create(service.icsFor("nope"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.CALENDAR_LINK_EXPIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -165,7 +166,7 @@ class CalendarExportServiceTest {
 
         StepVerifier.create(service.icsFor("t"))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.CALENDAR_LINK_EXPIRED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test

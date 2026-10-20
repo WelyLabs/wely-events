@@ -15,6 +15,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,9 +57,9 @@ class MongoEventDeletionOutboxAdapterIntegrationTest {
     void record_shouldStoreATombstone_thatFindPendingGivesBack() {
         EventDeletion deletion = new EventDeletion("e1", "Quiz", 4L, NOW);
 
-        StepVerifier.create(outbox.record(deletion)).verifyComplete();
+        StepVerifier.create(outbox.record(deletion)).expectComplete().verify(Duration.ofSeconds(10));
 
-        StepVerifier.create(outbox.findPending(10)).expectNext(deletion).verifyComplete();
+        StepVerifier.create(outbox.findPending(10)).expectNext(deletion).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -76,7 +77,7 @@ class MongoEventDeletionOutboxAdapterIntegrationTest {
         outbox.record(new EventDeletion("e1", "Quiz", 4L, NOW)).block();
         outbox.record(new EventDeletion("e2", "Bowling", 2L, NOW)).block();
 
-        StepVerifier.create(outbox.markPublished("e1")).verifyComplete();
+        StepVerifier.create(outbox.markPublished("e1")).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(outbox.findPending(10).map(EventDeletion::eventId).collectList().block()).containsExactly("e2");
     }

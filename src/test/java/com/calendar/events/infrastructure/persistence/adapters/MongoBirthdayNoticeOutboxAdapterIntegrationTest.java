@@ -20,6 +20,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,10 +63,10 @@ class MongoBirthdayNoticeOutboxAdapterIntegrationTest {
     void record_shouldRecordANoticeOnce_evenSentAlready() {
         BirthdayNotice notice = friendBirthday("bob", "lea");
 
-        StepVerifier.create(outbox.record(notice)).expectNext(true).verifyComplete();
-        StepVerifier.create(outbox.record(notice)).expectNext(false).verifyComplete();
+        StepVerifier.create(outbox.record(notice)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(outbox.record(notice)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         outbox.markPublished(notice.key()).block();
-        StepVerifier.create(outbox.record(notice)).expectNext(false).verifyComplete();
+        StepVerifier.create(outbox.record(notice)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -76,7 +77,7 @@ class MongoBirthdayNoticeOutboxAdapterIntegrationTest {
         outbox.record(pending).block();
         outbox.markPublished(sent.key()).block();
 
-        StepVerifier.create(outbox.findPending(10)).expectNext(pending).verifyComplete();
+        StepVerifier.create(outbox.findPending(10)).expectNext(pending).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test

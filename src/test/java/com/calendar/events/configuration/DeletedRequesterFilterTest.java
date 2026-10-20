@@ -5,6 +5,7 @@ import com.calendar.events.domain.services.AccountGuard;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
 import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.ProblemWriter;
 import com.calendar.events.exception.TechnicalErrorCode;
 import com.calendar.events.exception.TechnicalException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -27,6 +28,7 @@ import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -50,7 +52,8 @@ class DeletedRequesterFilterTest {
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        filter = new DeletedRequesterFilter(new AccountGuard(markers), ServerCodecConfigurer.create(), meterRegistry);
+        filter = new DeletedRequesterFilter(new AccountGuard(markers), new ProblemWriter(ServerCodecConfigurer.create()),
+                meterRegistry);
     }
 
     private static JwtAuthenticationToken tokenOf(String businessId) {
@@ -76,7 +79,7 @@ class DeletedRequesterFilterTest {
     void filter_shouldLetReadsThrough_withoutLookingUpTheMarker() {
         MockServerWebExchange exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/events-service/events/me/feed"));
 
-        StepVerifier.create(run(exchange, tokenOf("gone"))).verifyComplete();
+        StepVerifier.create(run(exchange, tokenOf("gone"))).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(chainRan).isTrue();
         verify(markers, never()).isDeleted(anyString());
@@ -86,7 +89,7 @@ class DeletedRequesterFilterTest {
     void filter_shouldLetAWriteThrough_whenTheRequesterIsNotDeleted() {
         when(markers.isDeleted("lea")).thenReturn(Mono.just(false));
 
-        StepVerifier.create(run(post(), tokenOf("lea"))).verifyComplete();
+        StepVerifier.create(run(post(), tokenOf("lea"))).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(chainRan).isTrue();
     }
@@ -96,7 +99,7 @@ class DeletedRequesterFilterTest {
         when(markers.isDeleted("gone")).thenReturn(Mono.just(true));
         MockServerWebExchange exchange = post();
 
-        StepVerifier.create(run(exchange, tokenOf("gone"))).verifyComplete();
+        StepVerifier.create(run(exchange, tokenOf("gone"))).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.GONE);
         assertThat(exchange.getResponse().getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
@@ -106,7 +109,7 @@ class DeletedRequesterFilterTest {
                         .contains("\"status\":410")
                         .contains("\"instance\":\"/events-service/events/e1/subscribe\"")
                         .contains("\"requestId\":\"" + exchange.getRequest().getId() + "\""))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(exchange.getRequest().getId()).isNotBlank();
         assertThat(meterRegistry.find(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC).counters()).isEmpty();
     }
@@ -115,22 +118,22 @@ class DeletedRequesterFilterTest {
     void filter_shouldNotRunTheChain_afterRefusing() {
         when(markers.isDeleted("gone")).thenReturn(Mono.just(true));
 
-        StepVerifier.create(run(post(), tokenOf("gone"))).verifyComplete();
+        StepVerifier.create(run(post(), tokenOf("gone"))).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(chainRan).isFalse();
     }
 
     @Test
     void filter_shouldLetAnExchangeWithoutJwtThrough() {
-        StepVerifier.create(run(post(), null)).verifyComplete();
+        StepVerifier.create(run(post(), null)).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(chainRan).isTrue();
 
         chainRan.set(false);
-        StepVerifier.create(run(post(), new TestingAuthenticationToken("someone", "secret"))).verifyComplete();
+        StepVerifier.create(run(post(), new TestingAuthenticationToken("someone", "secret"))).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(chainRan).isTrue();
 
         chainRan.set(false);
-        StepVerifier.create(run(post(), tokenOf(null))).verifyComplete();
+        StepVerifier.create(run(post(), tokenOf(null))).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(chainRan).isTrue();
         verify(markers, never()).isDeleted(anyString());
     }
@@ -140,7 +143,7 @@ class DeletedRequesterFilterTest {
         when(markers.isDeleted("lea")).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
         MockServerWebExchange exchange = post();
 
-        StepVerifier.create(run(exchange, tokenOf("lea"))).verifyComplete();
+        StepVerifier.create(run(exchange, tokenOf("lea"))).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
         assertThat(exchange.getResponse().getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
@@ -150,7 +153,7 @@ class DeletedRequesterFilterTest {
                         .contains("\"status\":502")
                         .contains("\"instance\":\"/events-service/events/e1/subscribe\"")
                         .contains("\"requestId\":\"" + exchange.getRequest().getId() + "\""))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         // Answered here, never through GlobalErrorHandler: the filter counts it itself.
         assertThat(meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG,
                 TechnicalErrorCode.STORE_UNAVAILABLE.getCode()).count()).isEqualTo(1.0);
@@ -166,6 +169,6 @@ class DeletedRequesterFilterTest {
         StepVerifier.create(filter.filter(post(), failing)
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(tokenOf("lea"))))
                 .expectErrorMatches(error -> error == downstream)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

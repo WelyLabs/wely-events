@@ -46,9 +46,9 @@ class ProblemsTest {
 
     @Test
     void of_shouldCarryTheRequestId_whenGivenOne() {
-        ProblemDetail problem = Problems.of(HttpStatus.BAD_REQUEST, GlobalErrorHandler.VALIDATION_CODE, "A title", "A detail", "/events", "req-2");
+        ProblemDetail problem = Problems.of(HttpStatus.BAD_REQUEST, GlobalErrorHandler.VALIDATION_FAILED_CODE, "A title", "A detail", "/events", "req-2");
 
-        assertThat(problem.getProperties()).containsEntry(Problems.REQUEST_ID, "req-2").containsEntry("code", GlobalErrorHandler.VALIDATION_CODE);
+        assertThat(problem.getProperties()).containsEntry(Problems.REQUEST_ID_PROPERTY, "req-2").containsEntry("code", GlobalErrorHandler.VALIDATION_FAILED_CODE);
     }
 
     @Test
@@ -56,7 +56,7 @@ class ProblemsTest {
         ProblemDetail problem = Problems.of(BusinessErrorCode.ACCOUNT_DELETED, "/events", "req-3");
 
         assertThat(problem.getStatus()).isEqualTo(410);
-        assertThat(problem.getProperties()).containsEntry(Problems.REQUEST_ID, "req-3");
+        assertThat(problem.getProperties()).containsEntry(Problems.REQUEST_ID_PROPERTY, "req-3");
     }
 
     @Test

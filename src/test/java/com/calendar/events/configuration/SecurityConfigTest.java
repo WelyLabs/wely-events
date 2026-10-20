@@ -6,6 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -18,8 +19,13 @@ import com.calendar.events.domain.ports.CalendarLinks;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -65,6 +71,7 @@ class SecurityConfigTest {
         return WebTestClient.bindToApplicationContext(context)
                 .apply(springSecurity())
                 .configureClient()
+                .responseTimeout(Duration.ofSeconds(30))
                 .build();
     }
 
@@ -74,6 +81,39 @@ class SecurityConfigTest {
         client().get().uri("/events-service/events/me/feed")
                 .exchange()
                 .expectStatus().isUnauthorized();
+    }
+
+    @Test
+    @DisplayName("the 401 is our problem, and still carries the bearer challenge")
+    void springSecurityFilterChain_shouldAnswerOurProblem_whenUnauthenticated() {
+        client().get().uri("/events-service/events/me/feed")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectHeader().valueMatches(HttpHeaders.WWW_AUTHENTICATE, "^Bearer.*")
+                .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo(BusinessErrorCode.AUTHENTICATION_REQUIRED.getCode())
+                .jsonPath("$.status").isEqualTo(401)
+                .jsonPath("$.instance").isEqualTo("/events-service/events/me/feed")
+                .jsonPath("$.requestId").isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("Prometheus scrapes without a token, and finds the technical failures counted by code")
+    void springSecurityFilterChain_shouldExposePrometheusAnonymously() {
+        // One technical failure first: the register is down when a write checks it.
+        when(markers.isDeleted("lea")).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
+        client().mutateWith(mockJwt().jwt(jwt -> jwt.claim("businessId", "lea")))
+                .post().uri("/events-service/events/e1/subscribe")
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.BAD_GATEWAY);
+
+        client().get().uri("/actuator/prometheus")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class)
+                .value(body -> assertThat(body)
+                        .contains("wely_errors_technical_total{code=\"EVT-TEC-005\"}"));
     }
 
     @Test
@@ -190,6 +230,17 @@ class SecurityConfigTest {
         // Plain /actuator/health is not on the allow-list, and the endpoints that
         // describe the internals are not even exposed.
         client().get().uri("/actuator/env")
+                .exchange()
+                .expectStatus().isUnauthorized();
+
+        // Not exposed at all: even with a token, there is nothing there.
+        client().mutateWith(mockJwt())
+                .get().uri("/actuator/env")
+                .exchange()
+                .expectStatus().isNotFound();
+
+        // Opening prometheus opened a GET, not the path for every method.
+        client().post().uri("/actuator/prometheus")
                 .exchange()
                 .expectStatus().isUnauthorized();
     }

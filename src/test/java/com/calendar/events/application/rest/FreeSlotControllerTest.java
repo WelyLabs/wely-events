@@ -53,7 +53,7 @@ class FreeSlotControllerTest {
 
         StepVerifier.create(controller.findCommonFreeSlots(new FreeSlotSearchRequest(Set.of("lea"), START, END, 90), jwt))
                 .expectNext(new TimeRangeResponse(free.start(), free.end()))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -61,7 +61,7 @@ class FreeSlotControllerTest {
         StepVerifier.create(controller.findCommonFreeSlots(new FreeSlotSearchRequest(Set.of("lea"), END, START, 60), jwt))
                 .expectErrorMatches(e -> e instanceof BusinessException ex
                         && ex.getErrorCode() == BusinessErrorCode.INVALID_SLOT_SEARCH)
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         verify(freeSlotService, never()).findCommonFreeRanges(any(), any(), any(), any());
     }

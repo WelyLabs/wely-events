@@ -11,6 +11,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 
@@ -36,7 +37,7 @@ class BirthdayReminderJobTest {
         when(reminders.recordDueNotices()).thenReturn(Mono.just(3L));
         when(friendshipReminders.recordDueNotices()).thenReturn(Mono.just(2L));
 
-        StepVerifier.create(jobAt("2027-03-12T07:00:00Z").daily()).verifyComplete();
+        StepVerifier.create(jobAt("2027-03-12T07:00:00Z").daily()).expectComplete().verify(Duration.ofSeconds(10));
         InOrder order = inOrder(reminders, friendshipReminders);
         order.verify(reminders).recordDueNotices();
         order.verify(friendshipReminders).recordDueNotices();
@@ -47,7 +48,7 @@ class BirthdayReminderJobTest {
         when(reminders.recordDueNotices()).thenReturn(Mono.error(new IllegalStateException("mongo down")));
         when(friendshipReminders.recordDueNotices()).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(jobAt("2027-03-12T07:00:00Z").daily()).verifyComplete();
+        StepVerifier.create(jobAt("2027-03-12T07:00:00Z").daily()).expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipReminders).recordDueNotices();
     }
 
@@ -56,7 +57,7 @@ class BirthdayReminderJobTest {
         when(reminders.recordDueNotices()).thenReturn(Mono.just(0L));
         when(friendshipReminders.recordDueNotices()).thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(jobAt("2027-03-12T07:00:00Z").daily()).verifyComplete();
+        StepVerifier.create(jobAt("2027-03-12T07:00:00Z").daily()).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -65,14 +66,14 @@ class BirthdayReminderJobTest {
         when(friendshipReminders.recordDueNotices()).thenReturn(Mono.just(0L));
 
         // 07:00 UTC is 08:00 in Paris in winter.
-        StepVerifier.create(jobAt("2027-03-12T07:00:00Z").catchUp()).verifyComplete();
+        StepVerifier.create(jobAt("2027-03-12T07:00:00Z").catchUp()).expectComplete().verify(Duration.ofSeconds(10));
         verify(reminders).recordDueNotices();
         verify(friendshipReminders).recordDueNotices();
     }
 
     @Test
     void catchUp_shouldWaitFor8InParis_soThatARestartAtNightWakesNobody() {
-        StepVerifier.create(jobAt("2027-03-12T06:59:00Z").catchUp()).verifyComplete();
+        StepVerifier.create(jobAt("2027-03-12T06:59:00Z").catchUp()).expectComplete().verify(Duration.ofSeconds(10));
         verify(reminders, never()).recordDueNotices();
         verify(friendshipReminders, never()).recordDueNotices();
     }

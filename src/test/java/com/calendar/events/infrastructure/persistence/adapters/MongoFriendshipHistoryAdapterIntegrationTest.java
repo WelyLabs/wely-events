@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -60,10 +61,10 @@ class MongoFriendshipHistoryAdapterIntegrationTest {
     void append_shouldKeepOneEntryPerPairAndVersion() {
         FriendshipHistoryEntry accepted = entry("alice", "bob", FriendshipChangeType.ACCEPTED, Closeness.FRIEND, JAN, 1);
 
-        StepVerifier.create(adapter.append(accepted)).expectNext(true).verifyComplete();
-        StepVerifier.create(adapter.append(accepted)).expectNext(false).verifyComplete();
+        StepVerifier.create(adapter.append(accepted)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.append(accepted)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.append(entry("alice", "bob", FriendshipChangeType.CLOSENESS_CHANGED, Closeness.CLOSE,
-                MAR, 2))).expectNext(true).verifyComplete();
+                MAR, 2))).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(mongoTemplate.count(new Query(), "friendship_history").block()).isEqualTo(2L);
     }
@@ -90,7 +91,7 @@ class MongoFriendshipHistoryAdapterIntegrationTest {
         adapter.append(entry("bob", "zoe", FriendshipChangeType.ACCEPTED, Closeness.FRIEND, JAN, 1)).block();
         adapter.append(entry("alice", "zoe", FriendshipChangeType.ACCEPTED, Closeness.FRIEND, JAN, 1)).block();
 
-        StepVerifier.create(adapter.forget("bob")).expectNext(2L).verifyComplete();
+        StepVerifier.create(adapter.forget("bob")).expectNext(2L).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(adapter.involvingSince("alice", DEC_LAST_YEAR).collectList().block())
                 .extracting(FriendshipHistoryEntry::pairId).containsExactly("alice:zoe");
     }

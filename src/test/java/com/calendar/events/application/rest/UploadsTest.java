@@ -15,6 +15,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
+
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -43,38 +45,38 @@ class UploadsTest {
     void fileOf_shouldReadTheWholeFile() {
         StepVerifier.create(Uploads.fileOf(form(file(1234)), MediaProfile.COVER))
                 .expectNextMatches(bytes -> bytes.length == 1234)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void fileOf_shouldAcceptExactly10Megabytes() {
         StepVerifier.create(Uploads.fileOf(form(file(Uploads.MAX_BYTES)), MediaProfile.COVER))
                 .expectNextMatches(bytes -> bytes.length == Uploads.MAX_BYTES)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void fileOf_shouldRefuseAFileOver10Megabytes_asTooLarge() {
         StepVerifier.create(Uploads.fileOf(form(file(Uploads.MAX_BYTES + 1)), MediaProfile.RECEIPT))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.MEDIA_TOO_LARGE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
     void fileOf_shouldRefuseAFormWithoutFile_withTheProfilesCode() {
         StepVerifier.create(Uploads.fileOf(form(null), MediaProfile.COVER))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         StepVerifier.create(Uploads.fileOf(form(null), MediaProfile.RECEIPT))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.RECEIPT_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
     void fileOf_shouldRefuseATextFieldNamedFile() {
         StepVerifier.create(Uploads.fileOf(form(mock(FormFieldPart.class)), MediaProfile.COVER))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -84,9 +86,9 @@ class UploadsTest {
 
         StepVerifier.create(Uploads.fileOf(form(empty), MediaProfile.COVER))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         StepVerifier.create(Uploads.fileOf(form(file(0)), MediaProfile.COVER))
                 .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

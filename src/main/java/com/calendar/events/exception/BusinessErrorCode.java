@@ -255,7 +255,21 @@ public enum BusinessErrorCode {
             "EVT-BUS-040",
             "Already taking part",
             "This person already takes part in the event: there is nothing to invite them to.",
-            HttpStatus.CONFLICT);
+            HttpStatus.CONFLICT),
+
+    /** Written by the security chain, not raised: the request carries no valid token. */
+    AUTHENTICATION_REQUIRED(
+            "EVT-REQ-001",
+            "Authentication required",
+            "Send a valid bearer token with the request.",
+            HttpStatus.UNAUTHORIZED),
+
+    /** Written by the security chain, not raised: the token is valid, the route is not for it. */
+    ACCESS_DENIED(
+            "EVT-REQ-002",
+            "Access denied",
+            "This token does not grant access to this route.",
+            HttpStatus.FORBIDDEN);
 
     private final String code;
     private final String title;

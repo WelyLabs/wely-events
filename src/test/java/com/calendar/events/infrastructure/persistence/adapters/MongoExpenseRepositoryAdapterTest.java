@@ -16,6 +16,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.mockito.Mockito.mock;
@@ -47,7 +48,7 @@ class MongoExpenseRepositoryAdapterTest {
         when(mongoRepository.findAllByEventIdOrderBySpentAtDesc("ev-1")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(expense);
 
-        StepVerifier.create(adapter.findByEvent("ev-1")).expectNext(expense).verifyComplete();
+        StepVerifier.create(adapter.findByEvent("ev-1")).expectNext(expense).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -55,7 +56,7 @@ class MongoExpenseRepositoryAdapterTest {
         when(mongoRepository.findByIdAndEventId("x1", "ev-1")).thenReturn(Mono.just(entity));
         when(mapper.toDomain(entity)).thenReturn(expense);
 
-        StepVerifier.create(adapter.findByIdInEvent("ev-1", "x1")).expectNext(expense).verifyComplete();
+        StepVerifier.create(adapter.findByIdInEvent("ev-1", "x1")).expectNext(expense).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -64,7 +65,7 @@ class MongoExpenseRepositoryAdapterTest {
         when(mongoRepository.save(entity)).thenReturn(Mono.just(entity));
         when(mapper.toDomain(entity)).thenReturn(expense);
 
-        StepVerifier.create(adapter.save(expense)).expectNext(expense).verifyComplete();
+        StepVerifier.create(adapter.save(expense)).expectNext(expense).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -75,14 +76,14 @@ class MongoExpenseRepositoryAdapterTest {
         StepVerifier.create(adapter.save(expense))
                 .expectErrorMatches(error -> error instanceof BusinessException exception
                         && exception.getErrorCode() == BusinessErrorCode.EXPENSE_CONFLICT)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
     void delete_shouldNameTheEventInTheQuery() {
         when(mongoRepository.deleteByIdAndEventId("x1", "ev-1")).thenReturn(Mono.just(1L));
 
-        StepVerifier.create(adapter.delete("ev-1", "x1")).verifyComplete();
+        StepVerifier.create(adapter.delete("ev-1", "x1")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mongoRepository).deleteByIdAndEventId("x1", "ev-1");
     }
@@ -91,7 +92,7 @@ class MongoExpenseRepositoryAdapterTest {
     void deleteByEvent_shouldRemoveEveryExpenseOfTheEvent() {
         when(mongoRepository.deleteAllByEventId("ev-1")).thenReturn(Mono.just(3L));
 
-        StepVerifier.create(adapter.deleteByEvent("ev-1")).verifyComplete();
+        StepVerifier.create(adapter.deleteByEvent("ev-1")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -99,7 +100,7 @@ class MongoExpenseRepositoryAdapterTest {
         when(mongoRepository.findAllByEventIdIn(List.of("ev-1", "ev-2"))).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(expense);
 
-        StepVerifier.create(adapter.findByEvents(List.of("ev-1", "ev-2"))).expectNext(expense).verifyComplete();
+        StepVerifier.create(adapter.findByEvents(List.of("ev-1", "ev-2"))).expectNext(expense).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -110,14 +111,14 @@ class MongoExpenseRepositoryAdapterTest {
 
         StepVerifier.create(adapter.setReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg", "alice"))
                 .expectNext(expense)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void setReceipt_shouldBeEmpty_whenNoExpenseOfTheEventMatched() {
         when(mongoRepository.setReceiptKey("x1", "ev-1", null, null)).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(adapter.setReceipt("ev-1", "x1", null, null)).verifyComplete();
+        StepVerifier.create(adapter.setReceipt("ev-1", "x1", null, null)).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mongoRepository, never()).findByIdAndEventId("x1", "ev-1");
     }
@@ -127,20 +128,20 @@ class MongoExpenseRepositoryAdapterTest {
         when(mongoRepository.findWithReceiptRecordedBy("gone")).thenReturn(Flux.just(entity));
         when(mapper.toDomain(entity)).thenReturn(expense);
 
-        StepVerifier.create(adapter.findWithReceiptRecordedBy("gone")).expectNext(expense).verifyComplete();
+        StepVerifier.create(adapter.findWithReceiptRecordedBy("gone")).expectNext(expense).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void clearReceipt_shouldAnswerTrue_whenTheKeyWasStillThere() {
         when(mongoRepository.clearReceiptKey("x1", "ev-1", "events/ev-1/receipts/r.jpg")).thenReturn(Mono.just(1L));
 
-        StepVerifier.create(adapter.clearReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg")).expectNext(true).verifyComplete();
+        StepVerifier.create(adapter.clearReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg")).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void clearReceipt_shouldAnswerFalse_whenTheReceiptChangedMeanwhile() {
         when(mongoRepository.clearReceiptKey("x1", "ev-1", "events/ev-1/receipts/r.jpg")).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(adapter.clearReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg")).expectNext(false).verifyComplete();
+        StepVerifier.create(adapter.clearReceipt("ev-1", "x1", "events/ev-1/receipts/r.jpg")).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

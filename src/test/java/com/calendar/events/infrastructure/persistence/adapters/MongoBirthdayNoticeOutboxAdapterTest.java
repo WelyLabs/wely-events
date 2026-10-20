@@ -20,6 +20,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -53,14 +54,14 @@ class MongoBirthdayNoticeOutboxAdapterTest {
                 && !entity.isPublished() && NOW.equals(entity.getRecordedAt()) && "CLOSE".equals(entity.getCloseness()))))
                 .thenAnswer(call -> Mono.just(call.getArgument(0)));
 
-        StepVerifier.create(outbox.record(NOTICE)).expectNext(true).verifyComplete();
+        StepVerifier.create(outbox.record(NOTICE)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void record_shouldAnswerFalse_whenTheNoticeWasRecordedBefore() {
         when(mongoRepository.insert(any(BirthdayNoticeEntity.class))).thenReturn(Mono.error(new DuplicateKeyException("_id")));
 
-        StepVerifier.create(outbox.record(NOTICE)).expectNext(false).verifyComplete();
+        StepVerifier.create(outbox.record(NOTICE)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -68,7 +69,7 @@ class MongoBirthdayNoticeOutboxAdapterTest {
         when(mongoRepository.insert(any(BirthdayNoticeEntity.class)))
                 .thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
 
-        StepVerifier.create(outbox.record(NOTICE)).expectError(DataAccessResourceFailureException.class).verify();
+        StepVerifier.create(outbox.record(NOTICE)).expectError(DataAccessResourceFailureException.class).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -76,14 +77,14 @@ class MongoBirthdayNoticeOutboxAdapterTest {
         BirthdayNoticeEntity entity = Mappers.getMapper(BirthdayNoticePersistenceMapper.class).toEntity(NOTICE, NOW);
         when(mongoRepository.findPending(Limit.of(10))).thenReturn(Flux.just(entity));
 
-        StepVerifier.create(outbox.findPending(10)).expectNext(NOTICE).verifyComplete();
+        StepVerifier.create(outbox.findPending(10)).expectNext(NOTICE).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void markPublished_shouldMarkTheNoticeByItsKey() {
         when(mongoRepository.markPublished("lea:bob:2027:FRIEND_BIRTHDAY")).thenReturn(Mono.just(1L));
 
-        StepVerifier.create(outbox.markPublished("lea:bob:2027:FRIEND_BIRTHDAY")).verifyComplete();
+        StepVerifier.create(outbox.markPublished("lea:bob:2027:FRIEND_BIRTHDAY")).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository).markPublished("lea:bob:2027:FRIEND_BIRTHDAY");
     }
 
@@ -91,7 +92,7 @@ class MongoBirthdayNoticeOutboxAdapterTest {
     void forget_shouldDropTheUnsentNoticesConcerningTheUser() {
         when(mongoRepository.deletePendingConcerning("lea")).thenReturn(Mono.just(3L));
 
-        StepVerifier.create(outbox.forget("lea")).verifyComplete();
+        StepVerifier.create(outbox.forget("lea")).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository).deletePendingConcerning("lea");
     }
 }

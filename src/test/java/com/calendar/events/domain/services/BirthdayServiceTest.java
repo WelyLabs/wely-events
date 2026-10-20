@@ -25,6 +25,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.MonthDay;
@@ -105,7 +106,7 @@ class BirthdayServiceTest {
                     assertThat(birthday.getVisibility()).isEqualTo(Visibility.FRIENDS);
                     assertThat(birthday.getParticipantIds()).isEmpty();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -117,7 +118,7 @@ class BirthdayServiceTest {
     void recordBirthday_shouldIgnoreADeletedAccount() {
         when(markers.isDeleted("lea")).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.recordBirthday("lea", "Léa", MonthDay.of(3, 12))).verifyComplete();
+        StepVerifier.create(service.recordBirthday("lea", "Léa", MonthDay.of(3, 12))).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).upsertBirthday(any());
     }
 
@@ -144,7 +145,7 @@ class BirthdayServiceTest {
                         null, false, null))
                 .expectNext(new BirthdayOccurrence("zoe", "Zoé", LocalDate.parse("2027-03-28"), false,
                         Closeness.INTIMATE, false, new BirthdayOccurrence.Surprise("s1", "bob", true)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -157,7 +158,7 @@ class BirthdayServiceTest {
         StepVerifier.create(service.birthdaysFor("me", Instant.parse("2026-10-01T00:00:00Z"), Instant.parse("2026-11-01T00:00:00Z")))
                 .assertNext(lea -> assertThat(lea.canOrganize()).isFalse())
                 .assertNext(zoe -> assertThat(zoe.canOrganize()).isTrue())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -167,7 +168,7 @@ class BirthdayServiceTest {
 
         StepVerifier.create(service.birthdaysFor("me", FROM, TO))
                 .assertNext(mine -> assertThat(mine.surprise()).isNull())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).findSurprisesFor(anyCollection(), anyString());
     }
 
@@ -179,7 +180,7 @@ class BirthdayServiceTest {
 
         StepVerifier.create(service.birthdaysFor("me", Instant.parse("2027-02-01T00:00:00Z"), Instant.parse("2027-03-01T00:00:00Z")))
                 .assertNext(occurrence -> assertThat(occurrence.date()).isEqualTo(LocalDate.parse("2027-02-28")))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -190,7 +191,7 @@ class BirthdayServiceTest {
         StepVerifier.create(service.birthdaysFor("me", Instant.parse("2026-01-01T00:00:00Z"), Instant.parse("2027-01-31T00:00:00Z")))
                 .assertNext(first -> assertThat(first.date()).isEqualTo(LocalDate.parse("2026-01-10")))
                 .assertNext(second -> assertThat(second.date()).isEqualTo(LocalDate.parse("2027-01-10")))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -200,17 +201,17 @@ class BirthdayServiceTest {
 
         StepVerifier.create(service.birthdaysFor("me", FROM, TO))
                 .assertNext(mine -> assertThat(mine.mine()).isTrue())
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void birthdaysFor_shouldRefuseARangeBackwardsOrBeyond400Days() {
         StepVerifier.create(service.birthdaysFor("me", TO, FROM))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_BIRTHDAY_RANGE)).verify(Duration.ofSeconds(10));
         StepVerifier.create(service.birthdaysFor("me", FROM, FROM.plus(java.time.Duration.ofDays(401))))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_BIRTHDAY_RANGE)).verify(Duration.ofSeconds(10));
         StepVerifier.create(service.birthdaysFor("me", null, TO))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_BIRTHDAY_RANGE)).verify(Duration.ofSeconds(10));
         verify(socialGraph, never()).friendsOf(anyString());
     }
 
@@ -237,7 +238,7 @@ class BirthdayServiceTest {
         when(expenseRepository.deleteByEvent("s1")).thenReturn(Mono.empty());
         when(noticeOutbox.forget("lea")).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.forget("lea")).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.forget("lea")).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
         // The surprise's group in wely-chat is closed like any deleted event's.
         verify(deletionOutbox).record(any());
         verify(noticeOutbox).forget("lea");
@@ -248,7 +249,7 @@ class BirthdayServiceTest {
         when(eventRepository.deleteBirthdayOf("lea"))
                 .thenReturn(Mono.error(new org.springframework.dao.DataAccessResourceFailureException("mongo down")));
 
-        StepVerifier.create(service.forget("lea")).expectError().verify();
+        StepVerifier.create(service.forget("lea")).expectError().verify(Duration.ofSeconds(10));
         verify(noticeOutbox, never()).forget(anyString());
     }
 }

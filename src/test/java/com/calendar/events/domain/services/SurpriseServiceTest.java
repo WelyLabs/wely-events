@@ -125,7 +125,7 @@ class SurpriseServiceTest {
                     assertThat(surprise.getOrganizerName()).isEqualTo("bob_l");
                     assertThat(surprise.getParticipantIds()).containsExactly("bob");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository).findSurpriseStartingBetween("lea", PARTY_START.minus(SurpriseService.SAME_BIRTHDAY_WINDOW),
                 PARTY_START.plus(SurpriseService.SAME_BIRTHDAY_WINDOW));
     }
@@ -142,7 +142,7 @@ class SurpriseServiceTest {
         when(friendships.friendsOf("lea")).thenReturn(Flux.just(new Friend("bob", Closeness.CLOSE),
                 new Friend("zoe", Closeness.INTIMATE), new Friend("hugo", Closeness.FRIEND), new Friend("lea", Closeness.CLOSE)));
 
-        StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob_l")).expectNextCount(1).verifyComplete();
+        StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob_l")).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
 
         ArgumentCaptor<BirthdayNotice> notices = ArgumentCaptor.forClass(BirthdayNotice.class);
         verify(noticeOutbox, times(1)).record(notices.capture());
@@ -159,18 +159,18 @@ class SurpriseServiceTest {
         when(eventRepository.insertSurprise(any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
         when(friendships.friendsOf("lea")).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob_l")).expectNextCount(1).verifyComplete();
+        StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob_l")).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void createSurprise_shouldRefuseAPlainFriendOrAStranger() {
         when(socialGraph.closenessBetween("bob", "lea")).thenReturn(Mono.just(Closeness.FRIEND));
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob_l"))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify(Duration.ofSeconds(10));
 
         when(socialGraph.closenessBetween("zoe", "lea")).thenReturn(Mono.empty());
         StepVerifier.create(service.createSurprise(request("zoe", "lea"), null, "zoe"))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).insertSurprise(any());
     }
 
@@ -182,23 +182,23 @@ class SurpriseServiceTest {
         surprise.setEndDate(NOW.minus(Duration.ofDays(2)).plus(Duration.ofHours(4)));
 
         StepVerifier.create(service.createSurprise(surprise, null, "bob_l"))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_IN_PAST)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_IN_PAST)).verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).insertSurprise(any());
     }
 
     @Test
     void createSurprise_shouldRefuseTheHonoree() {
         StepVerifier.create(service.createSurprise(request("lea", "lea"), null, "lea"))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify(Duration.ofSeconds(10));
         verify(socialGraph, never()).closenessBetween(anyString(), anyString());
     }
 
     @Test
     void createSurprise_shouldRequireAnHonoree() {
         StepVerifier.create(service.createSurprise(request("bob", null), null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_KIND_INVALID)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_KIND_INVALID)).verify(Duration.ofSeconds(10));
         StepVerifier.create(service.createSurprise(request("bob", " "), null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_KIND_INVALID)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_KIND_INVALID)).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -207,7 +207,7 @@ class SurpriseServiceTest {
         when(eventRepository.findBirthdayOf("lea")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NO_BIRTHDAY)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NO_BIRTHDAY)).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -219,7 +219,7 @@ class SurpriseServiceTest {
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_EXISTS)
                         && ((BusinessException) e).getProperties().equals(Map.of("eventId", "s0")))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).insertSurprise(any());
     }
 
@@ -233,7 +233,7 @@ class SurpriseServiceTest {
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_EXISTS)
                         && ((BusinessException) e).getProperties().equals(Map.of("eventId", "s9")))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -246,7 +246,7 @@ class SurpriseServiceTest {
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_EXISTS)
                         && ((BusinessException) e).getProperties().isEmpty())
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -256,7 +256,7 @@ class SurpriseServiceTest {
         allDay.setAllDay(true);
 
         StepVerifier.create(service.createSurprise(allDay, null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.ALL_DAY_INVALID)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.ALL_DAY_INVALID)).verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).insertSurprise(any());
     }
 
@@ -279,7 +279,7 @@ class SurpriseServiceTest {
         noSurprisesFor("bob");
         when(eventRepository.removeParticipant(surprise.getId(), "bob")).thenReturn(Mono.just(surprise));
 
-        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).handOver(anyString(), anyString(), anyString());
     }
 
@@ -292,7 +292,7 @@ class SurpriseServiceTest {
         when(eventRepository.findSurprisesHonoring("bob")).thenReturn(Flux.just(bobsParty, untouched));
         when(eventRepository.removeParticipant(bobsParty.getId(), "lea")).thenReturn(Mono.just(bobsParty));
 
-        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).removeParticipant("other", "lea");
     }
 
@@ -307,7 +307,7 @@ class SurpriseServiceTest {
         when(markers.deletedAmong(surprise.getParticipantIds())).thenReturn(Mono.just(java.util.Set.of("zoe")));
         when(eventRepository.handOver(surprise.getId(), "bob", "ana")).thenReturn(Mono.just(surprise));
 
-        StepVerifier.create(service.releaseAfterFriendshipEnded("bob", "lea")).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.releaseAfterFriendshipEnded("bob", "lea")).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).deleteByOrganizer(anyString(), anyString());
     }
 
@@ -323,7 +323,7 @@ class SurpriseServiceTest {
         when(expenseRepository.findByEvent(surprise.getId())).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent(surprise.getId())).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
         verify(deletionOutbox).record(any());
         verify(eventRepository, never()).handOver(anyString(), anyString(), anyString());
     }
@@ -332,6 +332,6 @@ class SurpriseServiceTest {
     void releaseAfterFriendshipEnded_shouldFail_whenTheSurprisesCannotBeRead() {
         when(eventRepository.findSurprisesHonoring("lea")).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.releaseAfterFriendshipEnded("lea", "bob")).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
     }
 }

@@ -78,7 +78,7 @@ class FriendCalendarServiceTest {
         StepVerifier.create(service.getFriendCalendar("alice", "bob", WEEK))
                 .expectNextMatches(entry -> "bob's dinner".equals(entry.title()))
                 .expectNextMatches(entry -> entry.title() == null && entry.eventId() == null)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -90,7 +90,7 @@ class FriendCalendarServiceTest {
 
         StepVerifier.create(service.getFriendCalendar("alice", "bob", WEEK).map(CalendarEntry::title))
                 .expectNext("stranger's party")
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -100,7 +100,7 @@ class FriendCalendarServiceTest {
 
         StepVerifier.create(service.getFriendCalendar("alice", "carol", WEEK))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NOT_A_FRIEND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).findOccupying(any(), any(), any(), any());
     }
 
@@ -112,14 +112,14 @@ class FriendCalendarServiceTest {
 
         StepVerifier.create(service.getFriendCalendar("alice", "bob", WEEK))
                 .expectErrorMatches(e -> hasCode(e, TechnicalErrorCode.SOCIAL_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
     void getFriendCalendar_shouldRefuseTheCallersOwnCalendar() {
         StepVerifier.create(service.getFriendCalendar("alice", "alice", WEEK))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_CALENDAR_REQUEST))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(socialGraph, eventRepository);
     }
 
@@ -129,7 +129,7 @@ class FriendCalendarServiceTest {
 
         StepVerifier.create(service.getFriendCalendar("alice", "bob", tooLong))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_CALENDAR_REQUEST))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(socialGraph, eventRepository);
     }
 
@@ -163,14 +163,14 @@ class FriendCalendarServiceTest {
                     assertThat(circle.entry().title()).isEqualTo("stranger's party");
                     assertThat(circle.entry().location()).isNull();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void getCircleCalendar_shouldReadNoEvent_withoutAnIntimateFriend() {
         when(socialGraph.friendsOf("alice")).thenReturn(Mono.just(Map.of("max", Closeness.CLOSE)));
 
-        StepVerifier.create(service.getCircleCalendar("alice", WEEK)).verifyComplete();
+        StepVerifier.create(service.getCircleCalendar("alice", WEEK)).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).findOccupying(any(), any(), any(), any());
     }
 
@@ -178,7 +178,7 @@ class FriendCalendarServiceTest {
     void getCircleCalendar_shouldRefuseAWindowOverSixtyTwoDays() {
         StepVerifier.create(service.getCircleCalendar("alice", new TimeRange(FROM, FROM.plus(Duration.ofDays(63)))))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_CIRCLE_REQUEST))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(socialGraph);
     }
 
@@ -186,6 +186,6 @@ class FriendCalendarServiceTest {
     void getCircleCalendar_shouldPassAReadFailureOn() {
         when(socialGraph.friendsOf("alice")).thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.getCircleCalendar("alice", WEEK)).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.getCircleCalendar("alice", WEEK)).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
     }
 }

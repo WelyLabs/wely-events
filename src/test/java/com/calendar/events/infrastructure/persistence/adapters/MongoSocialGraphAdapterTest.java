@@ -15,6 +15,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
@@ -46,14 +47,14 @@ class MongoSocialGraphAdapterTest {
                 mapper.toEntity(new Friendship("alice", "bob", true, Closeness.CLOSE, SINCE, 1)),
                 mapper.toEntity(new Friendship("bob", "zoe", true, Closeness.FRIEND, SINCE, 1))));
 
-        StepVerifier.create(adapter.friendIdsOf("bob")).expectNext(Set.of("alice", "zoe")).verifyComplete();
+        StepVerifier.create(adapter.friendIdsOf("bob")).expectNext(Set.of("alice", "zoe")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void friendIdsOf_shouldPassAReadFailureOn() {
         when(mongoRepository.findFriendshipsOf("bob")).thenReturn(Flux.error(new DataAccessResourceFailureException("down")));
 
-        StepVerifier.create(adapter.friendIdsOf("bob")).expectError(DataAccessResourceFailureException.class).verify();
+        StepVerifier.create(adapter.friendIdsOf("bob")).expectError(DataAccessResourceFailureException.class).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -61,7 +62,7 @@ class MongoSocialGraphAdapterTest {
         when(mongoRepository.findById("alice:bob"))
                 .thenReturn(Mono.just(mapper.toEntity(new Friendship("alice", "bob", true, Closeness.INTIMATE, SINCE, 3))));
 
-        StepVerifier.create(adapter.closenessBetween("bob", "alice")).expectNext(Closeness.INTIMATE).verifyComplete();
+        StepVerifier.create(adapter.closenessBetween("bob", "alice")).expectNext(Closeness.INTIMATE).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -70,13 +71,13 @@ class MongoSocialGraphAdapterTest {
                 .thenReturn(Mono.just(mapper.toEntity(new Friendship("alice", "bob", false, null, null, 4))));
         when(mongoRepository.findById("alice:zoe")).thenReturn(Mono.empty());
 
-        StepVerifier.create(adapter.closenessBetween("alice", "bob")).verifyComplete();
-        StepVerifier.create(adapter.closenessBetween("zoe", "alice")).verifyComplete();
+        StepVerifier.create(adapter.closenessBetween("alice", "bob")).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.closenessBetween("zoe", "alice")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void closenessBetween_shouldBeEmptyForOneself_withoutReading() {
-        StepVerifier.create(adapter.closenessBetween("alice", "alice")).verifyComplete();
+        StepVerifier.create(adapter.closenessBetween("alice", "alice")).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(mongoRepository, never()).findById(anyString());
     }
@@ -89,13 +90,13 @@ class MongoSocialGraphAdapterTest {
 
         StepVerifier.create(adapter.friendsOf("bob"))
                 .expectNext(Map.of("alice", Closeness.CLOSE, "zoe", Closeness.FRIEND))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void friendsOf_shouldPassAReadFailureOn() {
         when(mongoRepository.findFriendshipsOf("bob")).thenReturn(Flux.error(new DataAccessResourceFailureException("down")));
 
-        StepVerifier.create(adapter.friendsOf("bob")).expectError(DataAccessResourceFailureException.class).verify();
+        StepVerifier.create(adapter.friendsOf("bob")).expectError(DataAccessResourceFailureException.class).verify(Duration.ofSeconds(10));
     }
 }

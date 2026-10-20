@@ -65,7 +65,7 @@ class UserDeletedConsumerTest {
     void userDeleted_shouldEraseTheUserNamedByTheRecord() {
         when(erasure.erase(USER, DELETED_AT)).thenReturn(Mono.just(ErasureReport.NONE));
 
-        StepVerifier.create(consume(deletion(USER))).verifyComplete();
+        StepVerifier.create(consume(deletion(USER))).expectComplete().verify(Duration.ofSeconds(10));
         verify(erasure).erase(USER, DELETED_AT);
     }
 
@@ -74,7 +74,7 @@ class UserDeletedConsumerTest {
         when(erasure.erase(USER, Instant.parse("2026-10-15T14:03:27Z"))).thenReturn(Mono.just(ErasureReport.NONE));
 
         StepVerifier.create(consume(record("{\"userId\":\"" + USER + "\",\"deletedAt\":\"2026-10-15T14:03:27Z\",\"reason\":\"x\"}")))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(erasure).erase(USER, Instant.parse("2026-10-15T14:03:27Z"));
     }
 
@@ -82,7 +82,7 @@ class UserDeletedConsumerTest {
     void userDeleted_shouldPassANullDeletedAt_forAnOlderRecord() {
         when(erasure.erase(eq(USER), isNull())).thenReturn(Mono.just(ErasureReport.NONE));
 
-        StepVerifier.create(consume(record("{\"userId\":\"" + USER + "\"}"))).verifyComplete();
+        StepVerifier.create(consume(record("{\"userId\":\"" + USER + "\"}"))).expectComplete().verify(Duration.ofSeconds(10));
         verify(erasure).erase(USER, null);
     }
 
@@ -90,7 +90,7 @@ class UserDeletedConsumerTest {
     void userDeleted_shouldLowercaseTheUserId() {
         when(erasure.erase(USER, DELETED_AT)).thenReturn(Mono.just(ErasureReport.NONE));
 
-        StepVerifier.create(consume(deletion(USER.toUpperCase()))).verifyComplete();
+        StepVerifier.create(consume(deletion(USER.toUpperCase()))).expectComplete().verify(Duration.ofSeconds(10));
         verify(erasure).erase(USER, DELETED_AT);
     }
 
@@ -99,7 +99,7 @@ class UserDeletedConsumerTest {
         when(erasure.erase(USER, DELETED_AT)).thenReturn(Mono.just(ErasureReport.NONE));
 
         StepVerifier.create(consume(record("not json"), record("{\"deletedAt\":\"yesterday\"}"), deletion(USER)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(erasure).erase(USER, DELETED_AT);
         verify(erasure, times(1)).erase(anyString(), any());
     }
@@ -107,7 +107,7 @@ class UserDeletedConsumerTest {
     @Test
     void userDeleted_shouldSkipARecordWhoseUserIdIsNotACanonicalUuid() {
         StepVerifier.create(consume(deletion("1-1-1-1-1"), deletion("lea.$x"), record("{\"deletedAt\":\"" + DELETED_AT + "\"}")))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(erasure, never()).erase(any(), any());
     }
 
@@ -152,6 +152,6 @@ class UserDeletedConsumerTest {
 
     @Test
     void userDeleted_shouldComplete_whenTheInputCompletes() {
-        StepVerifier.create(consumer.userDeleted().apply(Flux.empty())).verifyComplete();
+        StepVerifier.create(consumer.userDeleted().apply(Flux.empty())).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

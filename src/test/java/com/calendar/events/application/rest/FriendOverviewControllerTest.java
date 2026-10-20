@@ -21,6 +21,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -63,7 +64,7 @@ class FriendOverviewControllerTest {
         when(service.overviewOf("alice", "bob")).thenReturn(Mono.just(overview));
         when(mapper.toResponse(overview, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.getFriendOverview("bob", jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.getFriendOverview("bob", jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
         verifyNoInteractions(mediaStore);
     }
 
@@ -82,7 +83,7 @@ class FriendOverviewControllerTest {
                 .thenReturn(Mono.just(urls.byKey()));
         when(mapper.toResponse(overview, urls, ViewerFriends.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.getFriendOverview("bob", jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.getFriendOverview("bob", jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
         verify(mediaStore, times(1)).urls(any());
     }
 
@@ -94,7 +95,7 @@ class FriendOverviewControllerTest {
 
         StepVerifier.create(controller.getFriendOverview("carol", jwt))
                 .expectErrorMatches(e -> e instanceof BusinessException ex && ex.getErrorCode() == BusinessErrorCode.NOT_A_FRIEND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(mediaStore, mapper);
     }
 }

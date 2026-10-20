@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,7 +64,7 @@ class CommunityApiAdapterTest {
         StepVerifier.create(adapter.roleOf("c1", "me")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("abc.def"))))
                 .expectNext(CommunityRole.ADMIN)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(requestedUri.get()).isEqualTo("/social-service/communities/c1");
         assertThat(authorization.get()).isEqualTo("Bearer abc.def");
@@ -75,7 +76,7 @@ class CommunityApiAdapterTest {
 
         StepVerifier.create(adapter.roleOf("c1", "me")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("t"))))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -86,7 +87,7 @@ class CommunityApiAdapterTest {
 
         StepVerifier.create(adapter.roleOf("c1", "me")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("t"))))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -99,7 +100,7 @@ class CommunityApiAdapterTest {
                         && ex.getErrorCode() == TechnicalErrorCode.SOCIAL_UNAVAILABLE
                         && ex.getCause() instanceof WebClientResponseException response
                         && response.getStatusCode().value() == 502)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -108,7 +109,7 @@ class CommunityApiAdapterTest {
                 .expectErrorMatches(e -> e instanceof TechnicalException ex
                         && ex.getErrorCode() == TechnicalErrorCode.SOCIAL_UNAVAILABLE
                         && ex.getCause() instanceof IllegalStateException)
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         assertThat(requestedUri.get()).isNull();
     }

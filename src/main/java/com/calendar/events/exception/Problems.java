@@ -16,7 +16,7 @@ public final class Problems {
     }
 
     /** Name of the property that ties a response to the log lines of the same request. */
-    public static final String REQUEST_ID = "requestId";
+    public static final String REQUEST_ID_PROPERTY = "requestId";
 
     public static ProblemDetail of(HttpStatus status, String code, String title, String detail, String instancePath) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
@@ -35,7 +35,7 @@ public final class Problems {
     public static ProblemDetail of(HttpStatus status, String code, String title, String detail, String instancePath,
                                    String requestId) {
         ProblemDetail problem = of(status, code, title, detail, instancePath);
-        problem.setProperty(REQUEST_ID, requestId);
+        problem.setProperty(REQUEST_ID_PROPERTY, requestId);
         return problem;
     }
 

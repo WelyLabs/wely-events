@@ -60,7 +60,7 @@ class FriendshipNoticeRelayTest {
         when(outbox.markPublished(bob.key())).thenReturn(Mono.empty());
         when(outbox.markPublished(zoe.key())).thenReturn(Mono.empty());
 
-        StepVerifier.create(relay.drainOnce()).expectNext(2L).verifyComplete();
+        StepVerifier.create(relay.drainOnce()).expectNext(2L).expectComplete().verify(Duration.ofSeconds(10));
         verify(outbox).markPublished("FRIENDSHIP_ANNIVERSARY:bob:lea:1");
     }
 
@@ -73,7 +73,7 @@ class FriendshipNoticeRelayTest {
         when(publisher.publish(mapper.toDto(fine))).thenReturn(Mono.empty());
         when(outbox.markPublished(fine.key())).thenReturn(Mono.empty());
 
-        StepVerifier.create(relay.drainOnce()).expectNext(1L).verifyComplete();
+        StepVerifier.create(relay.drainOnce()).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
         verify(outbox, never()).markPublished(failing.key());
     }
 

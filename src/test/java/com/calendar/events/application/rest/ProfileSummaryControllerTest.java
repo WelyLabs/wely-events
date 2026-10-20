@@ -19,6 +19,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -66,7 +67,7 @@ class ProfileSummaryControllerTest {
         when(profileSummaryService.summaryOf("me")).thenReturn(Mono.just(summary));
         when(mapper.toResponse(summary, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.summary(jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.summary(jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -83,7 +84,7 @@ class ProfileSummaryControllerTest {
         when(mediaStore.urls(List.of("events/e1/cover-a.jpg", "events/e2/cover-b.jpg"))).thenReturn(Mono.just(urls.byKey()));
         when(mapper.toResponse(summary, urls, ViewerFriends.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.summary(jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.summary(jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
         verify(mediaStore, times(1)).urls(any());
     }
 }

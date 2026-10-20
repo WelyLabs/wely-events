@@ -15,6 +15,7 @@ import org.springframework.messaging.MessageDeliveryException;
 import reactor.test.StepVerifier;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -43,7 +44,7 @@ class KafkaFriendshipNoticePublisherTest {
         when(streamBridge.send(eq(KafkaFriendshipNoticePublisher.DESTINATION), argThat((Object sent) ->
                 sent instanceof Message<?> message && message.getPayload().equals(NOTICE)))).thenReturn(true);
 
-        StepVerifier.create(publisher.publish(NOTICE)).verifyComplete();
+        StepVerifier.create(publisher.publish(NOTICE)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -58,7 +59,7 @@ class KafkaFriendshipNoticePublisherTest {
     void publish_shouldFailAsBrokerUnavailable_whenKafkaRefusesTheRecord() {
         when(streamBridge.send(eq(KafkaFriendshipNoticePublisher.DESTINATION), any(Object.class))).thenReturn(false);
 
-        StepVerifier.create(publisher.publish(NOTICE)).expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == null).verify();
+        StepVerifier.create(publisher.publish(NOTICE)).expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == null).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -67,6 +68,6 @@ class KafkaFriendshipNoticePublisherTest {
         when(streamBridge.send(eq(KafkaFriendshipNoticePublisher.DESTINATION), any(Object.class)))
                 .thenThrow(failure);
 
-        StepVerifier.create(publisher.publish(NOTICE)).expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == failure).verify();
+        StepVerifier.create(publisher.publish(NOTICE)).expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == failure).verify(Duration.ofSeconds(10));
     }
 }

@@ -30,6 +30,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +79,7 @@ class ExpenseControllerTest {
         when(expenseService.list("ev-1", "alice")).thenReturn(Flux.just(expense));
         when(mapper.toResponse(expense, SignedUrls.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.list("ev-1", jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.list("ev-1", jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -87,7 +88,7 @@ class ExpenseControllerTest {
         when(expenseService.add("ev-1", "alice", draft)).thenReturn(Mono.just(expense));
         when(mapper.toResponse(expense, SignedUrls.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.add("ev-1", request, jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.add("ev-1", request, jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -96,14 +97,14 @@ class ExpenseControllerTest {
         when(expenseService.update("ev-1", "x1", "alice", draft)).thenReturn(Mono.just(expense));
         when(mapper.toResponse(expense, SignedUrls.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.update("ev-1", "x1", request, jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.update("ev-1", "x1", request, jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void delete_shouldDeleteAsTheCaller() {
         when(expenseService.delete("ev-1", "x1", "alice")).thenReturn(Mono.empty());
 
-        StepVerifier.create(controller.delete("ev-1", "x1", jwt)).verifyComplete();
+        StepVerifier.create(controller.delete("ev-1", "x1", jwt)).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(expenseService).delete("ev-1", "x1", "alice");
     }
@@ -115,7 +116,7 @@ class ExpenseControllerTest {
         when(expenseService.ledger("ev-1", "alice")).thenReturn(Mono.just(ledger));
         when(mapper.toResponse(ledger)).thenReturn(ledgerResponse);
 
-        StepVerifier.create(controller.ledger("ev-1", jwt)).expectNext(ledgerResponse).verifyComplete();
+        StepVerifier.create(controller.ledger("ev-1", jwt)).expectNext(ledgerResponse).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -125,7 +126,7 @@ class ExpenseControllerTest {
 
         StepVerifier.create(controller.settle("ev-1", new SettlementRequest("bob", "alice", 1000), jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     private static Expense withReceipt(String id, String receiptKey) {
@@ -147,7 +148,7 @@ class ExpenseControllerTest {
 
         StepVerifier.create(realMapping.list("ev-1", jwt).map(expense -> String.valueOf(expense.receiptUrl())))
                 .expectNext("https://media/1", "https://media/2", "null")
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(mediaStore, times(1)).urls(any());
     }
 
@@ -160,7 +161,7 @@ class ExpenseControllerTest {
 
         StepVerifier.create(realMapping.list("ev-1", jwt))
                 .expectNextMatches(expense -> expense.id().equals("x1") && expense.receiptUrl() == null)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -173,7 +174,7 @@ class ExpenseControllerTest {
 
         StepVerifier.create(controller.attachReceipt("ev-1", "x1", UploadsTest.form(UploadsTest.file(2048)), jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(expenseService).attachReceipt(eq("ev-1"), eq("x1"), eq("alice"), argThat(bytes -> bytes.length == 2048));
     }
 
@@ -181,7 +182,7 @@ class ExpenseControllerTest {
     void attachReceipt_shouldRefuseAFileOver10Megabytes_beforeTheService() {
         StepVerifier.create(controller.attachReceipt("ev-1", "x1", UploadsTest.form(UploadsTest.file(Uploads.MAX_BYTES + 1)), jwt))
                 .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.MEDIA_TOO_LARGE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(expenseService, never()).attachReceipt(any(), any(), any(), any());
     }
 
@@ -189,14 +190,14 @@ class ExpenseControllerTest {
     void attachReceipt_shouldRefuseAFormWithoutFile_asAnInvalidReceipt() {
         StepVerifier.create(controller.attachReceipt("ev-1", "x1", UploadsTest.form(null), jwt))
                 .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.RECEIPT_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
     void removeReceipt_shouldRemoveAsTheCaller() {
         when(expenseService.removeReceipt("ev-1", "x1", "alice")).thenReturn(Mono.empty());
 
-        StepVerifier.create(controller.removeReceipt("ev-1", "x1", jwt)).verifyComplete();
+        StepVerifier.create(controller.removeReceipt("ev-1", "x1", jwt)).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(expenseService).removeReceipt("ev-1", "x1", "alice");
     }

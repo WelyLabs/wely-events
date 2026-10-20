@@ -16,6 +16,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
@@ -56,21 +57,21 @@ class MongoSocialGraphAdapterIntegrationTest {
 
     @Test
     void friendIdsOf_shouldListCurrentFriendsOnly() {
-        StepVerifier.create(adapter.friendIdsOf("bob")).expectNext(Set.of("alice", "zoe")).verifyComplete();
-        StepVerifier.create(adapter.friendIdsOf("nobody")).expectNext(Set.of()).verifyComplete();
+        StepVerifier.create(adapter.friendIdsOf("bob")).expectNext(Set.of("alice", "zoe")).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.friendIdsOf("nobody")).expectNext(Set.of()).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void closenessBetween_shouldAnswerForFriendsOnly() {
-        StepVerifier.create(adapter.closenessBetween("bob", "alice")).expectNext(Closeness.INTIMATE).verifyComplete();
-        StepVerifier.create(adapter.closenessBetween("max", "bob")).verifyComplete();
-        StepVerifier.create(adapter.closenessBetween("alice", "zoe")).verifyComplete();
+        StepVerifier.create(adapter.closenessBetween("bob", "alice")).expectNext(Closeness.INTIMATE).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.closenessBetween("max", "bob")).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.closenessBetween("alice", "zoe")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void friendsOf_shouldMapFriendsToTheirCloseness() {
         StepVerifier.create(adapter.friendsOf("bob"))
                 .expectNext(Map.of("alice", Closeness.INTIMATE, "zoe", Closeness.FRIEND))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 }

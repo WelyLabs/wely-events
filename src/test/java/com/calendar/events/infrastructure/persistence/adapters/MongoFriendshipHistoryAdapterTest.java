@@ -17,6 +17,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -45,7 +46,7 @@ class MongoFriendshipHistoryAdapterTest {
         when(mongoRepository.insert(any(com.calendar.events.infrastructure.persistence.entities.FriendshipHistoryEntity.class)))
                 .thenAnswer(call -> Mono.just(call.getArgument(0)));
 
-        StepVerifier.create(adapter.append(ENTRY)).expectNext(true).verifyComplete();
+        StepVerifier.create(adapter.append(ENTRY)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -53,7 +54,7 @@ class MongoFriendshipHistoryAdapterTest {
         when(mongoRepository.insert(any(com.calendar.events.infrastructure.persistence.entities.FriendshipHistoryEntity.class)))
                 .thenReturn(Mono.error(new DuplicateKeyException("dup")));
 
-        StepVerifier.create(adapter.append(ENTRY)).expectNext(false).verifyComplete();
+        StepVerifier.create(adapter.append(ENTRY)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -61,20 +62,20 @@ class MongoFriendshipHistoryAdapterTest {
         when(mongoRepository.insert(any(com.calendar.events.infrastructure.persistence.entities.FriendshipHistoryEntity.class)))
                 .thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
 
-        StepVerifier.create(adapter.append(ENTRY)).expectError(DataAccessResourceFailureException.class).verify();
+        StepVerifier.create(adapter.append(ENTRY)).expectError(DataAccessResourceFailureException.class).verify(Duration.ofSeconds(10));
     }
 
     @Test
     void involvingSince_shouldReadTheEntriesBack() {
         when(mongoRepository.findInvolvingSince("alice", AT)).thenReturn(Flux.just(mapper.toEntity(ENTRY)));
 
-        StepVerifier.create(adapter.involvingSince("alice", AT)).expectNext(ENTRY).verifyComplete();
+        StepVerifier.create(adapter.involvingSince("alice", AT)).expectNext(ENTRY).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void forget_shouldDeleteEveryEntryInvolvingTheUser() {
         when(mongoRepository.deleteInvolving("alice")).thenReturn(Mono.just(3L));
 
-        StepVerifier.create(adapter.forget("alice")).expectNext(3L).verifyComplete();
+        StepVerifier.create(adapter.forget("alice")).expectNext(3L).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

@@ -60,7 +60,7 @@ class MongoReunionSnoozesAdapterIntegrationTest {
         snoozes.snooze("me", "lea", NOW.minusSeconds(1)).block();
         snoozes.snooze("hugo", "me", NOW.plus(Duration.ofDays(30))).block();
 
-        StepVerifier.create(snoozes.snoozedBy("me", NOW)).expectNext(Set.of("hugo")).verifyComplete();
+        StepVerifier.create(snoozes.snoozedBy("me", NOW)).expectNext(Set.of("hugo")).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -68,7 +68,7 @@ class MongoReunionSnoozesAdapterIntegrationTest {
         snoozes.snooze("me", "hugo", NOW.minusSeconds(60)).block();
         snoozes.snooze("me", "hugo", NOW.plus(Duration.ofDays(30))).block();
 
-        StepVerifier.create(snoozes.snoozedBy("me", NOW)).expectNext(Set.of("hugo")).verifyComplete();
+        StepVerifier.create(snoozes.snoozedBy("me", NOW)).expectNext(Set.of("hugo")).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(mongoTemplate.count(new Query(), "reunion_snoozes").block()).isEqualTo(1L);
     }
 

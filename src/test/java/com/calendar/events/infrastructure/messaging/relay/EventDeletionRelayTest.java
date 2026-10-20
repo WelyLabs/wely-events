@@ -63,7 +63,7 @@ class EventDeletionRelayTest {
         when(outbox.markPublished("e1")).thenReturn(Mono.empty());
         when(outbox.markPublished("e2")).thenReturn(Mono.empty());
 
-        StepVerifier.create(relay.drainOnce()).expectNext(2L).verifyComplete();
+        StepVerifier.create(relay.drainOnce()).expectNext(2L).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(outbox).markPublished("e1");
         verify(outbox).markPublished("e2");
@@ -79,7 +79,7 @@ class EventDeletionRelayTest {
         when(publisher.publish(mapper.toDto(fine))).thenReturn(Mono.empty());
         when(outbox.markPublished("e2")).thenReturn(Mono.empty());
 
-        StepVerifier.create(relay.drainOnce()).expectNext(1L).verifyComplete();
+        StepVerifier.create(relay.drainOnce()).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(outbox, never()).markPublished("e1");
     }
@@ -88,7 +88,7 @@ class EventDeletionRelayTest {
     void drainOnce_shouldSendNothing_whenNothingIsPending() {
         when(outbox.findPending(10)).thenReturn(Flux.empty());
 
-        StepVerifier.create(relay.drainOnce()).expectNext(0L).verifyComplete();
+        StepVerifier.create(relay.drainOnce()).expectNext(0L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test

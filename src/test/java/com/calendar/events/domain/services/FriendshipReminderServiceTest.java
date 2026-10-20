@@ -91,7 +91,7 @@ class FriendshipReminderServiceTest {
         when(eventRepository.findBirthdaysOf(List.of("hugo", "lea")))
                 .thenReturn(Flux.just(BirthdayService.birthdayEvent("lea", "Léa", MonthDay.of(6, 1))));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(2L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(2L).expectComplete().verify(Duration.ofSeconds(10));
         Instant since = Instant.parse("2025-10-17T22:30:00Z");
         assertThat(recorded(2)).containsExactly(
                 FriendshipNotice.anniversary("hugo", "lea", "Léa", Closeness.FRIEND, 1, since, TODAY),
@@ -105,7 +105,7 @@ class FriendshipReminderServiceTest {
                 pair("c", "d", Closeness.FRIEND, "2025-10-19T10:00:00Z"),
                 pair("e", "f", Closeness.FRIEND, "2026-10-18T05:00:00Z")));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(2L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(2L).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(recorded(2)).allSatisfy(notice -> assertThat(notice.years()).isEqualTo(3));
     }
 
@@ -124,7 +124,7 @@ class FriendshipReminderServiceTest {
         when(friendships.allFriendships()).thenReturn(Flux.just(pair("a", "b", Closeness.FRIEND, "2025-10-18T10:00:00Z")));
         when(noticeOutbox.record(any())).thenReturn(Mono.just(false));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(0L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(0L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -134,7 +134,7 @@ class FriendshipReminderServiceTest {
                 pair("c", "d", Closeness.FRIEND, "2025-10-18T10:00:00Z")));
         when(eventRepository.findBirthdaysOf(List.of("a", "b"))).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(2L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(2L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     // --- Reunion nudges --------------------------------------------------------
@@ -146,7 +146,7 @@ class FriendshipReminderServiceTest {
                 pair("me", "zoe", Closeness.FRIEND, "2025-01-01T10:00:00Z")));
         when(reunionService.candidatesFor("me")).thenReturn(Flux.just(candidate("hugo"), candidate("other")));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(recorded(1)).containsExactly(FriendshipNotice.reunionNudge("me", candidate("hugo"), TODAY));
         verify(reunionService, never()).candidatesFor("zoe");
         verify(noticeOutbox).recordedFor("me", FriendshipNoticeType.REUNION_NUDGE, NOW.minus(Duration.ofDays(30)));
@@ -159,7 +159,7 @@ class FriendshipReminderServiceTest {
         when(noticeOutbox.recordedFor("me", FriendshipNoticeType.REUNION_NUDGE, NOW.minus(Duration.ofDays(30))))
                 .thenReturn(Flux.just(sixDaysAgo));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(0L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(0L).expectComplete().verify(Duration.ofSeconds(10));
         verify(reunionService, never()).candidatesFor("me");
     }
 
@@ -171,7 +171,7 @@ class FriendshipReminderServiceTest {
                 .thenReturn(Flux.just(weekAgo));
         when(reunionService.candidatesFor("me")).thenReturn(Flux.just(candidate("hugo"), candidate("lea")));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(recorded(1)).extracting(FriendshipNotice::friendId).containsExactly("lea");
     }
 
@@ -181,13 +181,13 @@ class FriendshipReminderServiceTest {
         when(reunionService.candidatesFor("a")).thenReturn(Flux.error(new IllegalStateException("mongo down")));
         when(reunionService.candidatesFor("b")).thenReturn(Flux.just(candidate("a")));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void recordDueNotices_shouldFail_whenTheFriendshipsCannotBeRead() {
         when(friendships.allFriendships()).thenReturn(Flux.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.recordDueNotices()).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.recordDueNotices()).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
     }
 }

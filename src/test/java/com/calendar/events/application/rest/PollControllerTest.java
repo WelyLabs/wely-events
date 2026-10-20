@@ -103,7 +103,7 @@ class PollControllerTest {
                             new PollSlotResponse("thu", THURSDAY.start(), THURSDAY.end(), List.of("lea"), List.of(), List.of()),
                             new PollSlotResponse("fri", FRIDAY.start(), FRIDAY.end(), List.of(), List.of(), List.of("lea")));
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -113,7 +113,7 @@ class PollControllerTest {
 
         StepVerifier.create(controller.castBallot("e1", new BallotRequest(Map.of()), jwt))
                 .expectErrorMatches(error -> error instanceof BusinessException e && e.getErrorCode() == BusinessErrorCode.POLL_CLOSED)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -127,7 +127,7 @@ class PollControllerTest {
                     assertThat(response.getPoll().status()).isEqualTo(PollStatus.CLOSED);
                     assertThat(response.getPoll().fixedSlotId()).isEqualTo("thu");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -137,7 +137,7 @@ class PollControllerTest {
 
         StepVerifier.create(controller.getMyPolls(jwt))
                 .assertNext(response -> assertThat(response.getPoll().slots()).hasSize(2))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -155,7 +155,7 @@ class PollControllerTest {
                 })
                 .assertNext(sse -> assertThat(sse.data().slots().getFirst().yes()).containsExactly("lea"))
                 .assertNext(sse -> assertThat(sse.data().status()).isEqualTo(PollStatus.CLOSED))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -185,7 +185,7 @@ class PollControllerTest {
 
         StepVerifier.create(controller.streamPoll("e1", jwt))
                 .expectErrorMatches(error -> error instanceof BusinessException e && e.getErrorCode() == BusinessErrorCode.EVENT_NOT_FOUND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     private WebTestClient client(String userId) {
@@ -228,7 +228,7 @@ class PollControllerTest {
                 .then(() -> states.tryEmitNext(CLOSED))
                 .assertNext(sse -> assertThat(sse.data().fixedSlotId()).isEqualTo("thu"))
                 .then(states::tryEmitComplete)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test

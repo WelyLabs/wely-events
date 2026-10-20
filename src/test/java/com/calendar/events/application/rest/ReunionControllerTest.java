@@ -18,6 +18,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.mockito.Mockito.verify;
@@ -47,14 +48,14 @@ class ReunionControllerTest {
 
         StepVerifier.create(controller.getReunions(jwt))
                 .expectNext(new ReunionResponse("hugo", "Hugo", Closeness.CLOSE, last, "e1", "Ciné", 5))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void dismiss_shouldSnoozeOnBehalfOfTheCaller() {
         when(reunionService.dismiss("me", "hugo")).thenReturn(Mono.empty());
 
-        StepVerifier.create(controller.dismiss("hugo", jwt)).verifyComplete();
+        StepVerifier.create(controller.dismiss("hugo", jwt)).expectComplete().verify(Duration.ofSeconds(10));
         verify(reunionService).dismiss("me", "hugo");
     }
 
@@ -66,6 +67,6 @@ class ReunionControllerTest {
         StepVerifier.create(controller.dismiss("stranger", jwt))
                 .expectErrorMatches(error -> error instanceof BusinessException e
                         && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

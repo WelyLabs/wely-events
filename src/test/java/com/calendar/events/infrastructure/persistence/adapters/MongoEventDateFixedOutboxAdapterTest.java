@@ -12,6 +12,8 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
+
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -28,20 +30,20 @@ class MongoEventDateFixedOutboxAdapterTest {
         EventEntity event = new EventEntity();
         when(mongoRepository.findDateFixesToPublish(Limit.of(10))).thenReturn(Flux.just(event));
 
-        StepVerifier.create(outbox.findPending(10)).expectNext(event).verifyComplete();
+        StepVerifier.create(outbox.findPending(10)).expectNext(event).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void markPublished_shouldSayYes_whenItWasStillPending() {
         when(mongoRepository.markDateFixPublished("e1", 2L)).thenReturn(Mono.just(1L));
 
-        StepVerifier.create(outbox.markPublished("e1", 2L)).expectNext(true).verifyComplete();
+        StepVerifier.create(outbox.markPublished("e1", 2L)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void markPublished_shouldSayNo_whenAlreadyMarkedOrMovedSince() {
         when(mongoRepository.markDateFixPublished("e1", 2L)).thenReturn(Mono.just(0L));
 
-        StepVerifier.create(outbox.markPublished("e1", 2L)).expectNext(false).verifyComplete();
+        StepVerifier.create(outbox.markPublished("e1", 2L)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

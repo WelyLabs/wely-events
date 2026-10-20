@@ -1,13 +1,21 @@
 package com.calendar.events.exception;
 
+import com.calendar.events.domain.ports.DeletedUserMarkers;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.FieldError;
@@ -17,7 +25,12 @@ import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.mockJwt;
+import static org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers.springSecurity;
 
 class GlobalErrorHandlerTest {
 
@@ -162,7 +175,7 @@ class GlobalErrorHandlerTest {
                 .exchange()
                 .expectStatus().is5xxServerError()
                 .expectBody()
-                .jsonPath("$.code").isEqualTo(GlobalErrorHandler.UNEXPECTED_CODE)
+                .jsonPath("$.code").isEqualTo(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)
                 .jsonPath("$.requestId").value(GlobalErrorHandlerTest::assertNotBlank)
                 .jsonPath("$.detail").value(detail -> {
                     // The message carried a Mongo URI with a password.
@@ -185,7 +198,7 @@ class GlobalErrorHandlerTest {
                 .expectBody()
                 .jsonPath("$.status").isEqualTo(404)
                 .jsonPath("$.title").isEqualTo("Not Found")
-                .jsonPath("$.code").isEqualTo(GlobalErrorHandler.REQUEST_CODE)
+                .jsonPath("$.code").isEqualTo(GlobalErrorHandler.REQUEST_REFUSED_CODE)
                 .jsonPath("$.requestId").value(GlobalErrorHandlerTest::assertNotBlank);
     }
 
@@ -198,7 +211,7 @@ class GlobalErrorHandlerTest {
                 .expectBody()
                 .jsonPath("$.status").isEqualTo(405)
                 .jsonPath("$.title").isEqualTo("Method Not Allowed")
-                .jsonPath("$.code").isEqualTo(GlobalErrorHandler.REQUEST_CODE)
+                .jsonPath("$.code").isEqualTo(GlobalErrorHandler.REQUEST_REFUSED_CODE)
                 .jsonPath("$.requestId").value(GlobalErrorHandlerTest::assertNotBlank);
     }
 
@@ -257,7 +270,7 @@ class GlobalErrorHandlerTest {
     void handleUnexpectedException_shouldCountTheFailure() {
         client.get().uri("/generic-error").exchange().expectStatus().is5xxServerError();
 
-        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_CODE)).isEqualTo(1.0);
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
     }
 
     @Test
@@ -268,7 +281,7 @@ class GlobalErrorHandlerTest {
                 .expectStatus().isBadRequest()
                 .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
                 .expectBody()
-                .jsonPath("$.code").isEqualTo(GlobalErrorHandler.VALIDATION_CODE)
+                .jsonPath("$.code").isEqualTo(GlobalErrorHandler.VALIDATION_FAILED_CODE)
                 .jsonPath("$.errors.title").isEqualTo("must not be blank")
                 .jsonPath("$.requestId").value(GlobalErrorHandlerTest::assertNotBlank);
 
@@ -295,5 +308,90 @@ class GlobalErrorHandlerTest {
                 .expectBody()
                 .jsonPath("$.code").isEqualTo("EVT-BUS-030")
                 .jsonPath("$.eventId").isEqualTo("s1");
+    }
+    /**
+     * The real application context, where Boot's own exception handlers sit next to this advice. Binding
+     * the advice alone, as above, cannot show which one answers: these requests go through the whole app.
+     */
+    @Nested
+    @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+    @ActiveProfiles("test")
+    class InTheApplication {
+
+        @Autowired
+        private ApplicationContext context;
+
+        @MockitoBean
+        private ReactiveJwtDecoder jwtDecoder;
+
+        /** Every write asks the register first; a live account lets it through to the controller. */
+        @MockitoBean
+        private DeletedUserMarkers markers;
+
+        private WebTestClient client() {
+            return WebTestClient.bindToApplicationContext(context)
+                    .apply(springSecurity())
+                    .configureClient()
+                    .responseTimeout(Duration.ofSeconds(30))
+                    .build()
+                    .mutateWith(mockJwt().jwt(jwt -> jwt.claim("businessId", "lea")));
+        }
+
+        private void expectOurProblem(WebTestClient.ResponseSpec response, int status, String code) {
+            response.expectStatus().isEqualTo(status)
+                    .expectHeader().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)
+                    .expectBody()
+                    .jsonPath("$.status").isEqualTo(status)
+                    .jsonPath("$.code").isEqualTo(code)
+                    .jsonPath("$.requestId").value(GlobalErrorHandlerTest::assertNotBlank);
+        }
+
+        @Test
+        @DisplayName("an unknown path answers our 404 problem")
+        void handleResponseStatusException_shouldAnswerAnUnknownPath() {
+            expectOurProblem(client().get().uri("/events-service/no-such-path").exchange(),
+                    404, GlobalErrorHandler.REQUEST_REFUSED_CODE);
+        }
+
+        @Test
+        @DisplayName("a method the path does not take answers our 405 problem")
+        void handleResponseStatusException_shouldAnswerAWrongMethod() {
+            when(markers.isDeleted("lea")).thenReturn(Mono.just(false));
+
+            expectOurProblem(client().patch().uri("/events-service/events/me/feed").exchange(),
+                    405, GlobalErrorHandler.REQUEST_REFUSED_CODE);
+        }
+
+        @Test
+        @DisplayName("a body in a type the endpoint does not read answers our 415 problem")
+        void handleResponseStatusException_shouldAnswerAnUnsupportedContentType() {
+            when(markers.isDeleted("lea")).thenReturn(Mono.just(false));
+
+            expectOurProblem(client().post().uri("/events-service/events")
+                            .contentType(MediaType.TEXT_PLAIN).bodyValue("a title").exchange(),
+                    415, GlobalErrorHandler.REQUEST_REFUSED_CODE);
+        }
+
+        @Test
+        @DisplayName("a body that is not JSON answers our 400 problem")
+        void handleResponseStatusException_shouldAnswerAnUnreadableBody() {
+            when(markers.isDeleted("lea")).thenReturn(Mono.just(false));
+
+            expectOurProblem(client().post().uri("/events-service/events")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            // Bytes, not a String: a String would be encoded as a JSON string.
+                            .bodyValue("{not json".getBytes(java.nio.charset.StandardCharsets.UTF_8)).exchange(),
+                    400, GlobalErrorHandler.REQUEST_REFUSED_CODE);
+        }
+
+        @Test
+        @DisplayName("an invalid field answers our 400 validation problem, with the field listed")
+        void handleValidationException_shouldAnswerAnInvalidField() {
+            when(markers.isDeleted("lea")).thenReturn(Mono.just(false));
+
+            expectOurProblem(client().post().uri("/events-service/events")
+                            .contentType(MediaType.APPLICATION_JSON).bodyValue(java.util.Map.of("title", " ", "allDay", false)).exchange(),
+                    400, GlobalErrorHandler.VALIDATION_FAILED_CODE);
+        }
     }
 }

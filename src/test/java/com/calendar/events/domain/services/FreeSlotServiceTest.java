@@ -67,7 +67,7 @@ class FreeSlotServiceTest {
                 .expectNext(new TimeRange(TEN, TEN.plus(Duration.ofHours(2))))
                 .expectNext(new TimeRange(TEN.plus(Duration.ofHours(3)), TEN.plus(Duration.ofHours(5))))
                 .expectNext(new TimeRange(TEN.plus(Duration.ofHours(6)), WINDOW.end()))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -76,7 +76,7 @@ class FreeSlotServiceTest {
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea", "stranger"), WINDOW, HOUR))
                 .expectErrorMatches(e -> failsWith(e, BusinessErrorCode.NOT_A_FRIEND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         verify(eventRepository, never()).findOccupying(anyCollection(), any(), any(), any());
     }
@@ -87,7 +87,7 @@ class FreeSlotServiceTest {
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), WINDOW, HOUR))
                 .expectErrorMatches(e -> failsWith(e, BusinessErrorCode.NOT_A_FRIEND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
 
         verify(eventRepository, never()).findOccupying(anyCollection(), any(), any(), any());
     }
@@ -99,7 +99,7 @@ class FreeSlotServiceTest {
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), WINDOW, HOUR))
                 .expectErrorMatches(e -> failsWith(e, TechnicalErrorCode.SOCIAL_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -118,7 +118,7 @@ class FreeSlotServiceTest {
             Set<String> friends = (Set<String>) search[0];
             StepVerifier.create(service.findCommonFreeRanges("me", friends, (TimeRange) search[1], (Duration) search[2]))
                     .expectErrorMatches(e -> failsWith(e, BusinessErrorCode.INVALID_SLOT_SEARCH))
-                    .verify();
+                    .verify(Duration.ofSeconds(10));
         }
 
         verify(socialGraph, never()).friendIdsOf(any());
@@ -133,6 +133,6 @@ class FreeSlotServiceTest {
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), sixWeeks, HOUR))
                 .expectNext(sixWeeks)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 }

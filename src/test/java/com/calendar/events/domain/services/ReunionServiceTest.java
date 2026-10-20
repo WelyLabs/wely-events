@@ -94,7 +94,7 @@ class ReunionServiceTest {
         StepVerifier.create(service.candidatesFor(ME))
                 .expectNext(new ReunionCandidate("hugo", "Hugo", Closeness.CLOSE, LONG_AGO, lastWithHugo.getStartDate(),
                         "e1", "Outing e1", 5))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).findLastSharedOuting(ME, "planned", NOW);
     }
 
@@ -122,7 +122,7 @@ class ReunionServiceTest {
                 .assertNext(candidate -> assertThat(candidate.friendId()).isEqualTo("intimate-older"))
                 .assertNext(candidate -> assertThat(candidate.friendId()).isEqualTo("intimate-recent"))
                 .assertNext(candidate -> assertThat(candidate.friendId()).isEqualTo("close-old"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -130,7 +130,7 @@ class ReunionServiceTest {
         when(snoozes.snoozedBy(ME, NOW)).thenReturn(Mono.just(Set.of("hugo")));
         myFriends(friend("hugo", Closeness.CLOSE, LONG_AGO), friend("lea", Closeness.CLOSE, LONG_AGO));
 
-        StepVerifier.create(service.candidatesFor(ME).map(ReunionCandidate::friendId)).expectNext("lea").verifyComplete();
+        StepVerifier.create(service.candidatesFor(ME).map(ReunionCandidate::friendId)).expectNext("lea").expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).hasUpcomingShared(ME, "hugo", NOW);
     }
 
@@ -139,7 +139,7 @@ class ReunionServiceTest {
         myFriends(friend("hugo", Closeness.CLOSE, LONG_AGO));
         when(eventRepository.hasUpcomingShared(ME, "hugo", NOW)).thenReturn(Mono.error(new IllegalStateException("mongo down")));
 
-        StepVerifier.create(service.candidatesFor(ME)).expectError(IllegalStateException.class).verify();
+        StepVerifier.create(service.candidatesFor(ME)).expectError(IllegalStateException.class).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -149,7 +149,7 @@ class ReunionServiceTest {
 
         StepVerifier.create(service.reunionsFor(ME).map(ReunionCandidate::friendId))
                 .expectNext("a", "b", "c")
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -157,7 +157,7 @@ class ReunionServiceTest {
         when(friendships.pairOf(ME, "hugo")).thenReturn(Mono.just(friend("hugo", Closeness.CLOSE, LONG_AGO)));
         when(snoozes.snooze(ME, "hugo", NOW.plus(Duration.ofDays(30)))).thenReturn(Mono.empty());
 
-        StepVerifier.create(service.dismiss(ME, "hugo")).verifyComplete();
+        StepVerifier.create(service.dismiss(ME, "hugo")).expectComplete().verify(Duration.ofSeconds(10));
         verify(snoozes).snooze(ME, "hugo", NOW.plus(Duration.ofDays(30)));
     }
 
@@ -169,11 +169,11 @@ class ReunionServiceTest {
         StepVerifier.create(service.dismiss(ME, "stranger"))
                 .expectErrorMatches(error -> error instanceof BusinessException e
                         && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         StepVerifier.create(service.dismiss(ME, "former"))
                 .expectErrorMatches(error -> error instanceof BusinessException e
                         && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(snoozes, never()).snooze(anyString(), anyString(), any());
     }
 }

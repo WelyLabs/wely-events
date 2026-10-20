@@ -87,7 +87,7 @@ class FriendshipStateConsumerTest {
         Friendship expected = new Friendship(ALICE, BOB, true, Closeness.CLOSE, SINCE, 12);
         when(friendshipService.applyState(expected)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(consume(state(ALICE, BOB, "CLOSE", 12))).verifyComplete();
+        StepVerifier.create(consume(state(ALICE, BOB, "CLOSE", 12))).expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService).applyState(expected);
     }
 
@@ -96,7 +96,7 @@ class FriendshipStateConsumerTest {
         when(friendshipService.applyState(any())).thenReturn(Mono.just(true));
 
         StepVerifier.create(consume(value(null, "{\"a\":\"" + BOB + "\",\"b\":\"" + ALICE
-                + "\",\"friends\":true,\"closeness\":\"FRIEND\",\"since\":\"" + SINCE + "\",\"version\":3}"))).verifyComplete();
+                + "\",\"friends\":true,\"closeness\":\"FRIEND\",\"since\":\"" + SINCE + "\",\"version\":3}"))).expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService).applyState(new Friendship(ALICE, BOB, true, Closeness.FRIEND, SINCE, 3));
     }
 
@@ -104,7 +104,7 @@ class FriendshipStateConsumerTest {
     void friendshipState_shouldEndTheFriendshipTheTombstoneKeyNames() {
         when(friendshipService.applyTombstone(ALICE, BOB)).thenReturn(Mono.just(true));
 
-        StepVerifier.create(consume(tombstone(bytes(ALICE + ":" + BOB)))).verifyComplete();
+        StepVerifier.create(consume(tombstone(bytes(ALICE + ":" + BOB)))).expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService).applyTombstone(ALICE, BOB);
         verify(friendshipService, never()).applyState(any());
     }
@@ -113,7 +113,7 @@ class FriendshipStateConsumerTest {
     void friendshipState_shouldReadATombstoneKeyGivenAsAString() {
         when(friendshipService.applyTombstone(ALICE, BOB)).thenReturn(Mono.just(false));
 
-        StepVerifier.create(consume(tombstone(ALICE.toUpperCase() + ":" + BOB))).verifyComplete();
+        StepVerifier.create(consume(tombstone(ALICE.toUpperCase() + ":" + BOB))).expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService).applyTombstone(ALICE, BOB);
     }
 
@@ -123,7 +123,7 @@ class FriendshipStateConsumerTest {
 
         StepVerifier.create(consume(tombstone(null), tombstone(bytes("not-a-key")), tombstone(bytes(ALICE + ":" + ALICE)),
                 tombstone(bytes(ALICE + ":" + BOB + ":" + ZOE)), tombstone(42), tombstone(bytes(ALICE + ":" + ZOE))))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService, times(1)).applyTombstone(anyString(), anyString());
     }
 
@@ -144,7 +144,7 @@ class FriendshipStateConsumerTest {
                         value(ALICE + ":" + ZOE, "{\"a\":\"" + ALICE + "\",\"b\":\"" + BOB
                                 + "\",\"friends\":true,\"closeness\":\"FRIEND\",\"version\":1}"),
                         state(ZOE, ALICE, "FRIEND", 9)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService).applyState(valid);
         verify(friendshipService, times(1)).applyState(any());
     }
@@ -158,7 +158,7 @@ class FriendshipStateConsumerTest {
                 .thenReturn(Mono.just(false));
 
         StepVerifier.create(consume(state(ALICE, BOB, "FRIEND", 3), tombstone(bytes(ALICE + ":" + BOB)),
-                state(ALICE, BOB, "CLOSE", 5))).verifyComplete();
+                state(ALICE, BOB, "CLOSE", 5))).expectComplete().verify(Duration.ofSeconds(10));
         verify(friendshipService, times(2)).applyState(any());
         verify(friendshipService).applyTombstone(ALICE, BOB);
     }

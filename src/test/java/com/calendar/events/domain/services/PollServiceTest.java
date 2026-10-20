@@ -112,7 +112,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of("thu", PollAnswer.YES)))
                 .expectNext(after)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(pollUpdates).publish("e1", after);
     }
 
@@ -127,7 +127,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of("fri", PollAnswer.MAYBE)))
                 .assertNext(poll -> assertThat(poll.ballots().get("lea")).containsExactly(Map.entry("fri", PollAnswer.MAYBE)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -136,7 +136,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.vote("e1", "stranger", Map.of("thu", PollAnswer.YES)))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).castBallot(anyString(), anyString(), any());
         verifyNoInteractions(pollUpdates);
     }
@@ -147,7 +147,7 @@ class PollServiceTest {
         when(socialGraph.friendIdsOf("lea")).thenReturn(Mono.just(Set.of("org")));
         when(eventRepository.castBallot("e1", "lea", Map.of())).thenReturn(Mono.just(polling(Visibility.FRIENDS, openPoll(Map.of()))));
 
-        StepVerifier.create(pollService.vote("e1", "lea", Map.of())).expectNextCount(1).verifyComplete();
+        StepVerifier.create(pollService.vote("e1", "lea", Map.of())).expectNextCount(1).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -157,7 +157,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of("thu", PollAnswer.YES)))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -166,7 +166,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of()))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -176,7 +176,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of("thu", PollAnswer.YES)))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(pollUpdates);
     }
 
@@ -186,7 +186,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of("thu", PollAnswer.YES, "sun", PollAnswer.NO)))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_SLOT_UNKNOWN))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).castBallot(anyString(), anyString(), any());
     }
 
@@ -203,7 +203,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.fix("e1", "org", "fri"))
                 .expectNext(fixed)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(pollUpdates).publish("e1", closed);
     }
 
@@ -219,7 +219,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.fix("e1", "org", "fri"))
                 .expectNext(fixed)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -230,7 +230,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.fix("e1", "org", "fri"))
                 .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.STORE_UNAVAILABLE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).fixPollDate(anyString(), anyString(), any(), any());
     }
 
@@ -240,7 +240,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.fix("e1", "lea", "fri"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).fixPollDate(anyString(), anyString(), any(), any());
     }
 
@@ -250,7 +250,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.fix("e1", "stranger", "fri"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -260,7 +260,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.fix("e1", "org", "fri"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -270,7 +270,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.fix("e1", "org", "fri"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(pollUpdates);
     }
 
@@ -280,7 +280,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.fix("e1", "org", "sun"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_SLOT_UNKNOWN))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -291,7 +291,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.fix("e1", "org", "gone"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_IN_PAST))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).fixPollDate(any(), any(), any(), any());
     }
 
@@ -300,7 +300,7 @@ class PollServiceTest {
         Event event = polling(Visibility.PUBLIC, openPoll(Map.of()));
         when(eventRepository.findOpenPollsInvolving("lea")).thenReturn(Flux.just(event));
 
-        StepVerifier.create(pollService.getMyPolls("lea")).expectNext(event).verifyComplete();
+        StepVerifier.create(pollService.getMyPolls("lea")).expectNext(event).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -309,7 +309,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.watch("e1", "stranger"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(pollUpdates);
     }
 
@@ -319,7 +319,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.watch("e1", "gone"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.ACCOUNT_DELETED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).findById(anyString());
         verifyNoInteractions(pollUpdates);
     }
@@ -358,7 +358,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.watch("e1", "lea"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -378,7 +378,7 @@ class PollServiceTest {
                 .expectNext(voted)
                 .then(() -> live.tryEmitNext(closed))
                 .expectNext(closed)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -389,7 +389,7 @@ class PollServiceTest {
 
         StepVerifier.create(pollService.watch("e1", "lea").flatMapMany(states -> states))
                 .expectNext(closed)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -409,6 +409,6 @@ class PollServiceTest {
                 .then(() -> slowRead.tryEmitValue(polling(Visibility.PUBLIC, stale)))
                 .expectNoEvent(Duration.ofMillis(50))
                 .thenCancel()
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

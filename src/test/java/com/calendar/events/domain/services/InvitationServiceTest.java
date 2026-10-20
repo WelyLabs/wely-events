@@ -75,7 +75,7 @@ class InvitationServiceTest {
     private void expectInviteRefused(BusinessErrorCode code) {
         StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
                 .expectErrorMatches(error -> hasCode(error, code))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).invite(anyString(), anyString(), anyString());
     }
 
@@ -89,7 +89,7 @@ class InvitationServiceTest {
 
         StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
                 .expectNext(new Participants(1, List.of(ORGANIZER), List.of(), List.of(FRIEND)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -147,7 +147,7 @@ class InvitationServiceTest {
 
         StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
                 .expectNextMatches(participants -> participants.invitedIds().equals(List.of(FRIEND)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -177,7 +177,7 @@ class InvitationServiceTest {
 
         StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -187,7 +187,7 @@ class InvitationServiceTest {
 
         StepVerifier.create(service.invite("e1", FRIEND, "hugo"))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     // --- withdraw ----------------------------------------------------------------------------------
@@ -197,7 +197,7 @@ class InvitationServiceTest {
         when(eventService.getEventById("e1", ORGANIZER)).thenReturn(Mono.just(invited(dinner(), FRIEND)));
         when(eventRepository.withdrawInvitation("e1", FRIEND)).thenReturn(Mono.just(dinner()));
 
-        StepVerifier.create(service.withdraw("e1", ORGANIZER, FRIEND)).verifyComplete();
+        StepVerifier.create(service.withdraw("e1", ORGANIZER, FRIEND)).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository).withdrawInvitation("e1", FRIEND);
     }
 
@@ -206,7 +206,7 @@ class InvitationServiceTest {
         when(eventService.getEventById("e1", FRIEND)).thenReturn(Mono.just(invited(dinner(), FRIEND)));
         when(eventRepository.withdrawInvitation("e1", FRIEND)).thenReturn(Mono.just(dinner()));
 
-        StepVerifier.create(service.withdraw("e1", FRIEND, FRIEND)).verifyComplete();
+        StepVerifier.create(service.withdraw("e1", FRIEND, FRIEND)).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -217,7 +217,7 @@ class InvitationServiceTest {
 
         StepVerifier.create(service.withdraw("e1", "hugo", FRIEND))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).withdrawInvitation(anyString(), anyString());
     }
 
@@ -228,6 +228,6 @@ class InvitationServiceTest {
 
         StepVerifier.create(service.withdraw("e1", FRIEND, FRIEND))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 }

@@ -15,6 +15,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -52,10 +53,10 @@ class MongoDeletedUserMarkersAdapterIntegrationTest {
     void markDeleted_shouldKeepTheFirstDeletionTime_whenRecordedTwice() {
         StepVerifier.create(adapter.markDeleted("u1", FIRST))
                 .expectNext(new DeletedUserMarker("u1", FIRST, null))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         StepVerifier.create(adapter.markDeleted("u1", LATER))
                 .expectNext(new DeletedUserMarker("u1", FIRST, null))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -67,14 +68,14 @@ class MongoDeletedUserMarkersAdapterIntegrationTest {
 
         StepVerifier.create(adapter.markDeleted("u1", LATER))
                 .expectNext(new DeletedUserMarker("u1", FIRST, LATER))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void markErased_shouldCreateNothing_withoutAMarker() {
         adapter.markErased("u1", LATER).block();
 
-        StepVerifier.create(adapter.isDeleted("u1")).expectNext(false).verifyComplete();
+        StepVerifier.create(adapter.isDeleted("u1")).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -84,7 +85,7 @@ class MongoDeletedUserMarkersAdapterIntegrationTest {
 
         StepVerifier.create(adapter.deletedAmong(List.of("u1", "u2", "u3")))
                 .expectNext(Set.of("u1", "u3"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -97,14 +98,14 @@ class MongoDeletedUserMarkersAdapterIntegrationTest {
 
         StepVerifier.create(adapter.erasedAmong(List.of("erased", "in-flight", "unknown")))
                 .expectNext(Set.of("erased"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void isDeleted_shouldAnswerFromTheMarker() {
         adapter.markDeleted("u1", FIRST).block();
 
-        StepVerifier.create(adapter.isDeleted("u1")).expectNext(true).verifyComplete();
-        StepVerifier.create(adapter.isDeleted("u2")).expectNext(false).verifyComplete();
+        StepVerifier.create(adapter.isDeleted("u1")).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(adapter.isDeleted("u2")).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

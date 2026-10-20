@@ -68,7 +68,7 @@ class UsersApiClientConfigTest {
 
     @Test
     void usersWebClient_shouldSendTheReaderSecretToTheConfiguredUrl() {
-        StepVerifier.create(get(config.usersWebClient(url, SECRET))).expectNext(BODY).verifyComplete();
+        StepVerifier.create(get(config.usersWebClient(url, SECRET))).expectNext(BODY).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(requestedPath).hasValue(PATH);
         assertThat(secretHeader).hasValue(SECRET);
@@ -76,7 +76,7 @@ class UsersApiClientConfigTest {
 
     @Test
     void usersWebClient_shouldSendAnEmptySecret_whenTheSecretIsBlank() {
-        StepVerifier.create(get(config.usersWebClient(url, ""))).expectNext(BODY).verifyComplete();
+        StepVerifier.create(get(config.usersWebClient(url, ""))).expectNext(BODY).expectComplete().verify(Duration.ofSeconds(10));
 
         assertThat(secretHeader).hasValue("");
     }

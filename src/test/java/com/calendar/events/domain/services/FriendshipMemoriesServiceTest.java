@@ -17,6 +17,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.MonthDay;
 import java.time.ZoneId;
@@ -90,7 +91,7 @@ class FriendshipMemoriesServiceTest {
                     assertThat(memories.last().getId()).isEqualTo("h");
                     assertThat(memories.highlights()).extracting(Event::getId).containsExactly("g", "e", "a", "h", "f", "d");
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -105,7 +106,7 @@ class FriendshipMemoriesServiceTest {
                     assertThat(memories.last()).isNull();
                     assertThat(memories.highlights()).isEmpty();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -120,7 +121,7 @@ class FriendshipMemoriesServiceTest {
                     assertThat(memories.years()).isZero();
                     assertThat(memories.days()).isZero();
                 })
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -131,11 +132,11 @@ class FriendshipMemoriesServiceTest {
         StepVerifier.create(service.memoriesOf(ME, "stranger"))
                 .expectErrorMatches(error -> error instanceof BusinessException e
                         && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         StepVerifier.create(service.memoriesOf(ME, "former"))
                 .expectErrorMatches(error -> error instanceof BusinessException e
                         && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).findSharedOutings(any(), any(), any());
     }
 }

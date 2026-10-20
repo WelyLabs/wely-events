@@ -20,6 +20,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -52,14 +53,14 @@ class MongoFriendshipNoticeOutboxAdapterTest {
                 && NOW.equals(entity.getRecordedAt()) && !entity.isPublished())))
                 .thenAnswer(call -> Mono.just(call.getArgument(0)));
 
-        StepVerifier.create(outbox.record(NOTICE)).expectNext(true).verifyComplete();
+        StepVerifier.create(outbox.record(NOTICE)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void record_shouldSayFalse_whenTheKeyIsTaken() {
         when(mongoRepository.insert(any(FriendshipNoticeEntity.class))).thenReturn(Mono.error(new DuplicateKeyException("dup")));
 
-        StepVerifier.create(outbox.record(NOTICE)).expectNext(false).verifyComplete();
+        StepVerifier.create(outbox.record(NOTICE)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -67,7 +68,7 @@ class MongoFriendshipNoticeOutboxAdapterTest {
         when(mongoRepository.insert(any(FriendshipNoticeEntity.class)))
                 .thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
 
-        StepVerifier.create(outbox.record(NOTICE)).expectError(DataAccessResourceFailureException.class).verify();
+        StepVerifier.create(outbox.record(NOTICE)).expectError(DataAccessResourceFailureException.class).verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -76,27 +77,27 @@ class MongoFriendshipNoticeOutboxAdapterTest {
                 .thenReturn(Flux.just(mapper.toEntity(NOTICE, NOW)));
 
         StepVerifier.create(outbox.recordedFor("me", FriendshipNoticeType.FRIENDSHIP_ANNIVERSARY, NOW))
-                .expectNext(NOTICE).verifyComplete();
+                .expectNext(NOTICE).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void findPending_shouldReadUpToTheLimit() {
         when(mongoRepository.findPending(Limit.of(10))).thenReturn(Flux.just(mapper.toEntity(NOTICE, NOW)));
 
-        StepVerifier.create(outbox.findPending(10)).expectNext(NOTICE).verifyComplete();
+        StepVerifier.create(outbox.findPending(10)).expectNext(NOTICE).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void markPublished_shouldMarkByKey() {
         when(mongoRepository.markPublished(NOTICE.key())).thenReturn(Mono.just(1L));
 
-        StepVerifier.create(outbox.markPublished(NOTICE.key())).verifyComplete();
+        StepVerifier.create(outbox.markPublished(NOTICE.key())).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
     void forget_shouldDropTheUnsentNoticesConcerningTheUser() {
         when(mongoRepository.deletePendingConcerning("lea")).thenReturn(Mono.just(2L));
 
-        StepVerifier.create(outbox.forget("lea")).verifyComplete();
+        StepVerifier.create(outbox.forget("lea")).expectComplete().verify(Duration.ofSeconds(10));
     }
 }

@@ -19,6 +19,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -50,7 +51,7 @@ class FriendCalendarControllerTest {
 
         StepVerifier.create(controller.getFriendCalendar("bob", FROM, TO, jwt))
                 .expectNext(new CalendarEntryResponse(FROM, FROM.plusSeconds(3600), null, null, null, null, false))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -58,7 +59,7 @@ class FriendCalendarControllerTest {
         StepVerifier.create(controller.getFriendCalendar("bob", TO, FROM, jwt))
                 .expectErrorMatches(e -> e instanceof BusinessException ex
                         && ex.getErrorCode() == BusinessErrorCode.INVALID_CALENDAR_REQUEST)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(service);
     }
 
@@ -71,7 +72,7 @@ class FriendCalendarControllerTest {
 
         StepVerifier.create(controller.getCircleCalendar(FROM, TO, jwt))
                 .expectNext(new CircleEntryResponse("bob", FROM, FROM.plusSeconds(3600), false, "e1", "Dinner", "Lyon", "…"))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -79,7 +80,7 @@ class FriendCalendarControllerTest {
         StepVerifier.create(controller.getCircleCalendar(TO, FROM, jwt))
                 .expectErrorMatches(e -> e instanceof BusinessException ex
                         && ex.getErrorCode() == BusinessErrorCode.INVALID_CIRCLE_REQUEST)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verifyNoInteractions(service);
     }
 }

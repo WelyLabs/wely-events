@@ -84,10 +84,10 @@ public class OpenApiConfig {
                 .addProperty("instance", new StringSchema().format("uri"))
                 .addProperty("code", code)
                 .addProperty("timestamp", new StringSchema().format("date-time"))
-                .addProperty(Problems.REQUEST_ID, new StringSchema()
+                .addProperty(Problems.REQUEST_ID_PROPERTY, new StringSchema()
                         .description("Request id, the one that prefixes this request's log lines."))
                 .addProperty("errors", new MapSchema().additionalProperties(new StringSchema())
-                        .description("Only for " + GlobalErrorHandler.VALIDATION_CODE + ": each invalid field and why."));
+                        .description("Only for " + GlobalErrorHandler.VALIDATION_FAILED_CODE + ": each invalid field and why."));
     }
 
     /** Every code this service can answer with, read from the enums and the handler: no list to keep in sync. */
@@ -95,7 +95,7 @@ public class OpenApiConfig {
         return Stream.of(
                         Arrays.stream(BusinessErrorCode.values()).map(BusinessErrorCode::getCode),
                         Arrays.stream(TechnicalErrorCode.values()).map(TechnicalErrorCode::getCode),
-                        GlobalErrorHandler.LITERAL_CODES.stream())
+                        GlobalErrorHandler.HANDLER_CODES.stream())
                 .flatMap(codes -> codes)
                 .sorted()
                 .toList();

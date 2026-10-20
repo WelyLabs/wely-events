@@ -58,7 +58,7 @@ class UserBirthdayConsumerTest {
     void userBirthday_shouldRecordTheBirthdayNamedByTheRecord() {
         when(birthdayService.recordBirthday(USER, "Léa", MonthDay.of(3, 12))).thenReturn(Mono.just(new Event()));
 
-        StepVerifier.create(consume(birthday(USER, "Léa", 3, 12))).verifyComplete();
+        StepVerifier.create(consume(birthday(USER, "Léa", 3, 12))).expectComplete().verify(Duration.ofSeconds(10));
         verify(birthdayService).recordBirthday(USER, "Léa", MonthDay.of(3, 12));
     }
 
@@ -66,7 +66,7 @@ class UserBirthdayConsumerTest {
     void userBirthday_shouldAcceptA29February_andAnUppercaseUuidInLowercase() {
         when(birthdayService.recordBirthday(USER, "Léa", MonthDay.of(2, 29))).thenReturn(Mono.just(new Event()));
 
-        StepVerifier.create(consume(birthday(USER.toUpperCase(), " Léa ", 2, 29))).verifyComplete();
+        StepVerifier.create(consume(birthday(USER.toUpperCase(), " Léa ", 2, 29))).expectComplete().verify(Duration.ofSeconds(10));
         verify(birthdayService).recordBirthday(USER, "Léa", MonthDay.of(2, 29));
     }
 
@@ -81,7 +81,7 @@ class UserBirthdayConsumerTest {
                         record("{\"userId\":\"" + USER + "\",\"displayName\":\"Léa\"}"),
                         record("not json"),
                         birthday(OTHER, "Bob", 1, 1)))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(birthdayService).recordBirthday(OTHER, "Bob", MonthDay.of(1, 1));
         verify(birthdayService, never()).recordBirthday(org.mockito.ArgumentMatchers.eq(USER), anyString(), any());
     }

@@ -19,6 +19,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.MonthDay;
@@ -149,7 +150,7 @@ class BirthdayReminderServiceTest {
         when(noticeOutbox.record(any())).thenAnswer(call ->
                 Mono.just(((BirthdayNotice) call.getArgument(0)).type() == BirthdayNoticeType.BIRTHDAY_TODAY));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -160,7 +161,7 @@ class BirthdayReminderServiceTest {
         when(friendships.friendsOf("max")).thenReturn(Flux.empty());
         when(noticeOutbox.record(any())).thenReturn(Mono.just(true));
 
-        StepVerifier.create(service.recordDueNotices()).expectNext(1L).verifyComplete();
+        StepVerifier.create(service.recordDueNotices()).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test

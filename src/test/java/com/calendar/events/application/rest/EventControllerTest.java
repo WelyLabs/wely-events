@@ -41,6 +41,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -100,7 +101,7 @@ class EventControllerTest {
 
         StepVerifier.create(result)
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -116,7 +117,7 @@ class EventControllerTest {
 
         StepVerifier.create(result)
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -129,7 +130,7 @@ class EventControllerTest {
         when(eventService.getFeedEvents("user1", friends, FeedRank.AFFINITY)).thenReturn(Flux.just(event));
         when(mapper.toResponse(event, SignedUrls.NONE, friends)).thenReturn(response);
 
-        StepVerifier.create(controller.getMyFeedEvents("Affinity", jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.getMyFeedEvents("Affinity", jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -139,7 +140,7 @@ class EventControllerTest {
         StepVerifier.create(controller.getMyFeedEvents("popularity", jwt))
                 .expectErrorMatches(error -> error instanceof BusinessException e
                         && e.getErrorCode() == BusinessErrorCode.FEED_RANK_INVALID)
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventService, never()).getFeedEvents(any(), any(), any());
     }
 
@@ -156,7 +157,7 @@ class EventControllerTest {
 
         StepVerifier.create(result)
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -170,7 +171,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.getParticipants("1", jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -181,7 +182,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.getParticipants("1", jwt))
                 .expectError(BusinessException.class)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -199,7 +200,7 @@ class EventControllerTest {
 
         StepVerifier.create(result)
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -221,7 +222,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.createEvent(request, jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -235,7 +236,7 @@ class EventControllerTest {
         when(eventService.updateDetails("1", "user1", details)).thenReturn(Mono.just(event));
         when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.updateEvent("1", request, jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.updateEvent("1", request, jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -246,7 +247,7 @@ class EventControllerTest {
         Mono<Void> result = controller.deleteEvent("1", jwt);
 
         StepVerifier.create(result)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -262,7 +263,7 @@ class EventControllerTest {
 
         StepVerifier.create(result)
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -275,7 +276,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.getMapEvents(45.70, 4.77, 45.81, 4.92, jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -285,7 +286,7 @@ class EventControllerTest {
         StepVerifier.create(controller.getMapEvents(45.81, 4.77, 45.70, 4.92, jwt))
                 .expectErrorMatches(error -> error instanceof BusinessException e
                         && e.getErrorCode() == BusinessErrorCode.INVALID_MAP_AREA)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     /** The real mapping, to see which image each event ends up with. */
@@ -308,7 +309,7 @@ class EventControllerTest {
 
         StepVerifier.create(withRealMapping().getMyFeedEvents(null, jwt).map(response -> String.valueOf(response.getImage())))
                 .expectNext("https://media/a", "/demo/events/picnic.jpg", "null", "https://media/b")
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(mediaStore, times(1)).urls(any());
     }
 
@@ -321,7 +322,7 @@ class EventControllerTest {
 
         StepVerifier.create(withRealMapping().getMyFeedEvents(null, jwt).map(response -> String.valueOf(response.getImage())))
                 .expectNext("null", "/demo/events/picnic.jpg")
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -332,7 +333,7 @@ class EventControllerTest {
 
         StepVerifier.create(withRealMapping().getEventById("1", jwt))
                 .expectNextMatches(response -> "https://media/a".equals(response.getImage()))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -347,7 +348,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.setCover("1", UploadsTest.form(UploadsTest.file(4096)), jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(eventService).setCover(eq("1"), eq("user1"), argThat(bytes -> bytes.length == 4096));
     }
 
@@ -357,7 +358,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.setCover("1", UploadsTest.form(UploadsTest.file(Uploads.MAX_BYTES + 1)), jwt))
                 .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.MEDIA_TOO_LARGE))
-                .verify();
+                .verify(Duration.ofSeconds(10));
         verify(eventService, never()).setCover(any(), any(), any());
     }
 
@@ -367,7 +368,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.setCover("1", UploadsTest.form(null), jwt))
                 .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.COVER_INVALID))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -378,7 +379,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.setCover("1", UploadsTest.form(UploadsTest.file(10)), jwt))
                 .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -386,7 +387,7 @@ class EventControllerTest {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
         when(eventService.removeCover("1", "user1")).thenReturn(Mono.empty());
 
-        StepVerifier.create(controller.removeCover("1", jwt)).verifyComplete();
+        StepVerifier.create(controller.removeCover("1", jwt)).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(eventService).removeCover("1", "user1");
     }
@@ -418,7 +419,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.leave("1", new LeaveRequest("lea", false), jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -429,7 +430,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.leave("1", null, jwt))
                 .expectErrorMatches(error -> error instanceof BusinessException e && e.getErrorCode() == BusinessErrorCode.LAST_MEMBER)
-                .verify();
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -439,7 +440,7 @@ class EventControllerTest {
 
         StepVerifier.create(withRealMapping().leave("1", new LeaveRequest(null, true), jwt))
                 .expectNext(new LeaveResponse(true, null))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
         verify(mediaStore, never()).urls(any());
     }
 
@@ -452,7 +453,7 @@ class EventControllerTest {
 
         StepVerifier.create(withRealMapping().leave("1", new LeaveRequest("lea", false), jwt))
                 .expectNextMatches(response -> !response.deleted() && "https://media/a".equals(response.event().getImage()))
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -463,7 +464,7 @@ class EventControllerTest {
         when(eventService.getCommunityEvents("c1", "user1")).thenReturn(Flux.just(event));
         when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.getCommunityEvents("c1", jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.getCommunityEvents("c1", jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -476,7 +477,7 @@ class EventControllerTest {
 
         StepVerifier.create(controller.respondTo("1", new ResponseRequest(PollAnswer.MAYBE), jwt))
                 .expectNext(response)
-                .verifyComplete();
+                .expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -491,7 +492,7 @@ class EventControllerTest {
         when(surpriseService.createSurprise(eq(event), any(), eq("bob_l"))).thenReturn(Mono.just(event));
         when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.createEvent(request, jwt)).expectNext(response).verifyComplete();
+        StepVerifier.create(controller.createEvent(request, jwt)).expectNext(response).expectComplete().verify(Duration.ofSeconds(10));
         assertThat(event.getOrganizerId()).isEqualTo("bob");
         verify(eventService, never()).createEvent(any(Event.class), any());
     }

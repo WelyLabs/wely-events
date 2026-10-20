@@ -72,11 +72,11 @@ class MongoFriendshipNoticeOutboxAdapterIntegrationTest {
     void record_shouldRecordANoticeOnce_evenSentAlready_andOneNudgeADayWhoeverItIsAbout() {
         FriendshipNotice notice = nudge("me", "hugo", DAY);
 
-        StepVerifier.create(outbox.record(notice)).expectNext(true).verifyComplete();
-        StepVerifier.create(outbox.record(nudge("me", "lea", DAY))).expectNext(false).verifyComplete();
+        StepVerifier.create(outbox.record(notice)).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(outbox.record(nudge("me", "lea", DAY))).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
         outbox.markPublished(notice.key()).block();
-        StepVerifier.create(outbox.record(notice)).expectNext(false).verifyComplete();
-        StepVerifier.create(outbox.record(anniversary("me", "lea"))).expectNext(true).verifyComplete();
+        StepVerifier.create(outbox.record(notice)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
+        StepVerifier.create(outbox.record(anniversary("me", "lea"))).expectNext(true).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -84,7 +84,7 @@ class MongoFriendshipNoticeOutboxAdapterIntegrationTest {
         FriendshipNotice notice = nudge("me", "hugo", DAY);
         outbox.record(notice).block();
 
-        StepVerifier.create(outbox.findPending(10)).expectNext(notice).verifyComplete();
+        StepVerifier.create(outbox.findPending(10)).expectNext(notice).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
@@ -95,7 +95,7 @@ class MongoFriendshipNoticeOutboxAdapterIntegrationTest {
         outbox.record(pending).block();
         outbox.markPublished(sent.key()).block();
 
-        StepVerifier.create(outbox.findPending(10)).expectNext(pending).verifyComplete();
+        StepVerifier.create(outbox.findPending(10)).expectNext(pending).expectComplete().verify(Duration.ofSeconds(10));
     }
 
     @Test
