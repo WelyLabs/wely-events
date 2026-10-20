@@ -33,6 +33,11 @@ public class MongoEventDeletionOutboxAdapter implements EventDeletionOutbox {
     }
 
     @Override
+    public Mono<Long> countPending() {
+        return mongoRepository.count();
+    }
+
+    @Override
     public Mono<Void> markPublished(String eventId) {
         return mongoRepository.deleteTombstone(eventId).then();
     }

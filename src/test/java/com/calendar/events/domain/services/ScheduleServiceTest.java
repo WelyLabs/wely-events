@@ -12,6 +12,7 @@ import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
+import com.calendar.events.domain.ports.RecordingEventsActivity;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
@@ -71,7 +72,7 @@ class ScheduleServiceTest {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
                 new PictureService(mediaStore), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
-                new AccountGuard(mock(DeletedUserMarkers.class)), clock);
+                new AccountGuard(mock(DeletedUserMarkers.class)), clock, new RecordingEventsActivity());
         scheduleService = new ScheduleService(eventRepository, eventService, clock, PARIS);
         // The birthday and hidden-from filter is the database's (see the adapter's integration test):
         // here an event reached by an API caller is whatever findById holds.

@@ -73,4 +73,11 @@ class MongoEventDeletionOutboxAdapterTest {
 
         verify(mongoRepository).deleteTombstone("e1");
     }
+
+    @Test
+    void countPending_shouldCountWhatIsLeftToSend_onTheServer() {
+        when(mongoRepository.count()).thenReturn(Mono.just(7L));
+
+        StepVerifier.create(outbox.countPending()).expectNext(7L).expectComplete().verify(Duration.ofSeconds(10));
+    }
 }

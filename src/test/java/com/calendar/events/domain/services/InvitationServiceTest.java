@@ -8,6 +8,7 @@ import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.RecordingEventsActivity;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -35,6 +37,8 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class InvitationServiceTest {
+
+    private final RecordingEventsActivity activity = new RecordingEventsActivity();
 
     private static final Instant NOW = Instant.parse("2026-10-19T10:00:00Z");
     private static final String ORGANIZER = "robin";
@@ -51,7 +55,7 @@ class InvitationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new InvitationService(eventRepository, eventService, socialGraph, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new InvitationService(eventRepository, eventService, socialGraph, Clock.fixed(NOW, ZoneOffset.UTC), activity);
     }
 
     private static Event dinner() {
@@ -90,6 +94,7 @@ class InvitationServiceTest {
         StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
                 .expectNext(new Participants(1, List.of(ORGANIZER), List.of(), List.of(FRIEND)))
                 .expectComplete().verify(Duration.ofSeconds(10));
+        assertThat(activity.invitationsSent).hasValue(1);
     }
 
     @Test
@@ -98,6 +103,7 @@ class InvitationServiceTest {
         when(socialGraph.friendIdsOf(ORGANIZER)).thenReturn(Mono.just(Set.of("hugo")));
 
         expectInviteRefused(BusinessErrorCode.FRIEND_NOT_FOUND);
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -106,6 +112,7 @@ class InvitationServiceTest {
         when(socialGraph.friendIdsOf(ORGANIZER)).thenReturn(Mono.empty());
 
         expectInviteRefused(BusinessErrorCode.FRIEND_NOT_FOUND);
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -115,6 +122,7 @@ class InvitationServiceTest {
         organizes(event);
 
         expectInviteRefused(BusinessErrorCode.ALREADY_TAKING_PART);
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -178,6 +186,7 @@ class InvitationServiceTest {
         StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify(Duration.ofSeconds(10));
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test

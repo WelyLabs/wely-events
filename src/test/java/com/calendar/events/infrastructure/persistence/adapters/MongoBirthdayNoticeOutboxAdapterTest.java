@@ -95,4 +95,11 @@ class MongoBirthdayNoticeOutboxAdapterTest {
         StepVerifier.create(outbox.forget("lea")).expectComplete().verify(Duration.ofSeconds(10));
         verify(mongoRepository).deletePendingConcerning("lea");
     }
+
+    @Test
+    void countPending_shouldCountWhatIsLeftToSend_onTheServer() {
+        when(mongoRepository.countPending()).thenReturn(Mono.just(7L));
+
+        StepVerifier.create(outbox.countPending()).expectNext(7L).expectComplete().verify(Duration.ofSeconds(10));
+    }
 }

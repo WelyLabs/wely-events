@@ -8,6 +8,7 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
+import com.calendar.events.domain.ports.RecordingEventsActivity;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.domain.services.AccountErasureService;
 import com.calendar.events.domain.services.AccountGuard;
@@ -37,7 +38,7 @@ class EventApplicationConfigTest {
 
         EventService service = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
                 config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
-                guard());
+                guard(), new RecordingEventsActivity());
 
         // The domain service is built by hand, with no Spring annotation: that is what
         // makes it testable outside a context.
@@ -57,7 +58,7 @@ class EventApplicationConfigTest {
         EventRepository repository = mock(EventRepository.class);
         EventService eventService = config.eventService(repository, mock(SocialGraph.class),
                 mock(ExpenseRepository.class), config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
-                guard());
+                guard(), new RecordingEventsActivity());
 
         ScheduleService service = config.scheduleService(repository, eventService);
 
@@ -108,9 +109,9 @@ class EventApplicationConfigTest {
         EventRepository repository = mock(EventRepository.class);
         EventService eventService = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
                 config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
-                guard());
+                guard(), new RecordingEventsActivity());
 
-        PollService service = config.pollService(repository, eventService, mock(PollUpdates.class), guard());
+        PollService service = config.pollService(repository, eventService, mock(PollUpdates.class), guard(), new RecordingEventsActivity());
 
         assertThat(service).isNotNull();
     }
@@ -125,7 +126,7 @@ class EventApplicationConfigTest {
         EventRepository repository = mock(EventRepository.class);
         EventService eventService = config.eventService(repository, mock(SocialGraph.class), mock(ExpenseRepository.class),
                 config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
-                guard());
+                guard(), new RecordingEventsActivity());
 
         AccountErasureService service = config.accountErasureService(repository, eventService,
                 mock(com.calendar.events.domain.services.BirthdayService.class),
@@ -171,7 +172,7 @@ class EventApplicationConfigTest {
         java.time.Clock clock = config.clock();
         EventService eventService = config.eventService(repository, socialGraph, mock(ExpenseRepository.class),
                 config.pictureService(mock(MediaStore.class)), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
-                guard());
+                guard(), new RecordingEventsActivity());
         com.calendar.events.domain.ports.BirthdayNoticeOutbox outbox = mock(com.calendar.events.domain.ports.BirthdayNoticeOutbox.class);
         com.calendar.events.domain.ports.FriendshipDirectory friendships =
                 mock(com.calendar.events.domain.ports.FriendshipDirectory.class);

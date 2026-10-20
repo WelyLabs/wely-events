@@ -7,6 +7,7 @@ import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.DeletedUsersSource;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.EventsActivity;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.FriendshipHistory;
@@ -78,9 +79,9 @@ public class EventApplicationConfig {
     public EventService eventService(EventRepository eventRepository, SocialGraph socialGraph,
                                      ExpenseRepository expenseRepository, PictureService pictureService,
                                      EventDeletionOutbox deletionOutbox, CommunityDirectory communityDirectory,
-                                     AccountGuard accountGuard) {
+                                     AccountGuard accountGuard, EventsActivity activity) {
         return new EventService(eventRepository, socialGraph, expenseRepository, pictureService, deletionOutbox,
-                communityDirectory, accountGuard, Clock.systemUTC());
+                communityDirectory, accountGuard, Clock.systemUTC(), activity);
     }
 
     @Bean
@@ -91,8 +92,8 @@ public class EventApplicationConfig {
 
     @Bean
     public PollService pollService(EventRepository eventRepository, EventService eventService, PollUpdates pollUpdates,
-                                   AccountGuard accountGuard) {
-        return new PollService(eventRepository, eventService, pollUpdates, accountGuard);
+                                   AccountGuard accountGuard, EventsActivity activity) {
+        return new PollService(eventRepository, eventService, pollUpdates, accountGuard, activity);
     }
 
     /** {@code protectedUserIds}: the demo accounts, comma-separated, never erased nor handed an event. */
@@ -133,8 +134,8 @@ public class EventApplicationConfig {
 
     @Bean
     public InvitationService invitationService(EventRepository eventRepository, EventService eventService,
-                                               SocialGraph socialGraph) {
-        return new InvitationService(eventRepository, eventService, socialGraph, Clock.systemUTC());
+                                               SocialGraph socialGraph, EventsActivity activity) {
+        return new InvitationService(eventRepository, eventService, socialGraph, Clock.systemUTC(), activity);
     }
 
     @Bean

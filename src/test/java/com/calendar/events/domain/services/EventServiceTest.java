@@ -1,5 +1,6 @@
 package com.calendar.events.domain.services;
 
+import com.calendar.events.domain.ports.RecordingEventsActivity;
 import java.util.Map;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.FeedRank;
@@ -64,6 +65,8 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class EventServiceTest {
 
+    private final RecordingEventsActivity activity = new RecordingEventsActivity();
+
     @Mock
     private EventRepository eventRepository;
 
@@ -93,7 +96,7 @@ class EventServiceTest {
     @BeforeEach
     void setUp() {
         eventService = new EventService(eventRepository, socialGraph, expenseRepository, new PictureService(mediaStore),
-                deletionOutbox, communityDirectory, new AccountGuard(markers), Clock.fixed(NOW, ZoneOffset.UTC));
+                deletionOutbox, communityDirectory, new AccountGuard(markers), Clock.fixed(NOW, ZoneOffset.UTC), activity);
         lenient().when(deletionOutbox.record(any())).thenReturn(Mono.empty());
         lenient().when(markers.deletedAmong(any())).thenReturn(Mono.just(Set.of()));
         // The birthday and hidden-from filter is the database's (see the adapter's integration test):
@@ -282,6 +285,8 @@ class EventServiceTest {
         StepVerifier.create(result)
                 .expectNext(savedEvent)
                 .expectComplete().verify(Duration.ofSeconds(10));
+        assertThat(activity.eventsCreated).hasValue(1);
+        assertThat(activity.pollsCreated).hasValue(0);
     }
 
     private static PollSlot candidate(String start, String end) {
@@ -303,6 +308,8 @@ class EventServiceTest {
         assertThat(event.getPoll().slots()).hasSize(2);
         assertThat(event.getStartDate()).isEqualTo(Instant.parse("2026-10-16T18:00:00Z"));
         assertThat(event.getEndDate()).isEqualTo(Instant.parse("2026-10-16T21:00:00Z"));
+        assertThat(activity.eventsCreated).hasValue(1);
+        assertThat(activity.pollsCreated).hasValue(1);
     }
 
     @Test
@@ -314,6 +321,7 @@ class EventServiceTest {
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_INVALID))
                 .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).save(any());
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -1186,6 +1194,7 @@ class EventServiceTest {
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.COMMUNITY_MEMBERS_ONLY))
                 .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).save(any());
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -1371,6 +1380,7 @@ class EventServiceTest {
                     .verify(Duration.ofSeconds(10));
         }
         verify(eventRepository, never()).save(any());
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -1444,6 +1454,7 @@ class EventServiceTest {
                     .verify(Duration.ofSeconds(10));
         }
         verify(eventRepository, never()).save(any());
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -1480,5 +1491,16 @@ class EventServiceTest {
                 .thenReturn(Mono.just(surprise));
 
         StepVerifier.create(eventService.updateDetails("1", "organizer", details)).expectNext(surprise).expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void createEvent_shouldReportNothing_whenTheEventCannotBeStored() {
+        Event event = Event.builder().title("New Event").build();
+        when(eventRepository.save(event)).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
+
+        StepVerifier.create(eventService.createEvent(event))
+                .expectError(TechnicalException.class)
+                .verify(Duration.ofSeconds(10));
+        assertThat(activity.isSilent()).isTrue();
     }
 }

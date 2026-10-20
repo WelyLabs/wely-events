@@ -147,6 +147,10 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     @Query(value = "{ 'groupSynced': { $in: [ false, null ] }, kind: { $ne: 'BIRTHDAY' } }", sort = "{ '_id': 1 }")
     Flux<EventEntity> findGroupsToPublish(Limit limit);
 
+    /** The same filter as {@link #findGroupsToPublish}, counted on the server. */
+    @Query(value = "{ 'groupSynced': { $in: [ false, null ] }, kind: { $ne: 'BIRTHDAY' } }", count = true)
+    Mono<Long> countGroupsToPublish();
+
     /**
      * Marks the group sent, unless it changed since it was read: the version no longer matches,
      * nothing is updated, and the relay sends the newer list on its next pass.
@@ -344,6 +348,10 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     /** Fixed or moved dates wely-chat has not been told about yet, oldest first. */
     @Query(value = "{ 'dateFixSynced': false }", sort = "{ '_id': 1 }")
     Flux<EventEntity> findDateFixesToPublish(Limit limit);
+
+    /** The same filter as {@link #findDateFixesToPublish}, counted on the server. */
+    @Query(value = "{ 'dateFixSynced': false }", count = true)
+    Mono<Long> countDateFixesToPublish();
 
     /**
      * Marks the date announced, unless it moved again since it was read: the version no longer

@@ -126,7 +126,14 @@ class SecurityConfigTest {
                 .expectStatus().isOk()
                 .expectBody(String.class)
                 .value(body -> assertThat(body)
-                        .contains("wely_errors_technical_total{code=\"EVT-TEC-005\",source=\"http\"}"));
+                        .contains("wely_errors_technical_total{code=\"EVT-TEC-005\",source=\"http\"}")
+                        // The HTTP latency SLO buckets, after that request.
+                        .containsPattern("http_server_requests_seconds_bucket\\{[^}]*le=\"0\\.25\"")
+                        // The product metrics, registered at zero before the first fact, under their real names.
+                        .contains("wely_events_creations_total ")
+                        .contains("wely_events_invitations_sent_total ")
+                        .contains("wely_events_poll_creations_total ")
+                        .contains("wely_events_polls_votes_total "));
     }
 
     @Test

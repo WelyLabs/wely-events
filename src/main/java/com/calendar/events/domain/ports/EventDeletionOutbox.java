@@ -12,6 +12,9 @@ public interface EventDeletionOutbox {
     /** The oldest deletions first, at most {@code limit}. */
     Flux<EventDeletion> findPending(int limit);
 
+    /** How many are left to send, for the backlog gauge. */
+    Mono<Long> countPending();
+
     /** Drops the tombstone once the deletion has been sent. */
     Mono<Void> markPublished(String eventId);
 }

@@ -46,4 +46,11 @@ class MongoEventDateFixedOutboxAdapterTest {
 
         StepVerifier.create(outbox.markPublished("e1", 2L)).expectNext(false).expectComplete().verify(Duration.ofSeconds(10));
     }
+
+    @Test
+    void countPending_shouldCountWhatIsLeftToSend_onTheServer() {
+        when(mongoRepository.countDateFixesToPublish()).thenReturn(Mono.just(7L));
+
+        StepVerifier.create(outbox.countPending()).expectNext(7L).expectComplete().verify(Duration.ofSeconds(10));
+    }
 }

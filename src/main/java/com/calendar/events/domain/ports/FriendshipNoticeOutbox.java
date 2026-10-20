@@ -19,6 +19,9 @@ public interface FriendshipNoticeOutbox {
     /** Notices not sent yet, oldest first, at most {@code limit}. */
     Flux<FriendshipNotice> findPending(int limit);
 
+    /** How many are left to send, for the backlog gauge. */
+    Mono<Long> countPending();
+
     /** Marks the notice sent; its key stays, so it is never recorded again. */
     Mono<Void> markPublished(String key);
 

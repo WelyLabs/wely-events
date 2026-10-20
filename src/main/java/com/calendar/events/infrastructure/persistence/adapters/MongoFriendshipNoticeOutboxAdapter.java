@@ -47,6 +47,11 @@ public class MongoFriendshipNoticeOutboxAdapter implements FriendshipNoticeOutbo
     }
 
     @Override
+    public Mono<Long> countPending() {
+        return mongoRepository.countPending();
+    }
+
+    @Override
     public Mono<Void> markPublished(String key) {
         return mongoRepository.markPublished(key).then();
     }

@@ -20,6 +20,7 @@ import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.CommunityDirectory;
 import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.EventsActivity;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.BusinessErrorCode;
@@ -58,6 +59,7 @@ public class EventService {
     private final CommunityDirectory communityDirectory;
     private final AccountGuard accountGuard;
     private final Clock clock;
+    private final EventsActivity activity;
 
     public Flux<Event> getAllEvents() {
         return eventRepository.findAll();
@@ -117,7 +119,17 @@ public class EventService {
     }
 
     private Mono<Event> createOwnEvent(Event event, List<PollSlot> candidateSlots) {
-        return prepare(event, candidateSlots).flatMap(eventRepository::save);
+        return prepare(event, candidateSlots)
+                .flatMap(eventRepository::save)
+                .doOnNext(this::recordCreation);
+    }
+
+    /** Reports a user's new event, and its date poll if it opened one: once stored, never on a refusal. */
+    void recordCreation(Event created) {
+        activity.eventCreated();
+        if (created.isPolling()) {
+            activity.pollCreated();
+        }
     }
 
     /** A new event as it is stored: no cover, the organizer among the participants, the poll opened, all-day checked. */

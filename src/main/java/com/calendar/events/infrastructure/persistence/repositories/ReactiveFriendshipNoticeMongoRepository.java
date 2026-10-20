@@ -17,6 +17,10 @@ public interface ReactiveFriendshipNoticeMongoRepository extends ReactiveMongoRe
     @Query(value = "{ 'published': false }", sort = "{ 'recordedAt': 1 }")
     Flux<FriendshipNoticeEntity> findPending(Limit limit);
 
+    /** The same filter as {@link #findPending}, counted on the server. */
+    @Query(value = "{ 'published': false }", count = true)
+    Mono<Long> countPending();
+
     /** On the recipient_type_recorded index: the nudge caps' one read per user. */
     @Query(value = "{ 'recipientId': ?0, 'type': ?1, 'recordedAt': { $gte: ?2 } }", sort = "{ 'recordedAt': -1 }")
     Flux<FriendshipNoticeEntity> findRecordedFor(String recipientId, String type, Instant since);

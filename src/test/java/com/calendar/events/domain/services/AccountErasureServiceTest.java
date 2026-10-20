@@ -20,6 +20,7 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
+import com.calendar.events.domain.ports.RecordingEventsActivity;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
@@ -97,7 +98,7 @@ class AccountErasureServiceTest {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         EventService eventService = new EventService(eventRepository, mock(SocialGraph.class), expenseRepository,
                 new PictureService(mediaStore), deletionOutbox, mock(CommunityDirectory.class), new AccountGuard(markers),
-                clock);
+                clock, new RecordingEventsActivity());
         service = new AccountErasureService(eventRepository, eventService, birthdayService, friendshipService,
                 expenseRepository, mediaStore, markers, pollUpdates, Set.of(DEMO), clock);
         lenient().when(birthdayService.forget(anyString())).thenReturn(Mono.just(0L));

@@ -12,6 +12,7 @@ import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
+import com.calendar.events.domain.ports.RecordingEventsActivity;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
@@ -71,7 +72,7 @@ class BirthdayServiceTest {
         AccountGuard guard = new AccountGuard(markers);
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
                 new PictureService(org.mockito.Mockito.mock(MediaStore.class)), deletionOutbox,
-                org.mockito.Mockito.mock(CommunityDirectory.class), guard, Clock.fixed(NOW, ZoneOffset.UTC));
+                org.mockito.Mockito.mock(CommunityDirectory.class), guard, Clock.fixed(NOW, ZoneOffset.UTC), new RecordingEventsActivity());
         service = new BirthdayService(eventRepository, eventService, socialGraph, noticeOutbox, guard,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(deletionOutbox.record(any())).thenReturn(Mono.empty());

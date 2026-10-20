@@ -21,6 +21,11 @@ public class MongoEventDateFixedOutboxAdapter {
         return mongoRepository.findDateFixesToPublish(Limit.of(batchSize));
     }
 
+    /** How many fixed dates are left to announce, for the backlog gauge. */
+    public Mono<Long> countPending() {
+        return mongoRepository.countDateFixesToPublish();
+    }
+
     /** @return whether it was marked; false if another pass marked it first, or the date moved since. */
     public Mono<Boolean> markPublished(String eventId, Long dateFixVersion) {
         return mongoRepository.markDateFixPublished(eventId, dateFixVersion).map(updated -> updated > 0);

@@ -21,6 +21,11 @@ public class MongoEventGroupOutboxAdapter {
         return mongoRepository.findGroupsToPublish(Limit.of(batchSize));
     }
 
+    /** How many groups are left to send, for the backlog gauge. */
+    public Mono<Long> countPending() {
+        return mongoRepository.countGroupsToPublish();
+    }
+
     /** @return whether it was marked; false if the group changed since it was read. */
     public Mono<Boolean> markPublished(String eventId, Long groupVersion) {
         return mongoRepository.markGroupPublished(eventId, groupVersion).map(updated -> updated > 0);

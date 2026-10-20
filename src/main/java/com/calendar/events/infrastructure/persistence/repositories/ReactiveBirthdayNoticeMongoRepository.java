@@ -15,6 +15,10 @@ public interface ReactiveBirthdayNoticeMongoRepository extends ReactiveMongoRepo
     @Query(value = "{ 'published': false }", sort = "{ 'recordedAt': 1 }")
     Flux<BirthdayNoticeEntity> findPending(Limit limit);
 
+    /** The same filter as {@link #findPending}, counted on the server. */
+    @Query(value = "{ 'published': false }", count = true)
+    Mono<Long> countPending();
+
     @Query("{ '_id': ?0 }")
     @Update("{ '$set': { 'published': true } }")
     Mono<Long> markPublished(String key);

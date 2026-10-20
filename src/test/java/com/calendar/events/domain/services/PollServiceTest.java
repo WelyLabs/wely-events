@@ -13,6 +13,7 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
+import com.calendar.events.domain.ports.RecordingEventsActivity;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
@@ -51,6 +52,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class PollServiceTest {
 
+    private final RecordingEventsActivity activity = new RecordingEventsActivity();
+
     private static final Instant NOW = Instant.parse("2026-10-14T10:00:00Z");
     private static final PollSlot THURSDAY = new PollSlot("thu", Instant.parse("2026-10-16T17:00:00Z"), Instant.parse("2026-10-16T19:00:00Z"));
     private static final PollSlot FRIDAY = new PollSlot("fri", Instant.parse("2026-10-17T17:00:00Z"), Instant.parse("2026-10-17T19:00:00Z"));
@@ -75,8 +78,8 @@ class PollServiceTest {
         AccountGuard accountGuard = new AccountGuard(markers);
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
                 new PictureService(mediaStore), mock(EventDeletionOutbox.class), mock(CommunityDirectory.class),
-                accountGuard, Clock.fixed(NOW, ZoneOffset.UTC));
-        pollService = new PollService(eventRepository, eventService, pollUpdates, accountGuard);
+                accountGuard, Clock.fixed(NOW, ZoneOffset.UTC), activity);
+        pollService = new PollService(eventRepository, eventService, pollUpdates, accountGuard, activity);
         // The birthday and hidden-from filter is the database's (see the adapter's integration test):
         // here an event reached by an API caller is whatever findById holds.
         lenient().when(eventRepository.findShownTo(anyString(), anyString()))
@@ -114,6 +117,7 @@ class PollServiceTest {
                 .expectNext(after)
                 .expectComplete().verify(Duration.ofSeconds(10));
         verify(pollUpdates).publish("e1", after);
+        assertThat(activity.pollVotes).hasValue(1);
     }
 
     @Test
@@ -158,6 +162,7 @@ class PollServiceTest {
         StepVerifier.create(pollService.vote("e1", "lea", Map.of("thu", PollAnswer.YES)))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
                 .verify(Duration.ofSeconds(10));
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -178,6 +183,7 @@ class PollServiceTest {
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
                 .verify(Duration.ofSeconds(10));
         verifyNoInteractions(pollUpdates);
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -188,6 +194,7 @@ class PollServiceTest {
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_SLOT_UNKNOWN))
                 .verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).castBallot(anyString(), anyString(), any());
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -410,5 +417,17 @@ class PollServiceTest {
                 .expectNoEvent(Duration.ofMillis(50))
                 .thenCancel()
                 .verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void vote_shouldNotCountAWithdrawal_asAVote() {
+        when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC,
+                openPoll(Map.of("lea", Map.of("thu", PollAnswer.YES))))));
+        when(eventRepository.castBallot("e1", "lea", Map.of())).thenReturn(Mono.just(polling(Visibility.PUBLIC, openPoll(Map.of()))));
+
+        StepVerifier.create(pollService.vote("e1", "lea", Map.of()))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+        assertThat(activity.isSilent()).isTrue();
     }
 }

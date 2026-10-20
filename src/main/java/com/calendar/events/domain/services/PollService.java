@@ -5,6 +5,7 @@ import com.calendar.events.domain.models.Poll;
 import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.EventsActivity;
 import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
@@ -23,13 +24,15 @@ public class PollService {
     private final EventService eventService;
     private final PollUpdates pollUpdates;
     private final AccountGuard accountGuard;
+    private final EventsActivity activity;
 
     public PollService(EventRepository eventRepository, EventService eventService, PollUpdates pollUpdates,
-                       AccountGuard accountGuard) {
+                       AccountGuard accountGuard, EventsActivity activity) {
         this.eventRepository = eventRepository;
         this.eventService = eventService;
         this.pollUpdates = pollUpdates;
         this.accountGuard = accountGuard;
+        this.activity = activity;
     }
 
     /**
@@ -47,7 +50,12 @@ public class PollService {
                     }
                     return eventRepository.castBallot(eventId, voterId, answers)
                             // Fixed between the read and the write.
-                            .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.POLL_CLOSED)));
+                            .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.POLL_CLOSED)))
+                            .doOnNext(updated -> {
+                                if (!answers.isEmpty()) {
+                                    activity.pollVoted();
+                                }
+                            });
                 })
                 .map(Event::getPoll)
                 .doOnNext(poll -> pollUpdates.publish(eventId, poll));

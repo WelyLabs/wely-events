@@ -86,6 +86,7 @@ public class SurpriseService {
                 .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.NO_BIRTHDAY)))
                 .flatMap(birthday -> eventService.prepare(asSurprise(event, birthday, organizerName), candidateSlots)
                         .flatMap(prepared -> insert(prepared, birthday.birthMonthDay()))
+                        .doOnNext(eventService::recordCreation)
                         .flatMap(created -> announce(created, birthday.birthMonthDay()).thenReturn(created)));
     }
 

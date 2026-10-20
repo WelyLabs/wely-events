@@ -3,6 +3,7 @@ package com.calendar.events.domain.services;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.ports.EventRepository;
+import com.calendar.events.domain.ports.EventsActivity;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
@@ -23,13 +24,15 @@ public class InvitationService {
     private final EventService eventService;
     private final SocialGraph socialGraph;
     private final Clock clock;
+    private final EventsActivity activity;
 
     public InvitationService(EventRepository eventRepository, EventService eventService, SocialGraph socialGraph,
-                             Clock clock) {
+                             Clock clock, EventsActivity activity) {
         this.eventRepository = eventRepository;
         this.eventService = eventService;
         this.socialGraph = socialGraph;
         this.clock = clock;
+        this.activity = activity;
     }
 
     /**
@@ -51,6 +54,7 @@ public class InvitationService {
                             .flatMap(friendIds -> friendIds.contains(inviteeId)
                                     ? eventRepository.invite(event.getId(), organizerId, inviteeId)
                                             .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
+                                            .doOnNext(updated -> activity.invitationSent())
                                             .map(updated -> Participants.seenBy(updated, organizerId, friendIds))
                                     : Mono.error(new BusinessException(BusinessErrorCode.FRIEND_NOT_FOUND)));
                 });

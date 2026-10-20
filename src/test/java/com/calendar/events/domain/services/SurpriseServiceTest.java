@@ -15,6 +15,7 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.MediaStore;
+import com.calendar.events.domain.ports.RecordingEventsActivity;
 import com.calendar.events.domain.ports.SocialGraph;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
@@ -52,6 +53,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class SurpriseServiceTest {
 
+    private final RecordingEventsActivity activity = new RecordingEventsActivity();
+
     private static final Instant NOW = Instant.parse("2027-02-20T09:00:00Z");
     private static final Instant PARTY_START = Instant.parse("2027-03-12T18:00:00Z");
     private static final Instant PARTY_END = Instant.parse("2027-03-12T22:00:00Z");
@@ -78,7 +81,7 @@ class SurpriseServiceTest {
         Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
         EventService eventService = new EventService(eventRepository, socialGraph, expenseRepository,
                 new PictureService(mock(MediaStore.class)), deletionOutbox,
-                mock(CommunityDirectory.class), new AccountGuard(mock(DeletedUserMarkers.class)), clock);
+                mock(CommunityDirectory.class), new AccountGuard(mock(DeletedUserMarkers.class)), clock, activity);
         service = new SurpriseService(eventService, eventRepository, socialGraph, friendships, noticeOutbox,
                 new AccountGuard(markers), clock, ZoneId.of("Europe/Paris"));
         lenient().when(noticeOutbox.record(any())).thenReturn(Mono.just(true));
@@ -128,6 +131,7 @@ class SurpriseServiceTest {
                 .expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository).findSurpriseStartingBetween("lea", PARTY_START.minus(SurpriseService.SAME_BIRTHDAY_WINDOW),
                 PARTY_START.plus(SurpriseService.SAME_BIRTHDAY_WINDOW));
+        assertThat(activity.eventsCreated).hasValue(1);
     }
 
     @Test
@@ -172,6 +176,7 @@ class SurpriseServiceTest {
         StepVerifier.create(service.createSurprise(request("zoe", "lea"), null, "zoe"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify(Duration.ofSeconds(10));
         verify(eventRepository, never()).insertSurprise(any());
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -208,6 +213,7 @@ class SurpriseServiceTest {
 
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob"))
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NO_BIRTHDAY)).verify(Duration.ofSeconds(10));
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
@@ -234,6 +240,7 @@ class SurpriseServiceTest {
                 .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_EXISTS)
                         && ((BusinessException) e).getProperties().equals(Map.of("eventId", "s9")))
                 .verify(Duration.ofSeconds(10));
+        assertThat(activity.isSilent()).isTrue();
     }
 
     @Test
