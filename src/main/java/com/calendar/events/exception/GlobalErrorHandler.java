@@ -1,6 +1,5 @@
 package com.calendar.events.exception;
 
-import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -44,11 +43,23 @@ public class GlobalErrorHandler {
     /** Exported by Prometheus as {@code wely_errors_technical_total{code="..."}}. */
     public static final String TECHNICAL_ERRORS_METRIC = "wely.errors.technical";
     public static final String CODE_TAG = "code";
+    /** Where the failure was met: one of the {@code SOURCE_*} values below. */
+    public static final String SOURCE_TAG = "source";
+    /** Answered to a request: this advice, {@link ProblemWebExceptionHandler}, the security writers. */
+    public static final String SOURCE_HTTP = "http";
+    /** A Kafka consumer. */
+    public static final String SOURCE_KAFKA = "kafka";
+    /** An outbox relay sending to Kafka. */
+    public static final String SOURCE_OUTBOX = "outbox";
+    /** The deleted-users reconciliation loop. */
+    public static final String SOURCE_RECONCILIATION = "reconciliation";
+    /** A scheduled job. */
+    public static final String SOURCE_JOB = "job";
 
-    private final MeterRegistry meterRegistry;
+    private final TechnicalErrorCounter technicalErrors;
 
-    public GlobalErrorHandler(MeterRegistry meterRegistry) {
-        this.meterRegistry = meterRegistry;
+    public GlobalErrorHandler(TechnicalErrorCounter technicalErrors) {
+        this.technicalErrors = technicalErrors;
     }
 
     @ExceptionHandler(BusinessException.class)
@@ -57,7 +68,7 @@ public class GlobalErrorHandler {
 
         // Expected outcome, not an incident: logged at WARN, and without a stack trace.
         log.warn("Business failure {} on {} (request {})", error.getCode(), exchange.getRequest().getPath(),
-                exchange.getRequest().getId());
+                RequestIds.of(exchange));
 
         ProblemDetail problem = problem(error.getHttpStatus(), error.getCode(), error.getTitle(), error.getDetail(),
                 exchange);
@@ -72,8 +83,8 @@ public class GlobalErrorHandler {
         // A dependency is down: ERROR with the cause, because someone has to act on it.
         // The previous version logged these at WARN as business failures, which hid them.
         log.error("Technical failure {} on {} (request {})", error.getCode(), exchange.getRequest().getPath(),
-                exchange.getRequest().getId(), ex);
-        countTechnicalFailure(meterRegistry, error.getCode());
+                RequestIds.of(exchange), ex);
+        technicalErrors.count(ex, SOURCE_HTTP);
 
         return problem(error.getHttpStatus(), error.getCode(), error.getTitle(), error.getDetail(),
                 exchange);
@@ -95,7 +106,7 @@ public class GlobalErrorHandler {
 
         // A rejected request, not an incident: WARN, like a business failure.
         log.warn("Validation failure {} on {} (request {})", VALIDATION_FAILED_CODE, exchange.getRequest().getPath(),
-                exchange.getRequest().getId());
+                RequestIds.of(exchange));
 
         ProblemDetail problem = problem(HttpStatus.BAD_REQUEST, VALIDATION_FAILED_CODE,
                 "Invalid request", "One or more fields are invalid.", exchange);
@@ -117,7 +128,7 @@ public class GlobalErrorHandler {
     public ProblemDetail handleResponseStatusException(ResponseStatusException ex,
                                                        ServerWebExchange exchange) {
         HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
-        log.debug("{} on {} (request {})", status, exchange.getRequest().getPath(), exchange.getRequest().getId());
+        log.debug("{} on {} (request {})", status, exchange.getRequest().getPath(), RequestIds.of(exchange));
 
         return problem(status, REQUEST_REFUSED_CODE, status.getReasonPhrase(),
                 "The request could not be served as sent.", exchange);
@@ -131,8 +142,8 @@ public class GlobalErrorHandler {
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleUnexpectedException(Exception ex, ServerWebExchange exchange) {
         log.error("Unhandled failure on {} (request {})", exchange.getRequest().getPath(),
-                exchange.getRequest().getId(), ex);
-        countTechnicalFailure(meterRegistry, UNEXPECTED_FAILURE_CODE);
+                RequestIds.of(exchange), ex);
+        technicalErrors.count(ex, SOURCE_HTTP);
 
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, UNEXPECTED_FAILURE_CODE,
                 "Unexpected error", "The request could not be completed.", exchange);
@@ -141,11 +152,6 @@ public class GlobalErrorHandler {
     private ProblemDetail problem(HttpStatus status, String code, String title, String detail,
                                   ServerWebExchange exchange) {
         return Problems.of(status, code, title, detail, exchange.getRequest().getPath().value(),
-                exchange.getRequest().getId());
-    }
-
-    /** Shared with the filters that answer a technical failure before any controller, so they count it too. */
-    public static void countTechnicalFailure(MeterRegistry meterRegistry, String code) {
-        meterRegistry.counter(TECHNICAL_ERRORS_METRIC, CODE_TAG, code).increment();
+                RequestIds.of(exchange));
     }
 }

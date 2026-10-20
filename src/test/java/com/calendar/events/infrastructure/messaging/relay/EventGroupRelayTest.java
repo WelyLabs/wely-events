@@ -1,12 +1,15 @@
 package com.calendar.events.infrastructure.messaging.relay;
 
+import com.calendar.events.exception.GlobalErrorHandler;
 import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.messaging.adapters.KafkaEventGroupPublisher;
 import com.calendar.events.infrastructure.messaging.mappers.EventGroupMapper;
 import com.calendar.events.infrastructure.messaging.models.EventGroupChangedDTO;
 import com.calendar.events.infrastructure.persistence.adapters.MongoEventGroupOutboxAdapter;
 import com.calendar.events.infrastructure.persistence.entities.EventEntity;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.junit.jupiter.api.Test;
@@ -32,6 +35,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class EventGroupRelayTest {
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    private double technicalFailures(String code) {
+        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code,
+                GlobalErrorHandler.SOURCE_TAG, GlobalErrorHandler.SOURCE_OUTBOX).count();
+    }
+
     @Mock
     private MongoEventGroupOutboxAdapter outbox;
     @Mock
@@ -43,7 +53,7 @@ class EventGroupRelayTest {
 
     @BeforeEach
     void setUp() {
-        relay = new EventGroupRelay(outbox, publisher, mapper, Duration.ofMillis(50), 10);
+        relay = new EventGroupRelay(outbox, publisher, mapper, Duration.ofMillis(50), 10, new TechnicalErrorCounter(meterRegistry));
     }
 
     private EventEntity pending(String id, Long version) {
@@ -80,6 +90,7 @@ class EventGroupRelayTest {
         StepVerifier.create(relay.drainOnce()).expectNext(1L).expectComplete().verify(Duration.ofSeconds(10));
 
         verify(outbox, never()).markPublished("e1", 1L);
+        assertThat(technicalFailures(TechnicalErrorCode.BROKER_UNAVAILABLE.getCode())).isEqualTo(1.0);
     }
 
     @Test
@@ -99,6 +110,8 @@ class EventGroupRelayTest {
         try {
             assertThat(relay.isRunning()).isTrue();
             verify(outbox, timeout(2000).atLeast(3)).findPending(10);
+            // The failed pass is counted before the next one starts; the passes after it found nothing.
+            assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
         } finally {
             relay.stop();
         }

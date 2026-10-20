@@ -108,7 +108,7 @@ class GlobalErrorHandlerTest {
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
         client = WebTestClient.bindToController(new TestController())
-                .controllerAdvice(new GlobalErrorHandler(meterRegistry))
+                .controllerAdvice(new GlobalErrorHandler(new TechnicalErrorCounter(meterRegistry)))
                 .build();
     }
 
@@ -135,7 +135,8 @@ class GlobalErrorHandlerTest {
     }
 
     private double technicalFailures(String code) {
-        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code).count();
+        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code,
+                GlobalErrorHandler.SOURCE_TAG, GlobalErrorHandler.SOURCE_HTTP).count();
     }
 
     @Test
@@ -347,6 +348,20 @@ class GlobalErrorHandlerTest {
         }
 
         @Test
+        @DisplayName("the gateway's request id is the problem's, and comes back on the response")
+        void handleResponseStatusException_shouldUseTheGatewaysRequestId() {
+            String gatewayId = "abcd1234-5678-90ef-gateway";
+
+            client().get().uri("/events-service/no-such-path")
+                    .header(RequestIds.REQUEST_ID_HEADER, gatewayId)
+                    .exchange()
+                    .expectStatus().isNotFound()
+                    .expectHeader().valueEquals(RequestIds.REQUEST_ID_HEADER, gatewayId)
+                    .expectBody()
+                    .jsonPath("$.requestId").isEqualTo(gatewayId);
+        }
+
+        @Test
         @DisplayName("an unknown path answers our 404 problem")
         void handleResponseStatusException_shouldAnswerAnUnknownPath() {
             expectOurProblem(client().get().uri("/events-service/no-such-path").exchange(),
@@ -392,6 +407,51 @@ class GlobalErrorHandlerTest {
             expectOurProblem(client().post().uri("/events-service/events")
                             .contentType(MediaType.APPLICATION_JSON).bodyValue(java.util.Map.of("title", " ", "allDay", false)).exchange(),
                     400, GlobalErrorHandler.VALIDATION_FAILED_CODE);
+        }
+
+        /** A required number or flag left out answers our validation problem naming it, not an unreadable body. */
+        private void expectRequired(String uri, Object body, String field) {
+            when(markers.isDeleted("lea")).thenReturn(Mono.just(false));
+
+            client().post().uri(uri)
+                    .contentType(MediaType.APPLICATION_JSON).bodyValue(body)
+                    .exchange()
+                    .expectStatus().isBadRequest()
+                    .expectBody()
+                    .jsonPath("$.code").isEqualTo(GlobalErrorHandler.VALIDATION_FAILED_CODE)
+                    .jsonPath("$.errors['" + field + "']").exists();
+        }
+
+        @Test
+        @DisplayName("an event without allDay names the field")
+        void handleValidationException_shouldNameAMissingAllDay() {
+            expectRequired("/events-service/events", java.util.Map.of("title", "Quiz",
+                    "startDate", "2099-01-01T18:00:00Z", "location", "Lyon"), "allDay");
+        }
+
+        @Test
+        @DisplayName("an expense or a settlement without amountCents names the field")
+        void handleValidationException_shouldNameAMissingAmount() {
+            expectRequired("/events-service/events/e1/expenses", java.util.Map.of("title", "Courses",
+                    "paidBy", "lea", "split", "EQUAL", "shares", java.util.List.of(java.util.Map.of("userId", "lea", "value", 1))),
+                    "amountCents");
+            expectRequired("/events-service/events/e1/expenses/settlements",
+                    java.util.Map.of("fromUserId", "lea", "toUserId", "tom"), "amountCents");
+        }
+
+        @Test
+        @DisplayName("a share without value names the field")
+        void handleValidationException_shouldNameAMissingShareValue() {
+            expectRequired("/events-service/events/e1/expenses", java.util.Map.of("title", "Courses", "amountCents", 3000,
+                    "paidBy", "lea", "split", "SHARES", "shares", java.util.List.of(java.util.Map.of("userId", "lea"))),
+                    "shares[0].value");
+        }
+
+        @Test
+        @DisplayName("a free-slot search without durationMinutes names the field")
+        void handleValidationException_shouldNameAMissingDuration() {
+            expectRequired("/events-service/events/me/free-slots", java.util.Map.of("friendIds", java.util.List.of("tom"),
+                    "start", "2099-01-01T00:00:00Z", "end", "2099-01-02T00:00:00Z"), "durationMinutes");
         }
     }
 }

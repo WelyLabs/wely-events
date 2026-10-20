@@ -3,7 +3,10 @@ package com.calendar.events.infrastructure.messaging.adapters;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.services.FriendshipService;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.infrastructure.messaging.models.FriendshipStateDTO;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,6 +36,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class FriendshipStateConsumerTest {
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    private double technicalFailures(String code) {
+        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code,
+                GlobalErrorHandler.SOURCE_TAG, GlobalErrorHandler.SOURCE_KAFKA).count();
+    }
+
     // ALICE sorts before BOB.
     private static final String ALICE = "1b4e28ba-2fa1-41d2-883f-0016d3cca427";
     private static final String BOB = "89a380b8-f66a-44d0-b9d9-616241080430";
@@ -46,7 +56,7 @@ class FriendshipStateConsumerTest {
 
     @BeforeEach
     void setUp() {
-        consumer = new FriendshipStateConsumer(friendshipService, JsonMapper.builder().build());
+        consumer = new FriendshipStateConsumer(friendshipService, JsonMapper.builder().build(), new TechnicalErrorCounter(meterRegistry));
     }
 
     private static Message<byte[]> value(String key, String json) {
@@ -174,6 +184,8 @@ class FriendshipStateConsumerTest {
                 .verifyComplete();
         verify(friendshipService, times(FriendshipStateConsumer.MAX_RETRIES + 1)).applyTombstone(ALICE, BOB);
         verify(friendshipService).applyState(next);
+        // Counted once, after the retries; not a TechnicalException, so under the catch-all code.
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
     }
 
     @Test
@@ -200,5 +212,12 @@ class FriendshipStateConsumerTest {
         assertThat(FriendshipStateConsumer.pairOfKey(null)).isEmpty();
         assertThat(FriendshipStateConsumer.pairOfKey(ALICE)).isEmpty();
         assertThat(FriendshipStateConsumer.pairOfKey(ALICE + ":")).isEmpty();
+    }
+
+    @Test
+    void friendshipState_shouldCountAnUnreadableRecord() {
+        StepVerifier.create(consume(value(ALICE + ":" + BOB, "not json"))).expectComplete().verify(Duration.ofSeconds(10));
+
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
     }
 }

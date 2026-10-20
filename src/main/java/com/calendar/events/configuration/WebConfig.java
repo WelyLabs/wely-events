@@ -2,12 +2,17 @@ package com.calendar.events.configuration;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.HandlerTypePredicate;
-import org.springframework.web.reactive.config.EnableWebFlux;
 import org.springframework.web.reactive.config.PathMatchConfigurer;
 import org.springframework.web.reactive.config.WebFluxConfigurer;
 
+/**
+ * This service's additions to Boot's WebFlux configuration, which stays on.
+ *
+ * <p>No {@code @EnableWebFlux} here: it would replace Boot's WebFlux auto-configuration altogether, and every
+ * {@code spring.webflux.*} property — the multipart limit among them — would be read and silently ignored.
+ * Boot applies this configurer on top of its own.
+ */
 @Configuration
-@EnableWebFlux
 public class WebConfig implements WebFluxConfigurer {
 
     @Override

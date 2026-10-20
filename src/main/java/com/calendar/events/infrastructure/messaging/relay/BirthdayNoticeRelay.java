@@ -2,6 +2,8 @@ package com.calendar.events.infrastructure.messaging.relay;
 
 import com.calendar.events.domain.models.BirthdayNotice;
 import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.infrastructure.messaging.adapters.KafkaBirthdayNoticePublisher;
 import com.calendar.events.infrastructure.messaging.mappers.BirthdayNoticeMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ public class BirthdayNoticeRelay implements SmartLifecycle {
     private final BirthdayNoticeMapper mapper;
     private final Duration pollInterval;
     private final int batchSize;
+    private final TechnicalErrorCounter technicalErrors;
 
     private volatile Disposable loop;
 
@@ -37,12 +40,14 @@ public class BirthdayNoticeRelay implements SmartLifecycle {
                                KafkaBirthdayNoticePublisher publisher,
                                BirthdayNoticeMapper mapper,
                                @Value("${app.birthday-notices.relay.poll-interval:5s}") Duration pollInterval,
-                               @Value("${app.birthday-notices.relay.batch-size:100}") int batchSize) {
+                               @Value("${app.birthday-notices.relay.batch-size:100}") int batchSize,
+                               TechnicalErrorCounter technicalErrors) {
         this.outbox = outbox;
         this.publisher = publisher;
         this.mapper = mapper;
         this.pollInterval = pollInterval;
         this.batchSize = batchSize;
+        this.technicalErrors = technicalErrors;
     }
 
     @Override
@@ -50,13 +55,17 @@ public class BirthdayNoticeRelay implements SmartLifecycle {
         // Errors are caught inside the repeated Mono: one reaching repeatWhen would stop the loop.
         loop = Mono.defer(this::drainOnce)
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_OUTBOX);
                     log.error("Birthday notice relay pass failed; next attempt in {}", pollInterval, error);
                     return Mono.just(0L);
                 })
                 .repeatWhen(passes -> passes.delayElements(pollInterval))
                 .subscribe(
                         count -> { },
-                        error -> log.error("Birthday notice relay terminated and will not restart", error));
+                        error -> {
+                            technicalErrors.count(error, GlobalErrorHandler.SOURCE_OUTBOX);
+                            log.error("Birthday notice relay terminated and will not restart", error);
+                        });
         log.info("Birthday notice relay started: every {}, in batches of {}", pollInterval, batchSize);
     }
 
@@ -92,6 +101,7 @@ public class BirthdayNoticeRelay implements SmartLifecycle {
                 .then(Mono.defer(() -> outbox.markPublished(notice.key())))
                 .thenReturn(notice)
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_OUTBOX);
                     log.warn("Could not send birthday notice {}: {}", notice.key(), error.toString());
                     return Mono.empty();
                 });

@@ -1,6 +1,8 @@
 package com.calendar.events.infrastructure.messaging.adapters;
 
 import com.calendar.events.domain.services.AccountErasureService;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.infrastructure.messaging.models.UserDeletedEventDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -31,10 +33,13 @@ public class UserDeletedConsumer {
 
     private final AccountErasureService erasure;
     private final ObjectMapper objectMapper;
+    private final TechnicalErrorCounter technicalErrors;
 
-    public UserDeletedConsumer(AccountErasureService erasure, ObjectMapper objectMapper) {
+    public UserDeletedConsumer(AccountErasureService erasure, ObjectMapper objectMapper,
+                               TechnicalErrorCounter technicalErrors) {
         this.erasure = erasure;
         this.objectMapper = objectMapper;
+        this.technicalErrors = technicalErrors;
     }
 
     @Bean
@@ -51,6 +56,7 @@ public class UserDeletedConsumer {
                             return Mono.empty();
                         }))
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_KAFKA);
                     log.error("{} record unreadable, dropped: {}", TOPIC, error.getMessage());
                     return Mono.empty();
                 });
@@ -65,6 +71,7 @@ public class UserDeletedConsumer {
                         report.responsesCleared(), report.receiptsDropped()))
                 .then()
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_KAFKA);
                     log.warn("{} not applied, userId={}, reconciliation will retry: {}", TOPIC, userId,
                             String.valueOf(rootCause(error).getMessage()));
                     return Mono.empty();

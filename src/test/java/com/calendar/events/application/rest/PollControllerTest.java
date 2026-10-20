@@ -20,6 +20,7 @@ import com.calendar.events.domain.services.PollService;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.BusinessException;
 import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -196,7 +197,7 @@ class PollControllerTest {
         return WebTestClient.bindToController(controller, events)
                 .argumentResolvers(resolvers -> resolvers.addCustomResolver(
                         new AuthenticationPrincipalArgumentResolver(ReactiveAdapterRegistry.getSharedInstance())))
-                .controllerAdvice(new GlobalErrorHandler(new SimpleMeterRegistry()))
+                .controllerAdvice(new GlobalErrorHandler(new TechnicalErrorCounter(new SimpleMeterRegistry())))
                 .apply(springSecurity())
                 .configureClient()
                 .build()

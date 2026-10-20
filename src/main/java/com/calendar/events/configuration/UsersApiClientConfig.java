@@ -30,6 +30,7 @@ public class UsersApiClientConfig {
         return WebClient.builder()
                 .baseUrl(url)
                 .defaultHeader(MediaApiClientConfig.SECRET_HEADER, secret)
+                .filter(new RequestIdExchangeFilterFunction())
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .build();
     }

@@ -3,6 +3,7 @@ package com.calendar.events.configuration;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.ProblemWriter;
 import com.calendar.events.exception.Problems;
+import com.calendar.events.exception.RequestIds;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.server.reactive.ServerHttpResponseDecorator;
 import org.springframework.security.core.AuthenticationException;
@@ -31,7 +32,7 @@ final class ProblemAuthenticationEntryPoint implements ServerAuthenticationEntry
     public Mono<Void> commence(ServerWebExchange exchange, AuthenticationException ex) {
         BusinessErrorCode error = BusinessErrorCode.AUTHENTICATION_REQUIRED;
         String path = exchange.getRequest().getPath().value();
-        String requestId = exchange.getRequest().getId();
+        String requestId = RequestIds.of(exchange);
         return bearerHeaders.commence(keepingResponseOpen(exchange), ex)
                 .then(Mono.defer(() -> {
                     log.warn("Business failure {} on {} (request {})", error.getCode(), path, requestId);

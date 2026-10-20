@@ -2,7 +2,7 @@ package com.calendar.events.configuration;
 
 import com.calendar.events.domain.services.AccountGuard;
 import com.calendar.events.exception.ProblemWriter;
-import io.micrometer.core.instrument.MeterRegistry;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -19,7 +19,7 @@ public class SecurityConfig {
     /** Deny by default: every exchange but the CORS preflight needs a valid JWT, and a deleted account cannot write. */
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http, AccountGuard accountGuard,
-                                                           ProblemWriter problemWriter, MeterRegistry meterRegistry) {
+                                                           ProblemWriter problemWriter, TechnicalErrorCounter technicalErrors) {
         // Refusals answer our problem, as every other error does, not the framework's empty 401/403.
         ProblemAuthenticationEntryPoint entryPoint = new ProblemAuthenticationEntryPoint(problemWriter);
         ProblemAccessDeniedHandler accessDeniedHandler = new ProblemAccessDeniedHandler(problemWriter);
@@ -53,7 +53,7 @@ public class SecurityConfig {
                         .jwt(Customizer.withDefaults())
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
-                .addFilterAfter(new DeletedRequesterFilter(accountGuard, problemWriter, meterRegistry),
+                .addFilterAfter(new DeletedRequesterFilter(accountGuard, problemWriter, technicalErrors),
                         SecurityWebFiltersOrder.AUTHORIZATION)
                 .build();
     }

@@ -5,7 +5,10 @@ import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.models.FriendshipChange;
 import com.calendar.events.domain.models.FriendshipChangeType;
 import com.calendar.events.domain.services.FriendshipService;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.infrastructure.messaging.models.FriendshipChangedEventDTO;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +35,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class FriendshipChangedConsumerTest {
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    private double technicalFailures(String code) {
+        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code,
+                GlobalErrorHandler.SOURCE_TAG, GlobalErrorHandler.SOURCE_KAFKA).count();
+    }
+
     // ALICE sorts before BOB.
     private static final String ALICE = "1b4e28ba-2fa1-41d2-883f-0016d3cca427";
     private static final String BOB = "89a380b8-f66a-44d0-b9d9-616241080430";
@@ -46,7 +56,7 @@ class FriendshipChangedConsumerTest {
 
     @BeforeEach
     void setUp() {
-        consumer = new FriendshipChangedConsumer(friendshipService, JsonMapper.builder().build());
+        consumer = new FriendshipChangedConsumer(friendshipService, JsonMapper.builder().build(), new TechnicalErrorCounter(meterRegistry));
     }
 
     private static Message<byte[]> record(String json) {
@@ -148,6 +158,8 @@ class FriendshipChangedConsumerTest {
                 .thenAwait(Duration.ofMinutes(5))
                 .verifyComplete();
         verify(friendshipService).recordHistory(next);
+        // Counted once, after the retries; not a TechnicalException, so under the catch-all code.
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
     }
 
     @Test
@@ -185,5 +197,12 @@ class FriendshipChangedConsumerTest {
 
     private static FriendshipChangedEventDTO dto(String type, String to, Long version) {
         return new FriendshipChangedEventDTO(type, ALICE, to, null, null, null, version, null);
+    }
+
+    @Test
+    void friendshipHistory_shouldCountAnUnreadableRecord() {
+        StepVerifier.create(consume(record("not json"))).expectComplete().verify(Duration.ofSeconds(10));
+
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
     }
 }

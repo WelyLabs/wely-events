@@ -2,6 +2,7 @@ package com.calendar.events.application.dtos;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.validation.constraints.AssertTrue;
 import lombok.AllArgsConstructor;
@@ -40,8 +41,12 @@ public class EventRequest {
      * earliest, and startDate/endDate are overridden.
      */
     private List<SlotRequest> candidateSlots;
-    /** Whole days: start at 00:00Z of the first day, end at 00:00Z of the day after the last (end optional for one day). */
-    private boolean allDay;
+    /**
+     * Whole days: start at 00:00Z of the first day, end at 00:00Z of the day after the last (end optional for one day).
+     * A wrapper, so leaving it out answers a validation error naming the field rather than an unreadable body.
+     */
+    @NotNull(message = "allDay is required")
+    private Boolean allDay;
     /** Optional: STANDARD when left out. SURPRISE needs {@code honoreeId}; BIRTHDAY is refused. */
     private EventKind kind;
     /** Whose birthday a SURPRISE celebrates. */

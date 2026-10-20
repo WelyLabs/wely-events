@@ -29,8 +29,8 @@ class ExpenseRestMapperTest {
     void toDraft_shouldCarryEveryField() {
         Instant at = Instant.parse("2026-10-13T10:00:00Z");
 
-        ExpenseDraft draft = mapper.toDraft(new ExpenseRequest("Courses", 3000, "alice", SplitMode.SHARES,
-                List.of(new ShareRequest("alice", 2), new ShareRequest("bob", 1)), at, 4L));
+        ExpenseDraft draft = mapper.toDraft(new ExpenseRequest("Courses", 3000L, "alice", SplitMode.SHARES,
+                List.of(new ShareRequest("alice", 2L), new ShareRequest("bob", 1L)), at, 4L));
 
         assertThat(draft).isEqualTo(new ExpenseDraft("Courses", 3000, "alice", SplitMode.SHARES,
                 List.of(new Share("alice", 2), new Share("bob", 1)), at, 4L));

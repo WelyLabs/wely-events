@@ -2,6 +2,9 @@ package com.calendar.events.infrastructure.messaging.adapters;
 
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.services.BirthdayService;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.MonthDay;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -26,6 +30,13 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class UserBirthdayConsumerTest {
+
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    private double technicalFailures(String code) {
+        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code,
+                GlobalErrorHandler.SOURCE_TAG, GlobalErrorHandler.SOURCE_KAFKA).count();
+    }
 
     private static final String USER = "89a380b8-f66a-44d0-b9d9-616241080430";
     private static final String OTHER = "1b4e28ba-2fa1-41d2-883f-0016d3cca427";
@@ -37,7 +48,7 @@ class UserBirthdayConsumerTest {
 
     @BeforeEach
     void setUp() {
-        consumer = new UserBirthdayConsumer(birthdayService, JsonMapper.builder().build());
+        consumer = new UserBirthdayConsumer(birthdayService, JsonMapper.builder().build(), new TechnicalErrorCounter(meterRegistry));
     }
 
     private static Message<byte[]> record(String json) {
@@ -96,5 +107,14 @@ class UserBirthdayConsumerTest {
                 .thenAwait(Duration.ofMinutes(5))
                 .verifyComplete();
         verify(birthdayService).recordBirthday(OTHER, "Bob", MonthDay.of(1, 1));
+        // Counted once, after the retries; not a TechnicalException, so under the catch-all code.
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
+    }
+
+    @Test
+    void userBirthday_shouldCountAnUnreadableRecord() {
+        StepVerifier.create(consume(record("not json"))).expectComplete().verify(Duration.ofSeconds(10));
+
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
     }
 }

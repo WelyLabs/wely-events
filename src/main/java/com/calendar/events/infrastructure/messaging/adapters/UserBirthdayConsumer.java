@@ -1,6 +1,8 @@
 package com.calendar.events.infrastructure.messaging.adapters;
 
 import com.calendar.events.domain.services.BirthdayService;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.infrastructure.messaging.models.UserBirthdayEventDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -33,10 +35,13 @@ public class UserBirthdayConsumer {
 
     private final BirthdayService birthdayService;
     private final ObjectMapper objectMapper;
+    private final TechnicalErrorCounter technicalErrors;
 
-    public UserBirthdayConsumer(BirthdayService birthdayService, ObjectMapper objectMapper) {
+    public UserBirthdayConsumer(BirthdayService birthdayService, ObjectMapper objectMapper,
+                                TechnicalErrorCounter technicalErrors) {
         this.birthdayService = birthdayService;
         this.objectMapper = objectMapper;
+        this.technicalErrors = technicalErrors;
     }
 
     @Bean
@@ -57,6 +62,7 @@ public class UserBirthdayConsumer {
                     return record(userId.get(), dto.displayName().strip(), birthday.get());
                 })
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_KAFKA);
                     log.error("{} record unreadable, dropped: {}", TOPIC, error.getMessage());
                     return Mono.empty();
                 });
@@ -68,6 +74,7 @@ public class UserBirthdayConsumer {
                 .doOnNext(saved -> log.info("{} applied, userId={}", TOPIC, userId))
                 .then()
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_KAFKA);
                     log.warn("{} not applied, userId={}: {}", TOPIC, userId,
                             String.valueOf(rootCause(error).getMessage()));
                     return Mono.empty();

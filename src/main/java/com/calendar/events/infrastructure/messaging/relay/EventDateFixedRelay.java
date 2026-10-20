@@ -1,5 +1,7 @@
 package com.calendar.events.infrastructure.messaging.relay;
 
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.infrastructure.messaging.adapters.KafkaEventDateFixedPublisher;
 import com.calendar.events.infrastructure.messaging.mappers.EventDateFixedMapper;
 import com.calendar.events.infrastructure.persistence.adapters.MongoEventDateFixedOutboxAdapter;
@@ -32,6 +34,7 @@ public class EventDateFixedRelay implements SmartLifecycle {
     private final EventDateFixedMapper mapper;
     private final Duration pollInterval;
     private final int batchSize;
+    private final TechnicalErrorCounter technicalErrors;
 
     private volatile Disposable loop;
 
@@ -39,12 +42,14 @@ public class EventDateFixedRelay implements SmartLifecycle {
                                KafkaEventDateFixedPublisher publisher,
                                EventDateFixedMapper mapper,
                                @Value("${app.event-date-fixed.relay.poll-interval:2s}") Duration pollInterval,
-                               @Value("${app.event-date-fixed.relay.batch-size:100}") int batchSize) {
+                               @Value("${app.event-date-fixed.relay.batch-size:100}") int batchSize,
+                               TechnicalErrorCounter technicalErrors) {
         this.outbox = outbox;
         this.publisher = publisher;
         this.mapper = mapper;
         this.pollInterval = pollInterval;
         this.batchSize = batchSize;
+        this.technicalErrors = technicalErrors;
     }
 
     @Override
@@ -52,13 +57,17 @@ public class EventDateFixedRelay implements SmartLifecycle {
         // Errors are caught inside the repeated Mono: one reaching repeatWhen would stop the loop.
         loop = Mono.defer(this::drainOnce)
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_OUTBOX);
                     log.error("Date-fixed relay pass failed; next attempt in {}", pollInterval, error);
                     return Mono.just(0L);
                 })
                 .repeatWhen(passes -> passes.delayElements(pollInterval))
                 .subscribe(
                         count -> { },
-                        error -> log.error("Date-fixed relay terminated and will not restart", error));
+                        error -> {
+                            technicalErrors.count(error, GlobalErrorHandler.SOURCE_OUTBOX);
+                            log.error("Date-fixed relay terminated and will not restart", error);
+                        });
         log.info("Date-fixed relay started: every {}, in batches of {}", pollInterval, batchSize);
     }
 
@@ -94,6 +103,7 @@ public class EventDateFixedRelay implements SmartLifecycle {
                 .then(Mono.defer(() -> outbox.markPublished(event.getId(), event.getDateFixVersion())))
                 .thenReturn(event)
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_OUTBOX);
                     log.warn("Could not send the fixed date of event {}: {}", event.getId(), error.toString());
                     return Mono.empty();
                 });

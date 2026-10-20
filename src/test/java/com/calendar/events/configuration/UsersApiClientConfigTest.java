@@ -1,5 +1,6 @@
 package com.calendar.events.configuration;
 
+import com.calendar.events.exception.RequestIds;
 import com.sun.net.httpserver.HttpServer;
 import io.netty.handler.timeout.ReadTimeoutException;
 import org.junit.jupiter.api.AfterEach;
@@ -7,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import reactor.util.context.Context;
 import reactor.test.StepVerifier;
 
 import java.io.IOException;
@@ -30,6 +32,7 @@ class UsersApiClientConfigTest {
     private final UsersApiClientConfig config = new UsersApiClientConfig();
     private final AtomicReference<String> requestedPath = new AtomicReference<>();
     private final AtomicReference<String> secretHeader = new AtomicReference<>();
+    private final AtomicReference<String> requestIdHeader = new AtomicReference<>();
     private volatile long delayMillis = 0;
 
     private HttpServer server;
@@ -42,6 +45,7 @@ class UsersApiClientConfigTest {
         server.createContext("/", exchange -> {
             requestedPath.set(exchange.getRequestURI().getRawPath());
             secretHeader.set(exchange.getRequestHeaders().getFirst(MediaApiClientConfig.SECRET_HEADER));
+            requestIdHeader.set(exchange.getRequestHeaders().getFirst(RequestIds.REQUEST_ID_HEADER));
             try {
                 Thread.sleep(delayMillis);
             } catch (InterruptedException interrupted) {
@@ -94,5 +98,14 @@ class UsersApiClientConfigTest {
         StepVerifier.create(get(UsersApiClientConfig.webClient(url, SECRET, SHORT_TIMEOUT)))
                 .expectErrorSatisfies(error -> assertThat(error).hasCauseInstanceOf(ReadTimeoutException.class))
                 .verify(Duration.ofSeconds(1));
+    }
+
+    @Test
+    void usersWebClient_shouldRepeatTheRequestId_ofTheRequestBehindTheCall() {
+        StepVerifier.create(get(config.usersWebClient(url, SECRET))
+                        .contextWrite(Context.of(RequestIds.REQUEST_ID_ATTRIBUTE, "abcd1234-from-gateway")))
+                .expectNext(BODY).expectComplete().verify(Duration.ofSeconds(10));
+
+        assertThat(requestIdHeader).hasValue("abcd1234-from-gateway");
     }
 }

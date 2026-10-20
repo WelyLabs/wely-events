@@ -26,6 +26,7 @@ public class MediaApiClientConfig {
         return WebClient.builder()
                 .baseUrl(mediaApiUrl)
                 .defaultHeader(SECRET_HEADER, secret)
+                .filter(new RequestIdExchangeFilterFunction())
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .build();
     }

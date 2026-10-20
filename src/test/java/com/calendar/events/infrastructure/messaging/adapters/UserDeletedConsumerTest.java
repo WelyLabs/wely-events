@@ -2,8 +2,13 @@ package com.calendar.events.infrastructure.messaging.adapters;
 
 import com.calendar.events.domain.models.ErasureReport;
 import com.calendar.events.domain.services.AccountErasureService;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.GlobalErrorHandler;
 import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.exception.TechnicalException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -34,6 +40,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class UserDeletedConsumerTest {
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    private double technicalFailures(String code) {
+        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code,
+                GlobalErrorHandler.SOURCE_TAG, GlobalErrorHandler.SOURCE_KAFKA).count();
+    }
+
     private static final String USER = "89a380b8-f66a-44d0-b9d9-616241080430";
     private static final String OTHER = "1b4e28ba-2fa1-41d2-883f-0016d3cca427";
     private static final Instant DELETED_AT = Instant.parse("2026-10-15T14:03:27.123Z");
@@ -45,7 +58,7 @@ class UserDeletedConsumerTest {
 
     @BeforeEach
     void setUp() {
-        consumer = new UserDeletedConsumer(erasure, JsonMapper.builder().build());
+        consumer = new UserDeletedConsumer(erasure, JsonMapper.builder().build(), new TechnicalErrorCounter(meterRegistry));
     }
 
     private static Message<byte[]> record(String json) {
@@ -102,6 +115,8 @@ class UserDeletedConsumerTest {
                 .expectComplete().verify(Duration.ofSeconds(10));
         verify(erasure).erase(USER, DELETED_AT);
         verify(erasure, times(1)).erase(anyString(), any());
+        // Neither record could be read: each is counted, as an unexpected failure.
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(2.0);
     }
 
     @Test
@@ -120,6 +135,7 @@ class UserDeletedConsumerTest {
                 .thenAwait(Duration.ofMinutes(5))
                 .verifyComplete();
         verify(erasure, times(3)).erase(USER, DELETED_AT);
+        assertThat(meterRegistry.find(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC).counters()).isEmpty();
     }
 
     @Test
@@ -132,6 +148,8 @@ class UserDeletedConsumerTest {
                 .verifyComplete();
         verify(erasure, times(1 + UserDeletedConsumer.MAX_RETRIES)).erase(USER, DELETED_AT);
         verify(erasure).erase(OTHER, DELETED_AT);
+        // Counted once, after the retries, under the code the last attempt failed with.
+        assertThat(technicalFailures(TechnicalErrorCode.ERASURE_INCOMPLETE.getCode())).isEqualTo(1.0);
     }
 
     @Test
@@ -153,5 +171,16 @@ class UserDeletedConsumerTest {
     @Test
     void userDeleted_shouldComplete_whenTheInputCompletes() {
         StepVerifier.create(consumer.userDeleted().apply(Flux.empty())).expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void userDeleted_shouldNotCountABusinessRefusal() {
+        when(erasure.erase(USER, DELETED_AT))
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)));
+
+        StepVerifier.withVirtualTime(() -> consume(deletion(USER)))
+                .thenAwait(Duration.ofMinutes(5))
+                .verifyComplete();
+        assertThat(meterRegistry.find(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC).counters()).isEmpty();
     }
 }

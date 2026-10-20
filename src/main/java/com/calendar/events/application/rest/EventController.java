@@ -169,7 +169,7 @@ public class EventController {
                                      @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         LeaveRequest choice = request != null ? request : new LeaveRequest(null, false);
-        return eventService.leave(id, userId, choice.newOrganizerId(), choice.deleteIfLast())
+        return eventService.leave(id, userId, choice.newOrganizerId(), choice.confirmsDeletion())
                 .flatMap(outcome -> Mono.zip(
                                 pictureService.signCovers(outcome.event() != null ? List.of(outcome.event()) : List.of()),
                                 friendshipService.viewerFriends(userId))

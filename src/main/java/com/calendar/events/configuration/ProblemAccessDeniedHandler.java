@@ -3,6 +3,7 @@ package com.calendar.events.configuration;
 import com.calendar.events.exception.BusinessErrorCode;
 import com.calendar.events.exception.ProblemWriter;
 import com.calendar.events.exception.Problems;
+import com.calendar.events.exception.RequestIds;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.web.access.server.BearerTokenServerAccessDeniedHandler;
@@ -31,7 +32,7 @@ final class ProblemAccessDeniedHandler implements ServerAccessDeniedHandler {
     public Mono<Void> handle(ServerWebExchange exchange, AccessDeniedException denied) {
         BusinessErrorCode error = BusinessErrorCode.ACCESS_DENIED;
         String path = exchange.getRequest().getPath().value();
-        String requestId = exchange.getRequest().getId();
+        String requestId = RequestIds.of(exchange);
         return bearerHeaders.handle(ProblemAuthenticationEntryPoint.keepingResponseOpen(exchange), denied)
                 .then(Mono.defer(() -> {
                     log.warn("Business failure {} on {} (request {})", error.getCode(), path, requestId);

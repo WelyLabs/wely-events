@@ -35,7 +35,7 @@ class ProblemWebExceptionHandlerTest {
 
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final ProblemWebExceptionHandler handler = new ProblemWebExceptionHandler(
-            new GlobalErrorHandler(meterRegistry), new ProblemWriter(ServerCodecConfigurer.create()));
+            new GlobalErrorHandler(new TechnicalErrorCounter(meterRegistry)), new ProblemWriter(ServerCodecConfigurer.create()));
 
     private static MockServerWebExchange exchange() {
         return MockServerWebExchange.from(MockServerHttpRequest.post("/events-service/events"));
@@ -46,7 +46,8 @@ class ProblemWebExceptionHandlerTest {
     }
 
     private double technicalFailures(String code) {
-        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code).count();
+        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code,
+                GlobalErrorHandler.SOURCE_TAG, GlobalErrorHandler.SOURCE_HTTP).count();
     }
 
     private void handle(MockServerWebExchange exchange, Throwable failure) {

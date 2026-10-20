@@ -5,6 +5,8 @@ import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.domain.services.SurpriseService;
+import com.calendar.events.exception.TechnicalErrorCounter;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.bson.Document;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +49,8 @@ import static org.mockito.Mockito.when;
 @EnabledIf("containersRequested")
 class FriendshipStateConsumerIntegrationTest {
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
     @Container
     @ServiceConnection
     static final MongoDBContainer MONGO = new MongoDBContainer("mongo:6.0");
@@ -79,7 +83,7 @@ class FriendshipStateConsumerIntegrationTest {
         mongoTemplate.remove(new Query(), "friendships").then().block();
         mongoTemplate.remove(new Query(), "deleted_users").then().block();
         when(surpriseService.releaseAfterFriendshipEnded(anyString(), anyString())).thenReturn(Mono.just(0L));
-        consumer = new FriendshipStateConsumer(friendshipService, objectMapper);
+        consumer = new FriendshipStateConsumer(friendshipService, objectMapper, new TechnicalErrorCounter(meterRegistry));
     }
 
     private static Message<byte[]> value(String closeness, long version) {

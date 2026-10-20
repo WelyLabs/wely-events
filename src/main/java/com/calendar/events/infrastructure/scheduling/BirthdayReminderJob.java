@@ -2,6 +2,8 @@ package com.calendar.events.infrastructure.scheduling;
 
 import com.calendar.events.domain.services.BirthdayReminderService;
 import com.calendar.events.domain.services.FriendshipReminderService;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -31,12 +33,14 @@ public class BirthdayReminderJob {
     private final BirthdayReminderService reminders;
     private final FriendshipReminderService friendshipReminders;
     private final Clock clock;
+    private final TechnicalErrorCounter technicalErrors;
 
     public BirthdayReminderJob(BirthdayReminderService reminders, FriendshipReminderService friendshipReminders,
-                               Clock clock) {
+                               Clock clock, TechnicalErrorCounter technicalErrors) {
         this.reminders = reminders;
         this.friendshipReminders = friendshipReminders;
         this.clock = clock;
+        this.technicalErrors = technicalErrors;
     }
 
     @Scheduled(cron = "${app.birthday-reminders.cron:0 0 8 * * *}", zone = ZONE)
@@ -58,7 +62,7 @@ public class BirthdayReminderJob {
                 .then(step("Friendship reminders", which, friendshipReminders::recordDueNotices));
     }
 
-    private static Mono<Void> step(String what, String which, Supplier<Mono<Long>> run) {
+    private Mono<Void> step(String what, String which, Supplier<Mono<Long>> run) {
         return Mono.defer(run)
                 .doOnNext(recorded -> {
                     if (recorded > 0) {
@@ -66,6 +70,7 @@ public class BirthdayReminderJob {
                     }
                 })
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_JOB);
                     log.warn("{} ({}) failed; the next run retries: {}", what, which, error.toString());
                     return Mono.empty();
                 })

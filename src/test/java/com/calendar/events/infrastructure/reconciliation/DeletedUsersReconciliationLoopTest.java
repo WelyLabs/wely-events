@@ -2,8 +2,11 @@ package com.calendar.events.infrastructure.reconciliation;
 
 import com.calendar.events.domain.models.ReconciliationReport;
 import com.calendar.events.domain.services.AccountReconciliationService;
+import com.calendar.events.exception.GlobalErrorHandler;
 import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.exception.TechnicalException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -26,6 +29,13 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class DeletedUsersReconciliationLoopTest {
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+    private double technicalFailures(String code) {
+        return meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG, code,
+                GlobalErrorHandler.SOURCE_TAG, GlobalErrorHandler.SOURCE_RECONCILIATION).count();
+    }
+
     private static final Duration INTERVAL = Duration.ofHours(24);
     private static final Duration RETRY_INTERVAL = Duration.ofHours(1);
     private static final Duration SHORT = Duration.ofMillis(20);
@@ -42,10 +52,12 @@ class DeletedUsersReconciliationLoopTest {
             .withInitializer(context -> context.getBeanFactory()
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withUserConfiguration(DeletedUsersReconciliationLoop.class)
-            .withBean(AccountReconciliationService.class, () -> mock(AccountReconciliationService.class));
+            .withBean(AccountReconciliationService.class, () -> mock(AccountReconciliationService.class))
+            .withBean(TechnicalErrorCounter.class, () -> new TechnicalErrorCounter(new SimpleMeterRegistry()));
 
     private DeletedUsersReconciliationLoop loop(Duration initialDelay, Duration interval, Duration retryInterval) {
-        return new DeletedUsersReconciliationLoop(reconciliation, initialDelay, interval, retryInterval);
+        return new DeletedUsersReconciliationLoop(reconciliation, initialDelay, interval, retryInterval,
+                new TechnicalErrorCounter(meterRegistry));
     }
 
     @Test
@@ -63,6 +75,7 @@ class DeletedUsersReconciliationLoopTest {
         StepVerifier.create(loop(SHORT, INTERVAL, RETRY_INTERVAL).passOnce())
                 .expectNext(RETRY_INTERVAL)
                 .expectComplete().verify(Duration.ofSeconds(10));
+        assertThat(technicalFailures(TechnicalErrorCode.USERS_UNAVAILABLE.getCode())).isEqualTo(1.0);
     }
 
     @Test
@@ -72,6 +85,8 @@ class DeletedUsersReconciliationLoopTest {
         StepVerifier.create(loop(SHORT, INTERVAL, RETRY_INTERVAL).passOnce())
                 .expectNext(RETRY_INTERVAL)
                 .expectComplete().verify(Duration.ofSeconds(10));
+        // One account failing is folded into the report by the domain, which has no meter: nothing to count here.
+        assertThat(meterRegistry.find(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC).counters()).isEmpty();
     }
 
     @Test
@@ -81,6 +96,7 @@ class DeletedUsersReconciliationLoopTest {
         StepVerifier.create(loop(SHORT, INTERVAL, RETRY_INTERVAL).passOnce())
                 .expectNext(RETRY_INTERVAL)
                 .expectComplete().verify(Duration.ofSeconds(10));
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
     }
 
     @Test
@@ -94,6 +110,7 @@ class DeletedUsersReconciliationLoopTest {
                 .expectNext(RETRY_INTERVAL)
                 .expectComplete()
                 .verify(VERIFY_TIMEOUT);
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
     }
 
     @Test
@@ -116,6 +133,7 @@ class DeletedUsersReconciliationLoopTest {
         StepVerifier.create(loop(SHORT, INTERVAL, RETRY_INTERVAL).passOnce())
                 .expectNext(RETRY_INTERVAL)
                 .expectComplete().verify(Duration.ofSeconds(10));
+        assertThat(technicalFailures(GlobalErrorHandler.UNEXPECTED_FAILURE_CODE)).isEqualTo(1.0);
     }
 
     @Test

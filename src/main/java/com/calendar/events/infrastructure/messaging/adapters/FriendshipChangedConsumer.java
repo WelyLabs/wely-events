@@ -5,6 +5,8 @@ import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.models.FriendshipChange;
 import com.calendar.events.domain.models.FriendshipChangeType;
 import com.calendar.events.domain.services.FriendshipService;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.infrastructure.messaging.models.FriendshipChangedEventDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -40,10 +42,13 @@ public class FriendshipChangedConsumer {
 
     private final FriendshipService friendshipService;
     private final ObjectMapper objectMapper;
+    private final TechnicalErrorCounter technicalErrors;
 
-    public FriendshipChangedConsumer(FriendshipService friendshipService, ObjectMapper objectMapper) {
+    public FriendshipChangedConsumer(FriendshipService friendshipService, ObjectMapper objectMapper,
+                                     TechnicalErrorCounter technicalErrors) {
         this.friendshipService = friendshipService;
         this.objectMapper = objectMapper;
+        this.technicalErrors = technicalErrors;
     }
 
     @Bean
@@ -61,6 +66,7 @@ public class FriendshipChangedConsumer {
                             return Mono.empty();
                         }))
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_KAFKA);
                     log.error("{} record unreadable, dropped: {}", TOPIC, error.getMessage());
                     return Mono.empty();
                 });
@@ -81,6 +87,7 @@ public class FriendshipChangedConsumer {
                 })
                 .then()
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_KAFKA);
                     log.warn("{} not applied, pair={}, version={}: {}", TOPIC, friendship.pairId(),
                             friendship.version(), String.valueOf(rootCause(error).getMessage()));
                     return Mono.empty();

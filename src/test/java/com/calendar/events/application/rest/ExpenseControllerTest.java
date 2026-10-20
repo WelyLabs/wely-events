@@ -62,8 +62,8 @@ class ExpenseControllerTest {
 
     private ExpenseController controller;
 
-    private final ExpenseRequest request = new ExpenseRequest("Courses", 3000, "alice", SplitMode.EQUAL,
-            List.of(new ShareRequest("alice", 0)), null, null);
+    private final ExpenseRequest request = new ExpenseRequest("Courses", 3000L, "alice", SplitMode.EQUAL,
+            List.of(new ShareRequest("alice", 0L)), null, null);
     private final ExpenseDraft draft = mock(ExpenseDraft.class);
     private final Expense expense = mock(Expense.class);
     private final ExpenseResponse response = mock(ExpenseResponse.class);
@@ -124,7 +124,7 @@ class ExpenseControllerTest {
         when(expenseService.settle("ev-1", "alice", "bob", "alice", 1000)).thenReturn(Mono.just(expense));
         when(mapper.toResponse(expense, SignedUrls.NONE)).thenReturn(response);
 
-        StepVerifier.create(controller.settle("ev-1", new SettlementRequest("bob", "alice", 1000), jwt))
+        StepVerifier.create(controller.settle("ev-1", new SettlementRequest("bob", "alice", 1000L), jwt))
                 .expectNext(response)
                 .expectComplete().verify(Duration.ofSeconds(10));
     }

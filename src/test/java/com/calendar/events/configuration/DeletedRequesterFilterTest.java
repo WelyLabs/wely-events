@@ -7,6 +7,7 @@ import com.calendar.events.exception.BusinessException;
 import com.calendar.events.exception.GlobalErrorHandler;
 import com.calendar.events.exception.ProblemWriter;
 import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.exception.TechnicalException;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,7 +54,7 @@ class DeletedRequesterFilterTest {
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
         filter = new DeletedRequesterFilter(new AccountGuard(markers), new ProblemWriter(ServerCodecConfigurer.create()),
-                meterRegistry);
+                new TechnicalErrorCounter(meterRegistry));
     }
 
     private static JwtAuthenticationToken tokenOf(String businessId) {
@@ -156,7 +157,8 @@ class DeletedRequesterFilterTest {
                 .expectComplete().verify(Duration.ofSeconds(10));
         // Answered here, never through GlobalErrorHandler: the filter counts it itself.
         assertThat(meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG,
-                TechnicalErrorCode.STORE_UNAVAILABLE.getCode()).count()).isEqualTo(1.0);
+                TechnicalErrorCode.STORE_UNAVAILABLE.getCode(), GlobalErrorHandler.SOURCE_TAG, GlobalErrorHandler.SOURCE_HTTP)
+                .count()).isEqualTo(1.0);
         assertThat(chainRan).isFalse();
     }
 

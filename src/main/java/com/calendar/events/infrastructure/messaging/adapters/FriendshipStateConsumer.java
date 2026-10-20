@@ -3,6 +3,8 @@ package com.calendar.events.infrastructure.messaging.adapters;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.services.FriendshipService;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.infrastructure.messaging.models.FriendshipStateDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -40,10 +42,13 @@ public class FriendshipStateConsumer {
 
     private final FriendshipService friendshipService;
     private final ObjectMapper objectMapper;
+    private final TechnicalErrorCounter technicalErrors;
 
-    public FriendshipStateConsumer(FriendshipService friendshipService, ObjectMapper objectMapper) {
+    public FriendshipStateConsumer(FriendshipService friendshipService, ObjectMapper objectMapper,
+                                   TechnicalErrorCounter technicalErrors) {
         this.friendshipService = friendshipService;
         this.objectMapper = objectMapper;
+        this.technicalErrors = technicalErrors;
     }
 
     @Bean
@@ -72,6 +77,7 @@ public class FriendshipStateConsumer {
                             return Mono.empty();
                         }))
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_KAFKA);
                     log.error("{} record unreadable, dropped: {}", TOPIC, error.getMessage());
                     return Mono.empty();
                 });
@@ -100,6 +106,7 @@ public class FriendshipStateConsumer {
                 })
                 .then()
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_KAFKA);
                     log.warn("{} not applied, pair={}: {}", TOPIC, pairId, String.valueOf(rootCause(error).getMessage()));
                     return Mono.empty();
                 });

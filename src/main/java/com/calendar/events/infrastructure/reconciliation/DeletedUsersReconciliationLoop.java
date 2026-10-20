@@ -2,6 +2,8 @@ package com.calendar.events.infrastructure.reconciliation;
 
 import com.calendar.events.domain.models.ReconciliationReport;
 import com.calendar.events.domain.services.AccountReconciliationService;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,6 +25,7 @@ public class DeletedUsersReconciliationLoop implements SmartLifecycle {
     private final Duration initialDelay;
     private final Duration interval;
     private final Duration retryInterval;
+    private final TechnicalErrorCounter technicalErrors;
 
     private volatile Disposable loop;
 
@@ -30,11 +33,13 @@ public class DeletedUsersReconciliationLoop implements SmartLifecycle {
             AccountReconciliationService reconciliation,
             @Value("${app.account-erasure.reconciliation.initial-delay:1m}") Duration initialDelay,
             @Value("${app.account-erasure.reconciliation.interval:24h}") Duration interval,
-            @Value("${app.account-erasure.reconciliation.retry-interval:1h}") Duration retryInterval) {
+            @Value("${app.account-erasure.reconciliation.retry-interval:1h}") Duration retryInterval,
+            TechnicalErrorCounter technicalErrors) {
         this.reconciliation = reconciliation;
         this.initialDelay = initialDelay;
         this.interval = interval;
         this.retryInterval = retryInterval;
+        this.technicalErrors = technicalErrors;
     }
 
     @Override
@@ -45,7 +50,10 @@ public class DeletedUsersReconciliationLoop implements SmartLifecycle {
                 .expand(next -> Mono.delay(next).then(Mono.defer(this::passOnce)))
                 .subscribe(
                         next -> { },
-                        error -> log.error("Deleted-users reconciliation loop terminated and will not restart", error),
+                        error -> {
+                            technicalErrors.count(error, GlobalErrorHandler.SOURCE_RECONCILIATION);
+                            log.error("Deleted-users reconciliation loop terminated and will not restart", error);
+                        },
                         () -> log.error("Deleted-users reconciliation loop completed and will not restart"));
         log.info("Deleted-users reconciliation started: first pass in {}, then every {}, {} after a failed pass",
                 initialDelay, interval, retryInterval);
@@ -73,6 +81,7 @@ public class DeletedUsersReconciliationLoop implements SmartLifecycle {
                 .switchIfEmpty(Mono.error(() -> new IllegalStateException("Reconciliation pass completed empty")))
                 .map(this::nextDelay)
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_RECONCILIATION);
                     log.warn("Deleted-users reconciliation failed; next attempt in {}: {}", retryInterval,
                             error.toString());
                     return Mono.just(retryInterval);

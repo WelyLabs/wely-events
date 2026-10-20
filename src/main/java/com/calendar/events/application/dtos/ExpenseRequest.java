@@ -19,7 +19,7 @@ import java.util.List;
  */
 public record ExpenseRequest(
         @NotBlank @Size(max = Expense.MAX_TITLE_LENGTH) String title,
-        @Positive @Max(Expense.MAX_AMOUNT_CENTS) long amountCents,
+        @NotNull @Positive @Max(Expense.MAX_AMOUNT_CENTS) Long amountCents,
         @NotBlank String paidBy,
         @NotNull SplitMode split,
         @NotEmpty @Size(max = Expense.MAX_SHARES) List<@Valid @NotNull ShareRequest> shares,

@@ -6,8 +6,9 @@ import com.calendar.events.exception.BusinessException;
 import com.calendar.events.exception.GlobalErrorHandler;
 import com.calendar.events.exception.ProblemWriter;
 import com.calendar.events.exception.Problems;
+import com.calendar.events.exception.RequestIds;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.exception.TechnicalException;
-import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ProblemDetail;
@@ -31,12 +32,12 @@ final class DeletedRequesterFilter implements WebFilter {
 
     private final AccountGuard accountGuard;
     private final ProblemWriter problemWriter;
-    private final MeterRegistry meterRegistry;
+    private final TechnicalErrorCounter technicalErrors;
 
-    DeletedRequesterFilter(AccountGuard accountGuard, ProblemWriter problemWriter, MeterRegistry meterRegistry) {
+    DeletedRequesterFilter(AccountGuard accountGuard, ProblemWriter problemWriter, TechnicalErrorCounter technicalErrors) {
         this.accountGuard = accountGuard;
         this.problemWriter = problemWriter;
-        this.meterRegistry = meterRegistry;
+        this.technicalErrors = technicalErrors;
     }
 
     @Override
@@ -45,7 +46,7 @@ final class DeletedRequesterFilter implements WebFilter {
             return chain.filter(exchange);
         }
         String path = exchange.getRequest().getPath().value();
-        String requestId = exchange.getRequest().getId();
+        String requestId = RequestIds.of(exchange);
         // Optional, not switchIfEmpty: writing the refusal completes empty and would run the chain after it.
         return refusal(path, requestId)
                 .map(Optional::of)
@@ -81,7 +82,7 @@ final class DeletedRequesterFilter implements WebFilter {
     private ProblemDetail technicalFailure(TechnicalException ex, String path, String requestId) {
         String code = ex.getErrorCode().getCode();
         log.error("Technical failure {} on {} (request {})", code, path, requestId, ex);
-        GlobalErrorHandler.countTechnicalFailure(meterRegistry, code);
+        technicalErrors.count(ex, GlobalErrorHandler.SOURCE_HTTP);
         return Problems.of(ex.getErrorCode(), path, requestId);
     }
 }

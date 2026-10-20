@@ -1,5 +1,7 @@
 package com.calendar.events.infrastructure.messaging.relay;
 
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCounter;
 import com.calendar.events.infrastructure.messaging.adapters.KafkaEventGroupPublisher;
 import com.calendar.events.infrastructure.messaging.mappers.EventGroupMapper;
 import com.calendar.events.infrastructure.persistence.adapters.MongoEventGroupOutboxAdapter;
@@ -37,6 +39,7 @@ public class EventGroupRelay implements SmartLifecycle {
     private final EventGroupMapper mapper;
     private final Duration pollInterval;
     private final int batchSize;
+    private final TechnicalErrorCounter technicalErrors;
 
     private volatile Disposable loop;
 
@@ -44,12 +47,14 @@ public class EventGroupRelay implements SmartLifecycle {
                            KafkaEventGroupPublisher publisher,
                            EventGroupMapper mapper,
                            @Value("${app.event-group.relay.poll-interval:2s}") Duration pollInterval,
-                           @Value("${app.event-group.relay.batch-size:100}") int batchSize) {
+                           @Value("${app.event-group.relay.batch-size:100}") int batchSize,
+                           TechnicalErrorCounter technicalErrors) {
         this.outbox = outbox;
         this.publisher = publisher;
         this.mapper = mapper;
         this.pollInterval = pollInterval;
         this.batchSize = batchSize;
+        this.technicalErrors = technicalErrors;
     }
 
     @Override
@@ -57,13 +62,17 @@ public class EventGroupRelay implements SmartLifecycle {
         // Errors are caught inside the repeated Mono: one reaching repeatWhen would stop the loop.
         loop = Mono.defer(this::drainOnce)
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_OUTBOX);
                     log.error("Event group relay pass failed; next attempt in {}", pollInterval, error);
                     return Mono.just(0L);
                 })
                 .repeatWhen(passes -> passes.delayElements(pollInterval))
                 .subscribe(
                         count -> { },
-                        error -> log.error("Event group relay terminated and will not restart", error));
+                        error -> {
+                            technicalErrors.count(error, GlobalErrorHandler.SOURCE_OUTBOX);
+                            log.error("Event group relay terminated and will not restart", error);
+                        });
         log.info("Event group relay started: every {}, in batches of {}", pollInterval, batchSize);
     }
 
@@ -102,6 +111,7 @@ public class EventGroupRelay implements SmartLifecycle {
                 .then(Mono.defer(() -> outbox.markPublished(event.getId(), event.getGroupVersion())))
                 .thenReturn(event)
                 .onErrorResume(error -> {
+                    technicalErrors.count(error, GlobalErrorHandler.SOURCE_OUTBOX);
                     log.warn("Could not send the group of event {}: {}", event.getId(), error.toString());
                     return Mono.empty();
                 });

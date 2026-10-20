@@ -11,6 +11,9 @@ public class SocialClientConfig {
 
     @Bean
     public WebClient socialWebClient(@Value("${social.api.url}") String socialApiUrl) {
-        return WebClient.builder().baseUrl(socialApiUrl).build();
+        return WebClient.builder()
+                .baseUrl(socialApiUrl)
+                .filter(new RequestIdExchangeFilterFunction())
+                .build();
     }
 }

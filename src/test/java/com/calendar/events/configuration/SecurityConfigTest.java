@@ -20,6 +20,7 @@ import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.RequestIds;
 import com.calendar.events.exception.TechnicalErrorCode;
 import com.calendar.events.exception.TechnicalException;
 import reactor.core.publisher.Flux;
@@ -99,6 +100,18 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("the 401 carries the gateway's request id, like every other problem")
+    void springSecurityFilterChain_shouldAnswerWithTheGatewaysRequestId() {
+        client().get().uri("/events-service/events/me/feed")
+                .header(RequestIds.REQUEST_ID_HEADER, "abcd1234-gateway-401")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectHeader().valueEquals(RequestIds.REQUEST_ID_HEADER, "abcd1234-gateway-401")
+                .expectBody()
+                .jsonPath("$.requestId").isEqualTo("abcd1234-gateway-401");
+    }
+
+    @Test
     @DisplayName("Prometheus scrapes without a token, and finds the technical failures counted by code")
     void springSecurityFilterChain_shouldExposePrometheusAnonymously() {
         // One technical failure first: the register is down when a write checks it.
@@ -113,7 +126,7 @@ class SecurityConfigTest {
                 .expectStatus().isOk()
                 .expectBody(String.class)
                 .value(body -> assertThat(body)
-                        .contains("wely_errors_technical_total{code=\"EVT-TEC-005\"}"));
+                        .contains("wely_errors_technical_total{code=\"EVT-TEC-005\",source=\"http\"}"));
     }
 
     @Test
