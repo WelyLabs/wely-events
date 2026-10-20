@@ -12,8 +12,8 @@ import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -74,16 +74,16 @@ public class SurpriseService {
         String organizerId = event.getOrganizerId();
         String honoreeId = event.getHonoreeId();
         if (honoreeId == null || honoreeId.isBlank()) {
-            return Mono.error(new EventException(EventErrorCode.EVENT_KIND_INVALID));
+            return Mono.error(new BusinessException(BusinessErrorCode.EVENT_KIND_INVALID));
         }
         if (honoreeId.equals(organizerId)) {
-            return Mono.error(new EventException(EventErrorCode.SURPRISE_NOT_ALLOWED));
+            return Mono.error(new BusinessException(BusinessErrorCode.SURPRISE_NOT_ALLOWED));
         }
         return socialGraph.closenessBetween(organizerId, honoreeId)
                 .filter(closeness -> closeness.compareTo(Closeness.CLOSE) >= 0)
-                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.SURPRISE_NOT_ALLOWED)))
+                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.SURPRISE_NOT_ALLOWED)))
                 .then(Mono.defer(() -> eventRepository.findBirthdayOf(honoreeId)))
-                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.NO_BIRTHDAY)))
+                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.NO_BIRTHDAY)))
                 .flatMap(birthday -> eventService.prepare(asSurprise(event, birthday, organizerName), candidateSlots)
                         .flatMap(prepared -> insert(prepared, birthday.birthMonthDay()))
                         .flatMap(created -> announce(created, birthday.birthMonthDay()).thenReturn(created)));
@@ -111,12 +111,12 @@ public class SurpriseService {
                 .switchIfEmpty(Mono.defer(() -> eventRepository.insertSurprise(surprise)))
                 .switchIfEmpty(Mono.defer(() -> eventRepository.findSurpriseByOccurrence(surprise.getOccurrenceKey())
                         .map(SurpriseService::exists)
-                        .defaultIfEmpty(new EventException(EventErrorCode.SURPRISE_EXISTS))
+                        .defaultIfEmpty(new BusinessException(BusinessErrorCode.SURPRISE_EXISTS))
                         .flatMap(Mono::error)));
     }
 
-    private static EventException exists(Event existing) {
-        return new EventException(EventErrorCode.SURPRISE_EXISTS, Map.of(EVENT_ID_PROPERTY, existing.getId()));
+    private static BusinessException exists(Event existing) {
+        return new BusinessException(BusinessErrorCode.SURPRISE_EXISTS, Map.of(EVENT_ID_PROPERTY, existing.getId()));
     }
 
     /** SURPRISE_CREATED to the honoree's close friends but the organizer; a failure costs the notices, not the surprise. */

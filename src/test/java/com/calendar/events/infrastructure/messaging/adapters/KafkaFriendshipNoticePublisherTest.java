@@ -1,7 +1,7 @@
 package com.calendar.events.infrastructure.messaging.adapters;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.messaging.models.FriendshipNoticeDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,7 +35,7 @@ class KafkaFriendshipNoticePublisherTest {
     private KafkaFriendshipNoticePublisher publisher;
 
     private static boolean brokerUnavailable(Throwable error) {
-        return error instanceof EventException e && e.getErrorCode() == EventErrorCode.BROKER_UNAVAILABLE;
+        return error instanceof TechnicalException e && e.getErrorCode() == TechnicalErrorCode.BROKER_UNAVAILABLE;
     }
 
     @Test
@@ -58,14 +58,15 @@ class KafkaFriendshipNoticePublisherTest {
     void publish_shouldFailAsBrokerUnavailable_whenKafkaRefusesTheRecord() {
         when(streamBridge.send(eq(KafkaFriendshipNoticePublisher.DESTINATION), any(Object.class))).thenReturn(false);
 
-        StepVerifier.create(publisher.publish(NOTICE)).expectErrorMatches(KafkaFriendshipNoticePublisherTest::brokerUnavailable).verify();
+        StepVerifier.create(publisher.publish(NOTICE)).expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == null).verify();
     }
 
     @Test
     void publish_shouldTranslateABinderFailure() {
+        MessageDeliveryException failure = new MessageDeliveryException("broker down");
         when(streamBridge.send(eq(KafkaFriendshipNoticePublisher.DESTINATION), any(Object.class)))
-                .thenThrow(new MessageDeliveryException("broker down"));
+                .thenThrow(failure);
 
-        StepVerifier.create(publisher.publish(NOTICE)).expectErrorMatches(KafkaFriendshipNoticePublisherTest::brokerUnavailable).verify();
+        StepVerifier.create(publisher.publish(NOTICE)).expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == failure).verify();
     }
 }

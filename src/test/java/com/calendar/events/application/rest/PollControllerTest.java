@@ -17,9 +17,10 @@ import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.PollService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import com.calendar.events.exception.GlobalErrorHandler;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -108,10 +109,10 @@ class PollControllerTest {
     @Test
     void castBallot_shouldPassARefusalThrough() {
         when(jwt.getClaimAsString("businessId")).thenReturn("lea");
-        when(pollService.vote("e1", "lea", Map.of())).thenReturn(Mono.error(new EventException(EventErrorCode.POLL_CLOSED)));
+        when(pollService.vote("e1", "lea", Map.of())).thenReturn(Mono.error(new BusinessException(BusinessErrorCode.POLL_CLOSED)));
 
         StepVerifier.create(controller.castBallot("e1", new BallotRequest(Map.of()), jwt))
-                .expectErrorMatches(error -> error instanceof EventException e && e.getErrorCode() == EventErrorCode.POLL_CLOSED)
+                .expectErrorMatches(error -> error instanceof BusinessException e && e.getErrorCode() == BusinessErrorCode.POLL_CLOSED)
                 .verify();
     }
 
@@ -180,10 +181,10 @@ class PollControllerTest {
     @Test
     void streamPoll_shouldFailBeforeStreaming_whenTheCallerCannotSeeTheEvent() {
         when(jwt.getClaimAsString("businessId")).thenReturn("stranger");
-        when(pollService.watch("e1", "stranger")).thenReturn(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+        when(pollService.watch("e1", "stranger")).thenReturn(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)));
 
         StepVerifier.create(controller.streamPoll("e1", jwt))
-                .expectErrorMatches(error -> error instanceof EventException e && e.getErrorCode() == EventErrorCode.EVENT_NOT_FOUND)
+                .expectErrorMatches(error -> error instanceof BusinessException e && e.getErrorCode() == BusinessErrorCode.EVENT_NOT_FOUND)
                 .verify();
     }
 
@@ -195,7 +196,7 @@ class PollControllerTest {
         return WebTestClient.bindToController(controller, events)
                 .argumentResolvers(resolvers -> resolvers.addCustomResolver(
                         new AuthenticationPrincipalArgumentResolver(ReactiveAdapterRegistry.getSharedInstance())))
-                .controllerAdvice(new GlobalErrorHandler())
+                .controllerAdvice(new GlobalErrorHandler(new SimpleMeterRegistry()))
                 .apply(springSecurity())
                 .configureClient()
                 .build()
@@ -232,7 +233,7 @@ class PollControllerTest {
 
     @Test
     void streamPoll_shouldAnswer404OverHttp_whenTheCallerCannotSeeTheEvent() {
-        when(pollService.watch("e1", "stranger")).thenReturn(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+        when(pollService.watch("e1", "stranger")).thenReturn(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)));
 
         client("stranger").get().uri("/events/e1/poll/stream")
                 .accept(MediaType.TEXT_EVENT_STREAM)

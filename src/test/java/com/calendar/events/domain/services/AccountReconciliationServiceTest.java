@@ -6,8 +6,9 @@ import com.calendar.events.domain.models.ErasureReport;
 import com.calendar.events.domain.models.ReconciliationReport;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.ports.DeletedUsersSource;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -173,7 +174,7 @@ class AccountReconciliationServiceTest {
                 new DeletedUser("u1", LONG_AGO), new DeletedUser("u2", LONG_AGO))));
         when(markers.erasedAmong(List.of("u1", "u2"))).thenReturn(Mono.just(Set.of()));
         when(erasure.erase("u1", LONG_AGO))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
         when(erasure.erase("u2", LONG_AGO)).thenReturn(Mono.just(ErasureReport.NONE));
 
         StepVerifier.create(service.reconcile())
@@ -195,11 +196,11 @@ class AccountReconciliationServiceTest {
     @Test
     void reconcile_shouldFail_whenTheSourceCannotBeRead() {
         when(source.page(null, PAGE_SIZE))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.USERS_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.USERS_UNAVAILABLE)));
 
         StepVerifier.create(service.reconcile())
-                .expectErrorMatches(error -> error instanceof EventException technical
-                        && technical.getErrorCode() == EventErrorCode.USERS_UNAVAILABLE)
+                .expectErrorMatches(error -> error instanceof TechnicalException technical
+                        && technical.getErrorCode() == TechnicalErrorCode.USERS_UNAVAILABLE)
                 .verify();
 
         verifyNoInteractions(markers, erasure);
@@ -213,7 +214,7 @@ class AccountReconciliationServiceTest {
                 new DeletedUser("u1", LONG_AGO), new DeletedUser("u2", LONG_AGO))));
         when(source.page("c1", PAGE_SIZE)).thenReturn(Mono.defer(() -> {
             completedWhenTheNextPageWasRead.set(completedErasures.get());
-            return Mono.error(new EventException(EventErrorCode.USERS_UNAVAILABLE));
+            return Mono.error(new TechnicalException(TechnicalErrorCode.USERS_UNAVAILABLE));
         }));
         when(markers.erasedAmong(List.of("u1", "u2"))).thenReturn(Mono.just(Set.of()));
         // Asynchronous like a real erasure: a failed read that did not wait for it would cancel it.
@@ -222,8 +223,8 @@ class AccountReconciliationServiceTest {
                 .thenReturn(ErasureReport.NONE));
 
         StepVerifier.create(service.reconcile())
-                .expectErrorMatches(error -> error instanceof EventException technical
-                        && technical.getErrorCode() == EventErrorCode.USERS_UNAVAILABLE)
+                .expectErrorMatches(error -> error instanceof TechnicalException technical
+                        && technical.getErrorCode() == TechnicalErrorCode.USERS_UNAVAILABLE)
                 .verify(Duration.ofSeconds(5));
 
         assertThat(completedWhenTheNextPageWasRead).hasValue(2);
@@ -234,10 +235,10 @@ class AccountReconciliationServiceTest {
     void reconcile_shouldFail_whenTheMarkersCannotBeRead() {
         when(source.page(null, PAGE_SIZE)).thenReturn(Mono.just(page(null, new DeletedUser("u1", LONG_AGO))));
         when(markers.erasedAmong(anyCollection()))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
 
         StepVerifier.create(service.reconcile())
-                .expectError(EventException.class)
+                .expectError(TechnicalException.class)
                 .verify();
 
         verify(erasure, never()).erase(any(), any());

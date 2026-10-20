@@ -8,8 +8,8 @@ import com.calendar.events.domain.models.Ledger;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -74,7 +74,7 @@ public class ExpenseService {
                 .flatMap(current -> pictureService.store(Expense.newReceiptKey(eventId, current.id()), content,
                                 MediaProfile.RECEIPT)
                         .flatMap(stored -> expenseRepository.setReceipt(eventId, current.id(), stored.key(), requesterId)
-                                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EXPENSE_NOT_FOUND)))
+                                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EXPENSE_NOT_FOUND)))
                                 .onErrorResume(error -> pictureService.discard(stored.key()).then(Mono.error(error))))
                         .flatMap(updated -> pictureService.discard(current.receiptKey()).thenReturn(updated)));
     }
@@ -85,7 +85,7 @@ public class ExpenseService {
                 .flatMap(event -> requireEditable(event, eventId, expenseId, requesterId))
                 .filter(current -> current.receiptKey() != null)
                 .flatMap(current -> expenseRepository.setReceipt(eventId, current.id(), null, null)
-                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EXPENSE_NOT_FOUND)))
+                        .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EXPENSE_NOT_FOUND)))
                         .flatMap(cleared -> pictureService.discard(current.receiptKey())));
     }
 
@@ -100,7 +100,7 @@ public class ExpenseService {
         return requireMember(eventId, requesterId)
                 .flatMap(event -> {
                     if (!requesterId.equals(fromUserId) && !requesterId.equals(toUserId)) {
-                        return Mono.error(new EventException(EventErrorCode.EXPENSE_ACCESS_DENIED));
+                        return Mono.error(new BusinessException(BusinessErrorCode.EXPENSE_ACCESS_DENIED));
                     }
                     return requireParties(event, Expense.settlement(eventId, fromUserId, toUserId,
                             amountCents, requesterId, clock.instant()));
@@ -113,29 +113,29 @@ public class ExpenseService {
         return eventRepository.findById(eventId)
                 // A birthday is no outing: nothing is shared on it.
                 .filter(event -> event.involves(userId) && !event.isBirthday())
-                .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+                .switchIfEmpty(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)));
     }
 
     private Mono<Expense> requireAuthor(Event event, String eventId, String expenseId, String requesterId) {
         return expenseRepository.findByIdInEvent(eventId, expenseId)
-                .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EXPENSE_NOT_FOUND)))
+                .switchIfEmpty(Mono.error(new BusinessException(BusinessErrorCode.EXPENSE_NOT_FOUND)))
                 .flatMap(expense -> Objects.equals(expense.createdBy(), requesterId)
                         || Objects.equals(event.getOrganizerId(), requesterId)
                         ? Mono.just(expense)
-                        : Mono.error(new EventException(EventErrorCode.EXPENSE_ACCESS_DENIED)));
+                        : Mono.error(new BusinessException(BusinessErrorCode.EXPENSE_ACCESS_DENIED)));
     }
 
     private Mono<Expense> requireEditable(Event event, String eventId, String expenseId, String requesterId) {
         return requireAuthor(event, eventId, expenseId, requesterId)
                 .flatMap(expense -> expense.kind() == ExpenseKind.SETTLEMENT
-                        ? Mono.error(new EventException(EventErrorCode.EXPENSE_INVALID))
+                        ? Mono.error(new BusinessException(BusinessErrorCode.EXPENSE_INVALID))
                         : Mono.just(expense));
     }
 
     /** Whoever paid and whoever it was for must take part in the event now. */
     private static Expense requireMembers(Event event, Expense expense) {
         if (!expense.people().stream().allMatch(event::involves)) {
-            throw new EventException(EventErrorCode.EXPENSE_INVALID);
+            throw new BusinessException(BusinessErrorCode.EXPENSE_INVALID);
         }
         return expense;
     }
@@ -155,7 +155,7 @@ public class ExpenseService {
                         .collect(Collectors.toSet()))
                 .filter(parties -> parties.containsAll(outsiders))
                 .map(parties -> expense)
-                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EXPENSE_INVALID)));
+                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EXPENSE_INVALID)));
     }
 
     private Instant spentAt(ExpenseDraft draft) {

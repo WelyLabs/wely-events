@@ -2,8 +2,8 @@ package com.calendar.events.infrastructure.reconciliation;
 
 import com.calendar.events.domain.models.ReconciliationReport;
 import com.calendar.events.domain.services.AccountReconciliationService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -58,7 +58,7 @@ class DeletedUsersReconciliationLoopTest {
     @Test
     void passOnce_shouldRetryAfterTheRetryInterval_whenThePassFails() {
         when(reconciliation.reconcile())
-                .thenReturn(Mono.error(new EventException(EventErrorCode.USERS_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.USERS_UNAVAILABLE)));
 
         StepVerifier.create(loop(SHORT, INTERVAL, RETRY_INTERVAL).passOnce())
                 .expectNext(RETRY_INTERVAL)
@@ -135,7 +135,7 @@ class DeletedUsersReconciliationLoopTest {
     @Test
     void start_shouldPassAgainAfterTheRetryInterval_whenAPassFails() {
         when(reconciliation.reconcile())
-                .thenReturn(Mono.error(new EventException(EventErrorCode.USERS_UNAVAILABLE)))
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.USERS_UNAVAILABLE)))
                 .thenReturn(Mono.just(new ReconciliationReport(1, 0, 1)))
                 .thenReturn(Mono.just(ReconciliationReport.NONE));
         DeletedUsersReconciliationLoop loop = loop(SHORT, LONG, SHORT);

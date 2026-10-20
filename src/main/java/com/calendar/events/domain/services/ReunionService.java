@@ -7,8 +7,8 @@ import com.calendar.events.domain.models.ReunionCandidate;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.ReunionSnoozes;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -79,7 +79,7 @@ public class ReunionService {
     public Mono<Void> dismiss(String userId, String friendId) {
         return friendships.pairOf(userId, friendId)
                 .filter(Friendship::friends)
-                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.FRIEND_NOT_FOUND)))
+                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.FRIEND_NOT_FOUND)))
                 .flatMap(friendship -> snoozes.snooze(userId, friendId, clock.instant().plus(SNOOZE)));
     }
 

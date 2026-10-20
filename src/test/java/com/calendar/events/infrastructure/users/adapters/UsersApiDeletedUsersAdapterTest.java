@@ -4,8 +4,8 @@ import com.calendar.events.configuration.MediaApiClientConfig;
 import com.calendar.events.configuration.UsersApiClientConfig;
 import com.calendar.events.domain.models.DeletedUser;
 import com.calendar.events.domain.models.DeletedUsersPage;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.users.mappers.DeletedUsersMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
@@ -15,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mapstruct.factory.Mappers;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.test.StepVerifier;
 
 import java.io.IOException;
@@ -26,6 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -95,8 +97,8 @@ class UsersApiDeletedUsersAdapterTest {
     }
 
     private static boolean usersUnavailable(Throwable error) {
-        return error instanceof EventException technical
-                && technical.getErrorCode() == EventErrorCode.USERS_UNAVAILABLE;
+        return error instanceof TechnicalException technical
+                && technical.getErrorCode() == TechnicalErrorCode.USERS_UNAVAILABLE;
     }
 
     @Test
@@ -124,7 +126,8 @@ class UsersApiDeletedUsersAdapterTest {
     @Test
     void page_shouldFailWithoutCalling_whenTheSecretIsBlank() {
         StepVerifier.create(adapter(url, " ").page(null, 500))
-                .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
+                // Nothing failed underneath: the adapter refused on its own, so there is no cause.
+                .expectErrorMatches(error -> usersUnavailable(error) && error.getCause() == null)
                 .verify();
 
         assertThat(calls).hasValue(0);
@@ -156,7 +159,9 @@ class UsersApiDeletedUsersAdapterTest {
         status = 503;
 
         StepVerifier.create(adapter().page(null, 500))
-                .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
+                .expectErrorMatches(error -> usersUnavailable(error)
+                        && error.getCause() instanceof WebClientResponseException response
+                        && response.getStatusCode().value() == 503)
                 .verify();
     }
 
@@ -165,7 +170,7 @@ class UsersApiDeletedUsersAdapterTest {
         delayMillis = 2_000;
 
         StepVerifier.create(adapter(url, SECRET, SHORT_TIMEOUT).page(null, 500))
-                .expectErrorMatches(UsersApiDeletedUsersAdapterTest::usersUnavailable)
+                .expectErrorMatches(error -> usersUnavailable(error) && error.getCause() instanceof TimeoutException)
                 .verify(Duration.ofSeconds(5));
     }
 

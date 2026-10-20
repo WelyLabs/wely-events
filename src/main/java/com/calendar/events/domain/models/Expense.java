@@ -1,7 +1,7 @@
 package com.calendar.events.domain.models;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 
 import java.time.Instant;
 import java.util.Comparator;
@@ -35,7 +35,7 @@ public record Expense(String id, String eventId, String title, long amountCents,
                 && !shares.isEmpty() && shares.size() <= MAX_SHARES
                 && sharesAreSound(shares, split, amountCents);
         if (!valid) {
-            throw new EventException(EventErrorCode.EXPENSE_INVALID);
+            throw new BusinessException(BusinessErrorCode.EXPENSE_INVALID);
         }
         title = title.strip();
         currency = currency == null ? CURRENCY : currency;
@@ -46,7 +46,7 @@ public record Expense(String id, String eventId, String title, long amountCents,
     public static Expense settlement(String eventId, String fromUserId, String toUserId, long amountCents,
                                      String recordedBy, Instant at) {
         if (Objects.equals(fromUserId, toUserId)) {
-            throw new EventException(EventErrorCode.EXPENSE_INVALID);
+            throw new BusinessException(BusinessErrorCode.EXPENSE_INVALID);
         }
         return new Expense(null, eventId, SETTLEMENT_TITLE, amountCents, CURRENCY, fromUserId, recordedBy,
                 ExpenseKind.SETTLEMENT, SplitMode.EXACT, List.of(new Share(toUserId, amountCents)), at, null, null, null);

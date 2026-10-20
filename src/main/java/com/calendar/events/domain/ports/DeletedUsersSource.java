@@ -3,7 +3,7 @@ package com.calendar.events.domain.ports;
 import com.calendar.events.domain.models.DeletedUsersPage;
 import reactor.core.publisher.Mono;
 
-/** The authority on deleted accounts; a source that cannot be read fails with USERS_UNAVAILABLE. */
+/** The authority on deleted accounts; a source that cannot be read fails with the technical USERS_UNAVAILABLE. */
 public interface DeletedUsersSource {
 
     /** One page of tombstones after the {@code after} cursor, or the first page when it is null. */

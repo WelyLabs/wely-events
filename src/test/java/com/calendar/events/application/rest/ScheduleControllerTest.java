@@ -14,8 +14,8 @@ import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.ScheduleService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,8 +62,8 @@ class ScheduleControllerTest {
                 new FreeSlotRestMapperImpl());
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
     }
 
     @Test
@@ -84,7 +84,7 @@ class ScheduleControllerTest {
         when(jwt.getClaimAsString("businessId")).thenReturn("me");
 
         StepVerifier.create(controller.checkConflicts(new ConflictCheckRequest(END, START, null), jwt))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.SCHEDULE_INVALID))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.SCHEDULE_INVALID))
                 .verify();
         verify(scheduleService, never()).conflictsWith(any(), any(), any());
     }
@@ -128,7 +128,7 @@ class ScheduleControllerTest {
         when(jwt.getClaimAsString("businessId")).thenReturn("me");
 
         StepVerifier.create(controller.reschedule("bowling", new ScheduleRequest(START, START), jwt))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.SCHEDULE_INVALID))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.SCHEDULE_INVALID))
                 .verify();
         verify(scheduleService, never()).reschedule(any(), any(), any());
     }

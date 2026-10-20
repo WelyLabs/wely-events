@@ -22,8 +22,8 @@ import com.calendar.events.domain.ports.EventDeletionOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -67,7 +67,7 @@ public class EventService {
     public Mono<Event> getEventById(String id, String viewerId) {
         return eventRepository.findShownTo(id, viewerId)
                 .flatMap(event -> requireVisible(event, viewerId))
-                .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+                .switchIfEmpty(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)));
     }
 
     /** Who takes part in an event the viewer may see. */
@@ -91,7 +91,7 @@ public class EventService {
      */
     public Mono<Event> createEvent(Event event, List<PollSlot> candidateSlots) {
         if (event.getKind() != null && event.getKind() != EventKind.STANDARD) {
-            return Mono.error(new EventException(EventErrorCode.EVENT_KIND_INVALID));
+            return Mono.error(new BusinessException(BusinessErrorCode.EVENT_KIND_INVALID));
         }
         event.setKind(EventKind.STANDARD);
         event.setHonoreeId(null);
@@ -123,10 +123,10 @@ public class EventService {
     /** A new event as it is stored: no cover, the organizer among the participants, the poll opened, all-day checked. */
     Mono<Event> prepare(Event event, List<PollSlot> candidateSlots) {
         if (!normalizeAllDay(event, candidateSlots)) {
-            return Mono.error(new EventException(EventErrorCode.ALL_DAY_INVALID));
+            return Mono.error(new BusinessException(BusinessErrorCode.ALL_DAY_INVALID));
         }
         if (candidateSlots == null && isInPast(event)) {
-            return Mono.error(new EventException(EventErrorCode.EVENT_IN_PAST));
+            return Mono.error(new BusinessException(BusinessErrorCode.EVENT_IN_PAST));
         }
         return Mono.fromCallable(() -> {
             event.setImage(null);
@@ -192,12 +192,12 @@ public class EventService {
      */
     public Mono<Void> deleteEvent(String id, String requesterId) {
         return eventRepository.findShownTo(id, requesterId)
-                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                 .flatMap(event -> mayDelete(event, requesterId)
                         .filter(Boolean::booleanValue)
-                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_ACCESS_DENIED)))
+                        .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_ACCESS_DENIED)))
                         .then(Mono.defer(() -> eventRepository.deleteByOrganizer(id, event.getOrganizerId())))
-                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                        .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                         .flatMap(this::afterDeletion));
     }
 
@@ -222,7 +222,7 @@ public class EventService {
             }
             if (!userId.equals(event.getOrganizerId())) {
                 return eventRepository.removeParticipant(eventId, userId)
-                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                        .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                         // Made organizer meanwhile: the write skipped them, decide again on the fresh state.
                         .flatMap(updated -> userId.equals(updated.getOrganizerId())
                                 ? leave(eventId, userId, newOrganizerId, deleteIfLast)
@@ -238,32 +238,32 @@ public class EventService {
     private Mono<LeaveOutcome> handOver(Event event, String newOrganizerId, Set<String> former) {
         String organizerId = event.getOrganizerId();
         if (newOrganizerId == null || newOrganizerId.isBlank()) {
-            return Mono.error(new EventException(EventErrorCode.NEW_ORGANIZER_REQUIRED));
+            return Mono.error(new BusinessException(BusinessErrorCode.NEW_ORGANIZER_REQUIRED));
         }
         if (newOrganizerId.equals(organizerId) || !event.getParticipantIds().contains(newOrganizerId)
                 || former.contains(newOrganizerId)) {
-            return Mono.error(new EventException(EventErrorCode.NEW_ORGANIZER_INVALID));
+            return Mono.error(new BusinessException(BusinessErrorCode.NEW_ORGANIZER_INVALID));
         }
         return eventRepository.handOver(event.getId(), organizerId, newOrganizerId)
                 .map(LeaveOutcome::left)
                 // Nothing matched: the successor left, or the event changed hands, since the read.
                 .switchIfEmpty(Mono.defer(() -> eventRepository.findById(event.getId())
-                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
-                        .flatMap(current -> Mono.<LeaveOutcome>error(new EventException(current.getParticipantIds().contains(newOrganizerId)
-                                ? EventErrorCode.NEW_ORGANIZER_REQUIRED
-                                : EventErrorCode.NEW_ORGANIZER_INVALID)))));
+                        .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
+                        .flatMap(current -> Mono.<LeaveOutcome>error(new BusinessException(current.getParticipantIds().contains(newOrganizerId)
+                                ? BusinessErrorCode.NEW_ORGANIZER_REQUIRED
+                                : BusinessErrorCode.NEW_ORGANIZER_INVALID)))));
     }
 
     private Mono<LeaveOutcome> deleteAsLastMember(Event event, boolean deleteIfLast, Set<String> former) {
         if (!deleteIfLast) {
-            return Mono.error(new EventException(EventErrorCode.LAST_MEMBER));
+            return Mono.error(new BusinessException(BusinessErrorCode.LAST_MEMBER));
         }
         return eventRepository.deleteIfAlone(event.getId(), event.getOrganizerId(), former)
                 .flatMap(deleted -> afterDeletion(deleted).thenReturn(LeaveOutcome.eventDeleted()))
                 // Nothing deleted: someone joined since the read, unless the event is gone already.
                 .switchIfEmpty(Mono.defer(() -> eventRepository.findById(event.getId())
-                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
-                        .flatMap(current -> Mono.<LeaveOutcome>error(new EventException(EventErrorCode.NEW_ORGANIZER_REQUIRED)))));
+                        .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
+                        .flatMap(current -> Mono.<LeaveOutcome>error(new BusinessException(BusinessErrorCode.NEW_ORGANIZER_REQUIRED)))));
     }
 
     /** Everything that goes with a deleted event: its tombstone, then its expenses, then its pictures best effort. */
@@ -302,7 +302,7 @@ public class EventService {
         return requireOrganizer(id, requesterId)
                 .flatMap(event -> pictureService.store(EventCover.newKey(event.getId()), content, MediaProfile.COVER)
                         .flatMap(stored -> eventRepository.setImage(event.getId(), requesterId, stored.key())
-                                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                                 .onErrorResume(error -> pictureService.discard(stored.key()).then(Mono.error(error))))
                         .flatMap(updated -> pictureService.discard(EventCover.of(event).storedKey()).thenReturn(updated)));
     }
@@ -317,7 +317,7 @@ public class EventService {
         return requireOrganizer(id, requesterId)
                 .flatMap(event -> {
                     if (!event.isSurprise() && (details.location() == null || details.location().isBlank())) {
-                        return Mono.error(new EventException(EventErrorCode.LOCATION_REQUIRED));
+                        return Mono.error(new BusinessException(BusinessErrorCode.LOCATION_REQUIRED));
                     }
                     Visibility visibility = event.isCommunityEvent() ? Visibility.COMMUNITY
                             : event.isSurprise() ? Visibility.FRIENDS
@@ -326,7 +326,7 @@ public class EventService {
                             : details.visibility();
                     boolean renamed = !Objects.equals(details.title(), event.getTitle());
                     return eventRepository.updateDetails(event.getId(), requesterId, details.withVisibility(visibility), renamed)
-                            .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+                            .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)));
                 });
     }
 
@@ -334,7 +334,7 @@ public class EventService {
     public Mono<Void> removeCover(String id, String requesterId) {
         return requireOrganizer(id, requesterId)
                 .flatMap(event -> eventRepository.setImage(event.getId(), requesterId, null)
-                        .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                        .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                         .flatMap(cleared -> pictureService.discard(EventCover.of(event).storedKey())));
     }
 
@@ -348,7 +348,7 @@ public class EventService {
      */
     public Mono<Event> toggleSubscription(String id, String userId) {
         return eventRepository.findShownTo(id, userId)
-                .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                .switchIfEmpty(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                 .flatMap(event -> event.isCommunityEvent()
                         // In a community, joining is answering yes, and leaving answering no.
                         ? respond(id, userId, event.getParticipantIds().contains(userId) ? PollAnswer.NO : PollAnswer.YES)
@@ -356,18 +356,18 @@ public class EventService {
                         ? unsubscribe(event, userId)
                         // Joining needs to see the event first: no subscribing by guessed id.
                         : requireVisible(event, userId)
-                                .switchIfEmpty(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                                .switchIfEmpty(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                                 .flatMap(visible -> eventRepository.addParticipant(id, userId)));
     }
 
     private Mono<Event> unsubscribe(Event event, String userId) {
         if (userId.equals(event.getOrganizerId())) {
-            return Mono.error(new EventException(EventErrorCode.NEW_ORGANIZER_REQUIRED));
+            return Mono.error(new BusinessException(BusinessErrorCode.NEW_ORGANIZER_REQUIRED));
         }
         return eventRepository.removeParticipant(event.getId(), userId)
                 // Made organizer meanwhile: the write skipped them.
                 .flatMap(updated -> userId.equals(updated.getOrganizerId())
-                        ? Mono.error(new EventException(EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                        ? Mono.error(new BusinessException(BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
                         : Mono.just(updated));
     }
 
@@ -379,15 +379,15 @@ public class EventService {
     public Mono<Event> respond(String eventId, String userId, PollAnswer answer) {
         return getEventById(eventId, userId).flatMap(event -> {
             if (!event.isCommunityEvent()) {
-                return Mono.error(new EventException(EventErrorCode.NOT_A_COMMUNITY_EVENT));
+                return Mono.error(new BusinessException(BusinessErrorCode.NOT_A_COMMUNITY_EVENT));
             }
             if (userId.equals(event.getOrganizerId())) {
                 return answer == PollAnswer.YES
                         ? Mono.just(event)
-                        : Mono.error(new EventException(EventErrorCode.NEW_ORGANIZER_REQUIRED));
+                        : Mono.error(new BusinessException(BusinessErrorCode.NEW_ORGANIZER_REQUIRED));
             }
             return eventRepository.respond(eventId, userId, answer)
-                    .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+                    .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)));
         });
     }
 
@@ -399,7 +399,7 @@ public class EventService {
 
     private Mono<CommunityRole> requireMember(String communityId, String userId) {
         return communityDirectory.roleOf(communityId, userId)
-                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.COMMUNITY_MEMBERS_ONLY)));
+                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.COMMUNITY_MEMBERS_ONLY)));
     }
 
     public Flux<Event> getSubscribedEvents(String userId) {
@@ -428,7 +428,7 @@ public class EventService {
         return getEventById(id, requesterId)
                 .flatMap(event -> Objects.equals(event.getOrganizerId(), requesterId)
                         ? Mono.just(event)
-                        : Mono.error(new EventException(EventErrorCode.EVENT_ACCESS_DENIED)));
+                        : Mono.error(new BusinessException(BusinessErrorCode.EVENT_ACCESS_DENIED)));
     }
 
     /**

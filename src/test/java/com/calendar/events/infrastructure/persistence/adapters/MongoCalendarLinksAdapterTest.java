@@ -1,8 +1,8 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.CalendarLink;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.persistence.entities.CalendarLinkEntity;
 import com.calendar.events.infrastructure.persistence.mappers.CalendarLinkPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveCalendarLinkMongoRepository;
@@ -40,7 +40,7 @@ class MongoCalendarLinksAdapterTest {
     }
 
     private static boolean storeUnavailable(Throwable error) {
-        return error instanceof EventException e && e.getErrorCode() == EventErrorCode.STORE_UNAVAILABLE;
+        return error instanceof TechnicalException e && e.getErrorCode() == TechnicalErrorCode.STORE_UNAVAILABLE;
     }
 
     @Test
@@ -54,11 +54,12 @@ class MongoCalendarLinksAdapterTest {
 
     @Test
     void save_shouldReportTheStoreUnavailable() {
+        DataAccessResourceFailureException down = new DataAccessResourceFailureException("down");
         when(mongoRepository.insert(any(CalendarLinkEntity.class)))
-                .thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
+                .thenReturn(Mono.error(down));
 
         StepVerifier.create(adapter.save(LINK))
-                .expectErrorMatches(MongoCalendarLinksAdapterTest::storeUnavailable)
+                .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
                 .verify();
     }
 
@@ -81,10 +82,11 @@ class MongoCalendarLinksAdapterTest {
 
     @Test
     void findByToken_shouldReportTheStoreUnavailable() {
-        when(mongoRepository.findById("tok")).thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
+        DataAccessResourceFailureException down = new DataAccessResourceFailureException("down");
+        when(mongoRepository.findById("tok")).thenReturn(Mono.error(down));
 
         StepVerifier.create(adapter.findByToken("tok"))
-                .expectErrorMatches(MongoCalendarLinksAdapterTest::storeUnavailable)
+                .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
                 .verify();
     }
 }

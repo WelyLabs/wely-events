@@ -1,7 +1,7 @@
 package com.calendar.events.domain.models;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -32,7 +32,7 @@ class GeoBoxTest {
     })
     void constructor_shouldRejectAnAreaMongoCannotSearch(double south, double west, double north, double east, String why) {
         assertThatThrownBy(() -> new GeoBox(south, west, north, east))
-                .isInstanceOfSatisfying(EventException.class,
-                        error -> assertThat(error.getErrorCode()).isEqualTo(EventErrorCode.INVALID_MAP_AREA));
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getErrorCode()).isEqualTo(BusinessErrorCode.INVALID_MAP_AREA));
     }
 }

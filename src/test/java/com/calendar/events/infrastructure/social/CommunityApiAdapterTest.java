@@ -2,8 +2,8 @@ package com.calendar.events.infrastructure.social;
 
 import com.calendar.events.configuration.SocialClientConfig;
 import com.calendar.events.domain.models.CommunityRole;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.test.StepVerifier;
 
 import java.io.IOException;
@@ -94,16 +95,19 @@ class CommunityApiAdapterTest {
 
         StepVerifier.create(adapter.roleOf("c1", "me")
                         .contextWrite(ReactiveSecurityContextHolder.withAuthentication(token("t"))))
-                .expectErrorMatches(e -> e instanceof EventException ex
-                        && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
+                .expectErrorMatches(e -> e instanceof TechnicalException ex
+                        && ex.getErrorCode() == TechnicalErrorCode.SOCIAL_UNAVAILABLE
+                        && ex.getCause() instanceof WebClientResponseException response
+                        && response.getStatusCode().value() == 502)
                 .verify();
     }
 
     @Test
     void roleOf_shouldRefuse_whenThereIsNoTokenToRelay() {
         StepVerifier.create(adapter.roleOf("c1", "me"))
-                .expectErrorMatches(e -> e instanceof EventException ex
-                        && ex.getErrorCode() == EventErrorCode.SOCIAL_UNAVAILABLE)
+                .expectErrorMatches(e -> e instanceof TechnicalException ex
+                        && ex.getErrorCode() == TechnicalErrorCode.SOCIAL_UNAVAILABLE
+                        && ex.getCause() instanceof IllegalStateException)
                 .verify();
 
         assertThat(requestedUri.get()).isNull();

@@ -10,8 +10,8 @@ import com.calendar.events.domain.models.ViewerFriends;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.FriendOverviewService;
 import com.calendar.events.domain.services.PictureService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -90,10 +90,10 @@ class FriendOverviewControllerTest {
     void getFriendOverview_shouldPassOnTheRefusal_whenNotFriends() {
         when(jwt.getClaimAsString("businessId")).thenReturn("alice");
         when(service.overviewOf("alice", "carol"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.NOT_A_FRIEND)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.NOT_A_FRIEND)));
 
         StepVerifier.create(controller.getFriendOverview("carol", jwt))
-                .expectErrorMatches(e -> e instanceof EventException ex && ex.getErrorCode() == EventErrorCode.NOT_A_FRIEND)
+                .expectErrorMatches(e -> e instanceof BusinessException ex && ex.getErrorCode() == BusinessErrorCode.NOT_A_FRIEND)
                 .verify();
         verifyNoInteractions(mediaStore, mapper);
     }

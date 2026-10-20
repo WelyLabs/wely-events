@@ -6,8 +6,8 @@ import com.calendar.events.domain.models.Poll;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.ports.CalendarLinks;
 import com.calendar.events.domain.ports.EventRepository;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,8 +57,8 @@ class CalendarExportServiceTest {
                 .startDate(START).endDate(START.plusSeconds(3 * 3600)).location("Lyon").description("").build();
     }
 
-    private static boolean failsWith(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean failsWith(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
     }
 
     @Test
@@ -106,7 +106,7 @@ class CalendarExportServiceTest {
         when(eventService.getEventById("e1", "me")).thenReturn(Mono.just(polling));
 
         StepVerifier.create(service.issueLink("e1", "me", null))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.DATE_NOT_FIXED))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.DATE_NOT_FIXED))
                 .verify();
 
         verify(calendarLinks, never()).save(any());
@@ -115,10 +115,10 @@ class CalendarExportServiceTest {
     @Test
     void issueLink_shouldPassOnTheVisibilityRefusal() {
         when(eventService.getEventById("e1", "stranger"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)));
 
         StepVerifier.create(service.issueLink("e1", "stranger", null))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
 
         verify(calendarLinks, never()).save(any());
@@ -143,7 +143,7 @@ class CalendarExportServiceTest {
         when(calendarLinks.findByToken("t")).thenReturn(Mono.just(new CalendarLink("t", "e1", null, NOW)));
 
         StepVerifier.create(service.icsFor("t"))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.CALENDAR_LINK_EXPIRED))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.CALENDAR_LINK_EXPIRED))
                 .verify();
 
         verify(eventRepository, never()).findById(any());
@@ -154,7 +154,7 @@ class CalendarExportServiceTest {
         when(calendarLinks.findByToken("nope")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.icsFor("nope"))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.CALENDAR_LINK_EXPIRED))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.CALENDAR_LINK_EXPIRED))
                 .verify();
     }
 
@@ -164,7 +164,7 @@ class CalendarExportServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.icsFor("t"))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.CALENDAR_LINK_EXPIRED))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.CALENDAR_LINK_EXPIRED))
                 .verify();
     }
 

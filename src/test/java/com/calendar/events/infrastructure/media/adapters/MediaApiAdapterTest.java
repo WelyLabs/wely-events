@@ -3,14 +3,17 @@ package com.calendar.events.infrastructure.media.adapters;
 import com.calendar.events.configuration.MediaApiClientConfig;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.models.StoredMedia;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.media.mappers.MediaMapper;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import reactor.test.StepVerifier;
 
 import java.io.IOException;
@@ -79,8 +82,12 @@ class MediaApiAdapterTest {
         this.body = "{\"type\":\"about:blank\",\"status\":" + status + ",\"code\":\"" + code + "\"}";
     }
 
-    private static boolean failsWith(Throwable error, EventErrorCode code) {
-        return error instanceof EventException exception && exception.getErrorCode() == code;
+    private static boolean failsWith(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException exception && exception.getErrorCode() == code;
+    }
+
+    private static boolean failsWith(Throwable error, TechnicalErrorCode code) {
+        return error instanceof TechnicalException exception && exception.getErrorCode() == code;
     }
 
     @Test
@@ -107,7 +114,7 @@ class MediaApiAdapterTest {
         answers(400, "MED-BUS-001");
 
         StepVerifier.create(adapter.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.COVER_INVALID))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
                 .verify();
     }
 
@@ -116,7 +123,7 @@ class MediaApiAdapterTest {
         answers(400, "MED-BUS-001");
 
         StepVerifier.create(adapter.store("events/1/receipts/x1-a.jpg", new byte[]{1}, MediaProfile.RECEIPT))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.RECEIPT_INVALID))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.RECEIPT_INVALID))
                 .verify();
     }
 
@@ -125,7 +132,7 @@ class MediaApiAdapterTest {
         answers(413, "MED-BUS-002");
 
         StepVerifier.create(adapter.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.MEDIA_TOO_LARGE))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.MEDIA_TOO_LARGE))
                 .verify();
     }
 
@@ -134,8 +141,10 @@ class MediaApiAdapterTest {
         for (Map.Entry<Integer, String> refusal : Map.of(403, "MED-BUS-003", 401, "MED-REQ-001", 502, "MED-TEC-001").entrySet()) {
             answers(refusal.getKey(), refusal.getValue());
 
+            // wely-media answered: its refusal is the whole story, there is no exception underneath.
             StepVerifier.create(adapter.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
-                    .expectErrorMatches(error -> failsWith(error, EventErrorCode.MEDIA_UNAVAILABLE))
+                    .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE)
+                            && error.getCause() == null)
                     .verify();
         }
     }
@@ -147,7 +156,7 @@ class MediaApiAdapterTest {
         body = "<html>oops</html>";
 
         StepVerifier.create(adapter.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.MEDIA_UNAVAILABLE))
+                .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE))
                 .verify();
     }
 
@@ -157,7 +166,8 @@ class MediaApiAdapterTest {
         MediaApiAdapter unreachable = adapterFor("http://127.0.0.1:" + server.getAddress().getPort());
 
         StepVerifier.create(unreachable.store("events/1/cover-a.jpg", new byte[]{1}, MediaProfile.COVER))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.MEDIA_UNAVAILABLE))
+                .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE)
+                        && error.getCause() instanceof WebClientRequestException)
                 .verify();
     }
 
@@ -178,7 +188,7 @@ class MediaApiAdapterTest {
         answers(502, "MED-TEC-001");
 
         StepVerifier.create(adapter.delete("events/1/cover-a.jpg"))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.MEDIA_UNAVAILABLE))
+                .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE))
                 .verify();
     }
 
@@ -209,14 +219,15 @@ class MediaApiAdapterTest {
         answers(401, "MED-REQ-001");
 
         StepVerifier.create(adapter.urls(List.of("events/1/cover-a.jpg")))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.MEDIA_UNAVAILABLE))
+                .expectErrorMatches(error -> failsWith(error, TechnicalErrorCode.MEDIA_UNAVAILABLE))
                 .verify();
     }
 
     @Test
-    void errorCodeOf_shouldOnlyBlameTheImage_whenAnImageWasSent() {
-        assertThat(MediaApiAdapter.errorCodeOf("MED-BUS-001", null)).isEqualTo(EventErrorCode.MEDIA_UNAVAILABLE);
-        assertThat(MediaApiAdapter.errorCodeOf(null, MediaProfile.COVER)).isEqualTo(EventErrorCode.MEDIA_UNAVAILABLE);
-        assertThat(MediaApiAdapter.errorCodeOf("MED-BUS-001", MediaProfile.RECEIPT)).isEqualTo(EventErrorCode.RECEIPT_INVALID);
+    void refusalOf_shouldOnlyBlameTheImage_whenAnImageWasSent() {
+        assertThat(MediaApiAdapter.refusalOf("MED-BUS-001", null)).isEmpty();
+        assertThat(MediaApiAdapter.refusalOf(null, MediaProfile.COVER)).isEmpty();
+        assertThat(MediaApiAdapter.refusalOf("MED-BUS-001", MediaProfile.RECEIPT)).contains(BusinessErrorCode.RECEIPT_INVALID);
+        assertThat(MediaApiAdapter.refusalOf("MED-BUS-002", MediaProfile.COVER)).contains(BusinessErrorCode.MEDIA_TOO_LARGE);
     }
 }

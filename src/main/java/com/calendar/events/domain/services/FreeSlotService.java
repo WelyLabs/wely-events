@@ -4,8 +4,8 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -40,7 +40,7 @@ public class FreeSlotService {
     public Flux<TimeRange> findCommonFreeRanges(String requesterId, Set<String> friendIds,
                                                 TimeRange window, Duration duration) {
         if (!isValidSearch(requesterId, friendIds, window, duration)) {
-            return Flux.error(new EventException(EventErrorCode.INVALID_SLOT_SEARCH));
+            return Flux.error(new BusinessException(BusinessErrorCode.INVALID_SLOT_SEARCH));
         }
 
         Set<String> everyone = new HashSet<>(friendIds);
@@ -51,7 +51,7 @@ public class FreeSlotService {
                 .defaultIfEmpty(Set.of())
                 .flatMap(friends -> friends.containsAll(friendIds)
                         ? Mono.just(friends)
-                        : Mono.error(new EventException(EventErrorCode.NOT_A_FRIEND)))
+                        : Mono.error(new BusinessException(BusinessErrorCode.NOT_A_FRIEND)))
                 // Deferred: passed directly, findOccupying would be called while the chain is
                 // assembled, before the friendship check had run.
                 .thenMany(Flux.defer(() -> eventRepository.findOccupying(everyone, window.start(), window.end(), requesterId)))

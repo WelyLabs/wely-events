@@ -5,8 +5,8 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -129,12 +129,12 @@ class FriendshipMemoriesServiceTest {
         when(friendships.pairOf(ME, "former")).thenReturn(Mono.just(new Friendship(ME, "former", false, null, null, 2)));
 
         StepVerifier.create(service.memoriesOf(ME, "stranger"))
-                .expectErrorMatches(error -> error instanceof EventException e
-                        && e.getErrorCode() == EventErrorCode.FRIEND_NOT_FOUND)
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
                 .verify();
         StepVerifier.create(service.memoriesOf(ME, "former"))
-                .expectErrorMatches(error -> error instanceof EventException e
-                        && e.getErrorCode() == EventErrorCode.FRIEND_NOT_FOUND)
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
                 .verify();
         verify(eventRepository, never()).findSharedOutings(any(), any(), any());
     }

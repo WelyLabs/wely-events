@@ -13,8 +13,8 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -80,8 +80,8 @@ class BirthdayServiceTest {
         return BirthdayService.birthdayEvent(userId, name, MonthDay.of(month, day));
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
     }
 
     // --- recordBirthday ----------------------------------------------------------------------------
@@ -206,11 +206,11 @@ class BirthdayServiceTest {
     @Test
     void birthdaysFor_shouldRefuseARangeBackwardsOrBeyond400Days() {
         StepVerifier.create(service.birthdaysFor("me", TO, FROM))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
         StepVerifier.create(service.birthdaysFor("me", FROM, FROM.plus(java.time.Duration.ofDays(401))))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
         StepVerifier.create(service.birthdaysFor("me", null, TO))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_BIRTHDAY_RANGE)).verify();
         verify(socialGraph, never()).friendsOf(anyString());
     }
 

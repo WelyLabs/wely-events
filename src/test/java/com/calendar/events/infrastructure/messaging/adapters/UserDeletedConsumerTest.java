@@ -2,8 +2,8 @@ package com.calendar.events.infrastructure.messaging.adapters;
 
 import com.calendar.events.domain.models.ErasureReport;
 import com.calendar.events.domain.services.AccountErasureService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -113,7 +113,7 @@ class UserDeletedConsumerTest {
 
     @Test
     void userDeleted_shouldRetryAFailedErasure_thenSucceed() {
-        EventException down = new EventException(EventErrorCode.STORE_UNAVAILABLE);
+        TechnicalException down = new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE);
         when(erasure.erase(USER, DELETED_AT)).thenReturn(Mono.error(down), Mono.error(down), Mono.just(ErasureReport.NONE));
 
         StepVerifier.withVirtualTime(() -> consume(deletion(USER)))
@@ -124,7 +124,7 @@ class UserDeletedConsumerTest {
 
     @Test
     void userDeleted_shouldLogAndGoOn_whenErasureStillFailsAfterItsRetries() {
-        when(erasure.erase(USER, DELETED_AT)).thenReturn(Mono.error(new EventException(EventErrorCode.ERASURE_INCOMPLETE)));
+        when(erasure.erase(USER, DELETED_AT)).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.ERASURE_INCOMPLETE)));
         when(erasure.erase(OTHER, DELETED_AT)).thenReturn(Mono.just(ErasureReport.NONE));
 
         StepVerifier.withVirtualTime(() -> consume(deletion(USER), deletion(OTHER)))

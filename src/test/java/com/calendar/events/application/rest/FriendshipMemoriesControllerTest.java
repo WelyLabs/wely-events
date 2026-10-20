@@ -8,8 +8,8 @@ import com.calendar.events.domain.models.FriendshipMemories;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.FriendshipMemoriesService;
 import com.calendar.events.domain.services.PictureService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -100,11 +100,11 @@ class FriendshipMemoriesControllerTest {
     @Test
     void getMemories_shouldPassANotFoundOn() {
         when(memoriesService.memoriesOf("me", "stranger"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.FRIEND_NOT_FOUND)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.FRIEND_NOT_FOUND)));
 
         StepVerifier.create(controller.getMemories("stranger", jwt))
-                .expectErrorMatches(error -> error instanceof EventException e
-                        && e.getErrorCode() == EventErrorCode.FRIEND_NOT_FOUND)
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
                 .verify();
     }
 }

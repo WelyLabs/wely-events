@@ -1,7 +1,7 @@
 package com.calendar.events.infrastructure.messaging.relay;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.messaging.adapters.KafkaEventDateFixedPublisher;
 import com.calendar.events.infrastructure.messaging.mappers.EventDateFixedMapper;
 import com.calendar.events.infrastructure.messaging.models.EventDateFixedDTO;
@@ -80,7 +80,7 @@ class EventDateFixedRelayTest {
         EventDateFixedDTO failingDto = pending(failing);
         EventDateFixedDTO fineDto = pending(fine);
         when(outbox.findPending(10)).thenReturn(Flux.just(failing, fine));
-        when(publisher.publish(failingDto)).thenReturn(Mono.error(new EventException(EventErrorCode.BROKER_UNAVAILABLE)));
+        when(publisher.publish(failingDto)).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.BROKER_UNAVAILABLE)));
         when(publisher.publish(fineDto)).thenReturn(Mono.empty());
         when(outbox.markPublished("e2", null)).thenReturn(Mono.just(true));
 

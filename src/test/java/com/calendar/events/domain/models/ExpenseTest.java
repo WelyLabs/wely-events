@@ -1,7 +1,7 @@
 package com.calendar.events.domain.models;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -23,8 +23,8 @@ class ExpenseTest {
 
     private static void assertInvalid(Runnable build) {
         assertThatThrownBy(build::run)
-                .isInstanceOfSatisfying(EventException.class,
-                        error -> assertThat(error.getErrorCode()).isEqualTo(EventErrorCode.EXPENSE_INVALID));
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> assertThat(error.getErrorCode()).isEqualTo(BusinessErrorCode.EXPENSE_INVALID));
     }
 
     @Test

@@ -1,5 +1,11 @@
 package com.calendar.events.configuration;
 
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCode;
+import io.swagger.v3.oas.models.Operation;
+import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.responses.ApiResponses;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -83,5 +89,55 @@ class OpenApiConfigTest {
         assertThat(body).isNotNull();
         assertThat(new String(body, java.nio.charset.StandardCharsets.UTF_8))
                 .contains("\"/events-service/");
+    }
+    @Test
+    @DisplayName("the error body is documented once, as the Problem schema, with every code this service answers")
+    void problemResponses_shouldRegisterTheProblemSchema() {
+        client().get().uri("/v3/api-docs")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.components.schemas.Problem.properties.code.enum").value(codes -> assertThat(
+                        (java.util.List<Object>) codes).contains(BusinessErrorCode.EVENT_NOT_FOUND.getCode(),
+                        TechnicalErrorCode.MEDIA_UNAVAILABLE.getCode(), GlobalErrorHandler.UNEXPECTED_CODE))
+                .jsonPath("$.components.schemas.Problem.properties.requestId").exists()
+                .jsonPath("$.components.schemas.Problem.properties.errors").exists();
+    }
+
+    @Test
+    @DisplayName("every operation answers its errors as application/problem+json")
+    void problemResponses_shouldAddProblemResponsesToOperations() {
+        String feed = "$.paths['/events-service/events/me/feed'].get.responses";
+        client().get().uri("/v3/api-docs")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath(feed + "['4XX'].content['application/problem+json'].schema['$ref']")
+                .isEqualTo("#/components/schemas/Problem")
+                .jsonPath(feed + "['5XX'].content['application/problem+json'].schema['$ref']")
+                .isEqualTo("#/components/schemas/Problem");
+    }
+
+    @Test
+    @DisplayName("a response an operation declares by hand is kept, not overwritten")
+    void addProblemResponses_shouldKeepADeclaredResponse() {
+        ApiResponse declared = new ApiResponse().description("hand-written");
+        Operation operation = new Operation().responses(new ApiResponses().addApiResponse(OpenApiConfig.CLIENT_ERRORS, declared));
+
+        OpenApiConfig.addProblemResponses(operation);
+
+        assertThat(operation.getResponses().get(OpenApiConfig.CLIENT_ERRORS)).isSameAs(declared);
+        assertThat(operation.getResponses().get(OpenApiConfig.SERVER_ERRORS).getContent())
+                .containsKey(OpenApiConfig.PROBLEM_JSON);
+    }
+
+    @Test
+    @DisplayName("the code list is read from the enums and the handler, without duplicates")
+    void errorCodes_shouldListEveryCodeOnce() {
+        assertThat(OpenApiConfig.errorCodes())
+                .hasSize(BusinessErrorCode.values().length + TechnicalErrorCode.values().length
+                        + GlobalErrorHandler.LITERAL_CODES.size())
+                .doesNotHaveDuplicates()
+                .containsAll(GlobalErrorHandler.LITERAL_CODES);
     }
 }

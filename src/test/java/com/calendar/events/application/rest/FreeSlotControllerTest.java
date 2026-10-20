@@ -5,8 +5,8 @@ import com.calendar.events.application.dtos.TimeRangeResponse;
 import com.calendar.events.application.mappers.FreeSlotRestMapperImpl;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.services.FreeSlotService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,8 +59,8 @@ class FreeSlotControllerTest {
     @Test
     void findCommonFreeSlots_shouldRejectAPeriodThatEndsBeforeItStarts() {
         StepVerifier.create(controller.findCommonFreeSlots(new FreeSlotSearchRequest(Set.of("lea"), END, START, 60), jwt))
-                .expectErrorMatches(e -> e instanceof EventException ex
-                        && ex.getErrorCode() == EventErrorCode.INVALID_SLOT_SEARCH)
+                .expectErrorMatches(e -> e instanceof BusinessException ex
+                        && ex.getErrorCode() == BusinessErrorCode.INVALID_SLOT_SEARCH)
                 .verify();
 
         verify(freeSlotService, never()).findCommonFreeRanges(any(), any(), any(), any());

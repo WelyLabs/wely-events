@@ -1,8 +1,8 @@
 package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.ports.DeletedUserMarkers;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Mono;
 
 import java.util.Collection;
@@ -25,7 +25,7 @@ public class AccountGuard {
     public Mono<Void> requireLive(String userId) {
         return markers.isDeleted(userId)
                 .flatMap(deleted -> deleted
-                        ? Mono.<Void>error(new EventException(EventErrorCode.ACCOUNT_DELETED))
+                        ? Mono.<Void>error(new BusinessException(BusinessErrorCode.ACCOUNT_DELETED))
                         : Mono.<Void>empty());
     }
 

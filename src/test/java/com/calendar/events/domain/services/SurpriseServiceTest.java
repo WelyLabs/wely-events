@@ -16,8 +16,8 @@ import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -99,8 +99,8 @@ class SurpriseServiceTest {
         when(eventRepository.findBirthdayOf("lea")).thenReturn(Mono.just(leasBirthday()));
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
     }
 
     @Test
@@ -166,11 +166,11 @@ class SurpriseServiceTest {
     void createSurprise_shouldRefuseAPlainFriendOrAStranger() {
         when(socialGraph.closenessBetween("bob", "lea")).thenReturn(Mono.just(Closeness.FRIEND));
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob_l"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.SURPRISE_NOT_ALLOWED)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify();
 
         when(socialGraph.closenessBetween("zoe", "lea")).thenReturn(Mono.empty());
         StepVerifier.create(service.createSurprise(request("zoe", "lea"), null, "zoe"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.SURPRISE_NOT_ALLOWED)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify();
         verify(eventRepository, never()).insertSurprise(any());
     }
 
@@ -182,23 +182,23 @@ class SurpriseServiceTest {
         surprise.setEndDate(NOW.minus(Duration.ofDays(2)).plus(Duration.ofHours(4)));
 
         StepVerifier.create(service.createSurprise(surprise, null, "bob_l"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_IN_PAST)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_IN_PAST)).verify();
         verify(eventRepository, never()).insertSurprise(any());
     }
 
     @Test
     void createSurprise_shouldRefuseTheHonoree() {
         StepVerifier.create(service.createSurprise(request("lea", "lea"), null, "lea"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.SURPRISE_NOT_ALLOWED)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_NOT_ALLOWED)).verify();
         verify(socialGraph, never()).closenessBetween(anyString(), anyString());
     }
 
     @Test
     void createSurprise_shouldRequireAnHonoree() {
         StepVerifier.create(service.createSurprise(request("bob", null), null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_KIND_INVALID)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_KIND_INVALID)).verify();
         StepVerifier.create(service.createSurprise(request("bob", " "), null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_KIND_INVALID)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_KIND_INVALID)).verify();
     }
 
     @Test
@@ -207,7 +207,7 @@ class SurpriseServiceTest {
         when(eventRepository.findBirthdayOf("lea")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NO_BIRTHDAY)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NO_BIRTHDAY)).verify();
     }
 
     @Test
@@ -217,8 +217,8 @@ class SurpriseServiceTest {
         when(eventRepository.findSurpriseStartingBetween(anyString(), any(), any())).thenReturn(Mono.just(existing));
 
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.SURPRISE_EXISTS)
-                        && ((EventException) e).getProperties().equals(Map.of("eventId", "s0")))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_EXISTS)
+                        && ((BusinessException) e).getProperties().equals(Map.of("eventId", "s0")))
                 .verify();
         verify(eventRepository, never()).insertSurprise(any());
     }
@@ -231,8 +231,8 @@ class SurpriseServiceTest {
         when(eventRepository.findSurpriseByOccurrence("lea:2027")).thenReturn(Mono.just(Event.builder().id("s9").build()));
 
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.SURPRISE_EXISTS)
-                        && ((EventException) e).getProperties().equals(Map.of("eventId", "s9")))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_EXISTS)
+                        && ((BusinessException) e).getProperties().equals(Map.of("eventId", "s9")))
                 .verify();
     }
 
@@ -244,8 +244,8 @@ class SurpriseServiceTest {
         when(eventRepository.findSurpriseByOccurrence("lea:2027")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.createSurprise(request("bob", "lea"), null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.SURPRISE_EXISTS)
-                        && ((EventException) e).getProperties().isEmpty())
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.SURPRISE_EXISTS)
+                        && ((BusinessException) e).getProperties().isEmpty())
                 .verify();
     }
 
@@ -256,7 +256,7 @@ class SurpriseServiceTest {
         allDay.setAllDay(true);
 
         StepVerifier.create(service.createSurprise(allDay, null, "bob"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.ALL_DAY_INVALID)).verify();
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.ALL_DAY_INVALID)).verify();
         verify(eventRepository, never()).insertSurprise(any());
     }
 

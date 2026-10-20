@@ -3,8 +3,8 @@ package com.calendar.events.infrastructure.messaging.relay;
 import com.calendar.events.domain.models.FriendshipNotice;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.ports.FriendshipNoticeOutbox;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.messaging.adapters.KafkaFriendshipNoticePublisher;
 import com.calendar.events.infrastructure.messaging.mappers.FriendshipNoticeMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -69,7 +69,7 @@ class FriendshipNoticeRelayTest {
         FriendshipNotice failing = notice("bob");
         FriendshipNotice fine = notice("zoe");
         when(outbox.findPending(10)).thenReturn(Flux.just(failing, fine));
-        when(publisher.publish(mapper.toDto(failing))).thenReturn(Mono.error(new EventException(EventErrorCode.BROKER_UNAVAILABLE)));
+        when(publisher.publish(mapper.toDto(failing))).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.BROKER_UNAVAILABLE)));
         when(publisher.publish(mapper.toDto(fine))).thenReturn(Mono.empty());
         when(outbox.markPublished(fine.key())).thenReturn(Mono.empty());
 

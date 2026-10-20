@@ -3,8 +3,8 @@ package com.calendar.events.domain.services;
 import com.calendar.events.domain.models.CalendarLink;
 import com.calendar.events.domain.ports.CalendarLinks;
 import com.calendar.events.domain.ports.EventRepository;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Mono;
 
 import java.security.SecureRandom;
@@ -47,7 +47,7 @@ public class CalendarExportService {
     public Mono<CalendarLink> issueLink(String eventId, String viewerId, String webOrigin) {
         return eventService.getEventById(eventId, viewerId)
                 .flatMap(event -> event.isPolling()
-                        ? Mono.error(new EventException(EventErrorCode.DATE_NOT_FIXED))
+                        ? Mono.error(new BusinessException(BusinessErrorCode.DATE_NOT_FIXED))
                         : calendarLinks.save(new CalendarLink(newToken(), event.getId(), pageUrl(webOrigin, event.getId()),
                                 clock.instant().plus(LINK_LIFETIME))));
     }
@@ -58,7 +58,7 @@ public class CalendarExportService {
                 .filter(link -> link.isValidAt(clock.instant()))
                 .flatMap(link -> eventRepository.findById(link.eventId())
                         .map(event -> IcsWriter.write(event, link.pageUrl(), clock.instant())))
-                .switchIfEmpty(Mono.error(new EventException(EventErrorCode.CALENDAR_LINK_EXPIRED)));
+                .switchIfEmpty(Mono.error(new BusinessException(BusinessErrorCode.CALENDAR_LINK_EXPIRED)));
     }
 
     private String newToken() {

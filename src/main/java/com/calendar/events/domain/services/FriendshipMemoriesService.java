@@ -6,8 +6,8 @@ import com.calendar.events.domain.models.Friendship;
 import com.calendar.events.domain.models.FriendshipMemories;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.FriendshipDirectory;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
@@ -49,7 +49,7 @@ public class FriendshipMemoriesService {
         Instant now = clock.instant();
         return friendships.pairOf(userId, friendId)
                 .filter(Friendship::friends)
-                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.FRIEND_NOT_FOUND)))
+                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.FRIEND_NOT_FOUND)))
                 .flatMap(friendship -> Mono.zip(
                                 eventRepository.findSharedOutings(userId, friendId, now).collectList(),
                                 displayNames.of(friendId))

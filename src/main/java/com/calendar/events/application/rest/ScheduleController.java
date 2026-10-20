@@ -11,8 +11,8 @@ import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.ScheduleService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -85,7 +85,7 @@ public class ScheduleController {
     /** An end at or before the start is the caller's mistake, not a server error. */
     private static TimeRange range(Instant start, Instant end) {
         if (!end.isAfter(start)) {
-            throw new EventException(EventErrorCode.SCHEDULE_INVALID);
+            throw new BusinessException(BusinessErrorCode.SCHEDULE_INVALID);
         }
         return new TimeRange(start, end);
     }

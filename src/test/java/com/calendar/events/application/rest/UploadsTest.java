@@ -1,8 +1,8 @@
 package com.calendar.events.application.rest;
 
 import com.calendar.events.domain.models.MediaProfile;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
@@ -35,8 +35,8 @@ class UploadsTest {
         return Mono.just(parts);
     }
 
-    static boolean failsWith(Throwable error, EventErrorCode code) {
-        return error instanceof EventException exception && exception.getErrorCode() == code;
+    static boolean failsWith(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException exception && exception.getErrorCode() == code;
     }
 
     @Test
@@ -56,24 +56,24 @@ class UploadsTest {
     @Test
     void fileOf_shouldRefuseAFileOver10Megabytes_asTooLarge() {
         StepVerifier.create(Uploads.fileOf(form(file(Uploads.MAX_BYTES + 1)), MediaProfile.RECEIPT))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.MEDIA_TOO_LARGE))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.MEDIA_TOO_LARGE))
                 .verify();
     }
 
     @Test
     void fileOf_shouldRefuseAFormWithoutFile_withTheProfilesCode() {
         StepVerifier.create(Uploads.fileOf(form(null), MediaProfile.COVER))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.COVER_INVALID))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
                 .verify();
         StepVerifier.create(Uploads.fileOf(form(null), MediaProfile.RECEIPT))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.RECEIPT_INVALID))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.RECEIPT_INVALID))
                 .verify();
     }
 
     @Test
     void fileOf_shouldRefuseATextFieldNamedFile() {
         StepVerifier.create(Uploads.fileOf(form(mock(FormFieldPart.class)), MediaProfile.COVER))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.COVER_INVALID))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
                 .verify();
     }
 
@@ -83,10 +83,10 @@ class UploadsTest {
         when(empty.content()).thenReturn(Flux.empty());
 
         StepVerifier.create(Uploads.fileOf(form(empty), MediaProfile.COVER))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.COVER_INVALID))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
                 .verify();
         StepVerifier.create(Uploads.fileOf(form(file(0)), MediaProfile.COVER))
-                .expectErrorMatches(error -> failsWith(error, EventErrorCode.COVER_INVALID))
+                .expectErrorMatches(error -> failsWith(error, BusinessErrorCode.COVER_INVALID))
                 .verify();
     }
 }

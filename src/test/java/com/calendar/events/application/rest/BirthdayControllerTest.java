@@ -5,8 +5,8 @@ import com.calendar.events.application.mappers.BirthdayRestMapper;
 import com.calendar.events.domain.models.BirthdayOccurrence;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.services.BirthdayService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -55,11 +55,11 @@ class BirthdayControllerTest {
     @Test
     void getMyBirthdays_shouldPassARefusedRangeOn() {
         when(jwt.getClaimAsString("businessId")).thenReturn("me");
-        when(service.birthdaysFor("me", TO, FROM)).thenReturn(Flux.error(new EventException(EventErrorCode.INVALID_BIRTHDAY_RANGE)));
+        when(service.birthdaysFor("me", TO, FROM)).thenReturn(Flux.error(new BusinessException(BusinessErrorCode.INVALID_BIRTHDAY_RANGE)));
 
         StepVerifier.create(controller.getMyBirthdays(TO, FROM, jwt))
-                .expectErrorMatches(e -> e instanceof EventException ex
-                        && ex.getErrorCode() == EventErrorCode.INVALID_BIRTHDAY_RANGE)
+                .expectErrorMatches(e -> e instanceof BusinessException ex
+                        && ex.getErrorCode() == BusinessErrorCode.INVALID_BIRTHDAY_RANGE)
                 .verify();
     }
 }

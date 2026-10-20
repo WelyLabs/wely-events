@@ -4,8 +4,8 @@ import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.models.ExpenseKind;
 import com.calendar.events.domain.models.Share;
 import com.calendar.events.domain.models.SplitMode;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -92,8 +92,8 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
 
         StepVerifier.create(adapter.save(firstEdit)).expectNextCount(1).verifyComplete();
         StepVerifier.create(adapter.save(secondEdit))
-                .expectErrorMatches(error -> error instanceof EventException exception
-                        && exception.getErrorCode() == EventErrorCode.EXPENSE_CONFLICT)
+                .expectErrorMatches(error -> error instanceof BusinessException exception
+                        && exception.getErrorCode() == BusinessErrorCode.EXPENSE_CONFLICT)
                 .verify();
     }
 
@@ -133,8 +133,8 @@ class MongoExpenseRepositoryAdapterIntegrationTest {
                 ExpenseKind.EXPENSE, SplitMode.EQUAL, original.shares(), original.spentAt(), null, null, original.version());
 
         StepVerifier.create(adapter.save(staleEdit))
-                .expectErrorMatches(error -> error instanceof EventException exception
-                        && exception.getErrorCode() == EventErrorCode.EXPENSE_CONFLICT)
+                .expectErrorMatches(error -> error instanceof BusinessException exception
+                        && exception.getErrorCode() == BusinessErrorCode.EXPENSE_CONFLICT)
                 .verify();
     }
 

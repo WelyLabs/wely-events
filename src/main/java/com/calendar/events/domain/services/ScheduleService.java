@@ -3,8 +3,8 @@ package com.calendar.events.domain.services;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.ports.EventRepository;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -50,7 +50,7 @@ public class ScheduleService {
      */
     public Flux<Event> conflictsWith(String userId, TimeRange range, String excludedEventId) {
         if (range.duration().compareTo(MAX_RANGE) > 0) {
-            return Flux.error(new EventException(EventErrorCode.SCHEDULE_INVALID));
+            return Flux.error(new BusinessException(BusinessErrorCode.SCHEDULE_INVALID));
         }
         return eventRepository.findOccupying(Set.of(userId), range.start(), range.end(), userId)
                 .filter(event -> !Objects.equals(event.getId(), excludedEventId));
@@ -96,7 +96,7 @@ public class ScheduleService {
      */
     public Mono<Event> reschedule(String eventId, String organizerId, TimeRange range) {
         if (range.duration().compareTo(MAX_RANGE) > 0) {
-            return Mono.error(new EventException(EventErrorCode.SCHEDULE_INVALID));
+            return Mono.error(new BusinessException(BusinessErrorCode.SCHEDULE_INVALID));
         }
         return requireMovable(eventId, organizerId)
                 .flatMap(event -> {
@@ -104,11 +104,11 @@ public class ScheduleService {
                         return Mono.just(event);
                     }
                     if (eventService.isInPast(event.isAllDay(), range.start(), range.end())) {
-                        return Mono.error(new EventException(EventErrorCode.EVENT_IN_PAST));
+                        return Mono.error(new BusinessException(BusinessErrorCode.EVENT_IN_PAST));
                     }
                     boolean shared = event.getParticipantIds().stream().anyMatch(id -> !id.equals(organizerId));
                     return eventRepository.reschedule(event, range, shared)
-                            .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.SCHEDULE_CHANGED)));
+                            .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.SCHEDULE_CHANGED)));
                 });
     }
 
@@ -116,7 +116,7 @@ public class ScheduleService {
     private Mono<Event> requireMovable(String eventId, String organizerId) {
         return eventService.requireOrganizer(eventId, organizerId)
                 .flatMap(event -> event.isPolling()
-                        ? Mono.error(new EventException(EventErrorCode.SCHEDULE_LOCKED))
+                        ? Mono.error(new BusinessException(BusinessErrorCode.SCHEDULE_LOCKED))
                         : Mono.just(event));
     }
 

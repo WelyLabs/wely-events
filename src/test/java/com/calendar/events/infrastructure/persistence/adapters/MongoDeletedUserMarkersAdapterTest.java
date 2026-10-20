@@ -1,8 +1,8 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.DeletedUserMarker;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.persistence.entities.DeletedUserEntity;
 import com.calendar.events.infrastructure.persistence.mappers.DeletedUserPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveDeletedUserMongoRepository;
@@ -46,7 +46,7 @@ class MongoDeletedUserMarkersAdapterTest {
     }
 
     private static boolean storeUnavailable(Throwable error) {
-        return error instanceof EventException e && e.getErrorCode() == EventErrorCode.STORE_UNAVAILABLE;
+        return error instanceof TechnicalException e && e.getErrorCode() == TechnicalErrorCode.STORE_UNAVAILABLE;
     }
 
     @Test
@@ -70,21 +70,23 @@ class MongoDeletedUserMarkersAdapterTest {
 
     @Test
     void markDeleted_shouldTranslateAStoreFailure() {
+        DataAccessResourceFailureException down = new DataAccessResourceFailureException("down");
         when(mongoRepository.insert(any(DeletedUserEntity.class)))
-                .thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
+                .thenReturn(Mono.error(down));
 
         StepVerifier.create(adapter.markDeleted("u1", FIRST))
-                .expectErrorMatches(MongoDeletedUserMarkersAdapterTest::storeUnavailable)
+                .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
                 .verify();
     }
 
     @Test
     void markDeleted_shouldTranslateAFailedReadBack() {
+        DataAccessResourceFailureException down = new DataAccessResourceFailureException("down");
         when(mongoRepository.insert(any(DeletedUserEntity.class))).thenReturn(Mono.error(new DuplicateKeyException("dup")));
-        when(mongoRepository.findById("u1")).thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
+        when(mongoRepository.findById("u1")).thenReturn(Mono.error(down));
 
         StepVerifier.create(adapter.markDeleted("u1", FIRST))
-                .expectErrorMatches(MongoDeletedUserMarkersAdapterTest::storeUnavailable)
+                .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
                 .verify();
     }
 
@@ -99,10 +101,11 @@ class MongoDeletedUserMarkersAdapterTest {
 
     @Test
     void isDeleted_shouldTranslateAStoreFailure() {
-        when(mongoRepository.existsById("u1")).thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
+        DataAccessResourceFailureException down = new DataAccessResourceFailureException("down");
+        when(mongoRepository.existsById("u1")).thenReturn(Mono.error(down));
 
         StepVerifier.create(adapter.isDeleted("u1"))
-                .expectErrorMatches(MongoDeletedUserMarkersAdapterTest::storeUnavailable)
+                .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
                 .verify();
     }
 
@@ -123,11 +126,12 @@ class MongoDeletedUserMarkersAdapterTest {
 
     @Test
     void deletedAmong_shouldTranslateAStoreFailure() {
+        DataAccessResourceFailureException down = new DataAccessResourceFailureException("down");
         when(mongoRepository.findDeletedAmong(List.of("u1")))
-                .thenReturn(Flux.error(new DataAccessResourceFailureException("down")));
+                .thenReturn(Flux.error(down));
 
         StepVerifier.create(adapter.deletedAmong(List.of("u1")))
-                .expectErrorMatches(MongoDeletedUserMarkersAdapterTest::storeUnavailable)
+                .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
                 .verify();
     }
 
@@ -148,11 +152,12 @@ class MongoDeletedUserMarkersAdapterTest {
 
     @Test
     void erasedAmong_shouldTranslateAStoreFailure() {
+        DataAccessResourceFailureException down = new DataAccessResourceFailureException("down");
         when(mongoRepository.findErasedAmong(List.of("u1")))
-                .thenReturn(Flux.error(new DataAccessResourceFailureException("down")));
+                .thenReturn(Flux.error(down));
 
         StepVerifier.create(adapter.erasedAmong(List.of("u1")))
-                .expectErrorMatches(MongoDeletedUserMarkersAdapterTest::storeUnavailable)
+                .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
                 .verify();
     }
 
@@ -166,10 +171,11 @@ class MongoDeletedUserMarkersAdapterTest {
 
     @Test
     void markErased_shouldTranslateAStoreFailure() {
-        when(mongoRepository.markErased("u1", LATER)).thenReturn(Mono.error(new DataAccessResourceFailureException("down")));
+        DataAccessResourceFailureException down = new DataAccessResourceFailureException("down");
+        when(mongoRepository.markErased("u1", LATER)).thenReturn(Mono.error(down));
 
         StepVerifier.create(adapter.markErased("u1", LATER))
-                .expectErrorMatches(MongoDeletedUserMarkersAdapterTest::storeUnavailable)
+                .expectErrorMatches(error -> storeUnavailable(error) && error.getCause() == down)
                 .verify();
     }
 }

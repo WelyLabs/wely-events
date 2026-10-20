@@ -6,8 +6,8 @@ import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -37,7 +37,7 @@ public class FriendCalendarService {
      */
     public Flux<CircleEntry> getCircleCalendar(String viewerId, TimeRange window) {
         if (window.duration().compareTo(MAX_WINDOW) > 0) {
-            return Flux.error(new EventException(EventErrorCode.INVALID_CIRCLE_REQUEST));
+            return Flux.error(new BusinessException(BusinessErrorCode.INVALID_CIRCLE_REQUEST));
         }
         return socialGraph.friendsOf(viewerId)
                 .defaultIfEmpty(Map.of())
@@ -65,13 +65,13 @@ public class FriendCalendarService {
 
     public Flux<CalendarEntry> getFriendCalendar(String viewerId, String friendId, TimeRange window) {
         if (viewerId.equals(friendId) || window.duration().compareTo(MAX_WINDOW) > 0) {
-            return Flux.error(new EventException(EventErrorCode.INVALID_CALENDAR_REQUEST));
+            return Flux.error(new BusinessException(BusinessErrorCode.INVALID_CALENDAR_REQUEST));
         }
 
         // The closeness proves the friendship; the viewer's own friends decide which events they
         // may see anyway.
         Mono<Closeness> closeness = socialGraph.closenessBetween(viewerId, friendId)
-                .switchIfEmpty(Mono.error(new EventException(EventErrorCode.NOT_A_FRIEND)));
+                .switchIfEmpty(Mono.error(new BusinessException(BusinessErrorCode.NOT_A_FRIEND)));
         Mono<Set<String>> viewerFriends = socialGraph.friendIdsOf(viewerId).defaultIfEmpty(Set.of());
 
         return Mono.zip(closeness, viewerFriends)

@@ -4,8 +4,10 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -44,8 +46,12 @@ class FreeSlotServiceTest {
     private static final TimeRange WINDOW = new TimeRange(TEN, TEN.plus(Duration.ofHours(8)));
     private static final Duration HOUR = Duration.ofHours(1);
 
-    private static boolean failsWith(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean failsWith(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
+    }
+
+    private static boolean failsWith(Throwable error, TechnicalErrorCode code) {
+        return error instanceof TechnicalException e && e.getErrorCode() == code;
     }
 
     @Test
@@ -69,7 +75,7 @@ class FreeSlotServiceTest {
         when(socialGraph.friendIdsOf("me")).thenReturn(Mono.just(Set.of("lea")));
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea", "stranger"), WINDOW, HOUR))
-                .expectErrorMatches(e -> failsWith(e, EventErrorCode.NOT_A_FRIEND))
+                .expectErrorMatches(e -> failsWith(e, BusinessErrorCode.NOT_A_FRIEND))
                 .verify();
 
         verify(eventRepository, never()).findOccupying(anyCollection(), any(), any(), any());
@@ -80,7 +86,7 @@ class FreeSlotServiceTest {
         when(socialGraph.friendIdsOf("me")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), WINDOW, HOUR))
-                .expectErrorMatches(e -> failsWith(e, EventErrorCode.NOT_A_FRIEND))
+                .expectErrorMatches(e -> failsWith(e, BusinessErrorCode.NOT_A_FRIEND))
                 .verify();
 
         verify(eventRepository, never()).findOccupying(anyCollection(), any(), any(), any());
@@ -89,10 +95,10 @@ class FreeSlotServiceTest {
     @Test
     void findCommonFreeRanges_shouldPropagateASocialOutage() {
         when(socialGraph.friendIdsOf("me"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.SOCIAL_UNAVAILABLE)));
 
         StepVerifier.create(service.findCommonFreeRanges("me", Set.of("lea"), WINDOW, HOUR))
-                .expectErrorMatches(e -> failsWith(e, EventErrorCode.SOCIAL_UNAVAILABLE))
+                .expectErrorMatches(e -> failsWith(e, TechnicalErrorCode.SOCIAL_UNAVAILABLE))
                 .verify();
     }
 
@@ -111,7 +117,7 @@ class FreeSlotServiceTest {
             @SuppressWarnings("unchecked")
             Set<String> friends = (Set<String>) search[0];
             StepVerifier.create(service.findCommonFreeRanges("me", friends, (TimeRange) search[1], (Duration) search[2]))
-                    .expectErrorMatches(e -> failsWith(e, EventErrorCode.INVALID_SLOT_SEARCH))
+                    .expectErrorMatches(e -> failsWith(e, BusinessErrorCode.INVALID_SLOT_SEARCH))
                     .verify();
         }
 

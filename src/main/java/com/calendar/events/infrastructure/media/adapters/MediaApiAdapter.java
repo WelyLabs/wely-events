@@ -3,8 +3,10 @@ package com.calendar.events.infrastructure.media.adapters;
 import com.calendar.events.domain.models.MediaProfile;
 import com.calendar.events.domain.models.StoredMedia;
 import com.calendar.events.domain.ports.MediaStore;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.media.mappers.MediaMapper;
 import com.calendar.events.infrastructure.media.models.MediaProblem;
 import com.calendar.events.infrastructure.media.models.SignUrlsRequest;
@@ -23,11 +25,12 @@ import reactor.core.publisher.Mono;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Stores, removes and signs pictures through wely-media's internal API, which owns the bucket.
  * A refused image answers with the profile's own code, an oversized one with MEDIA_TOO_LARGE;
- * anything else becomes MEDIA_UNAVAILABLE (502).
+ * anything else becomes the technical MEDIA_UNAVAILABLE (502).
  */
 @Slf4j
 @Component
@@ -61,7 +64,7 @@ public class MediaApiAdapter implements MediaStore {
                         .contentType(MediaType.MULTIPART_FORM_DATA)
                         .body(BodyInserters.fromMultipartData(parts.build()))
                         .retrieve()
-                        .onStatus(HttpStatusCode::isError, response -> toEventException(response, profile))
+                        .onStatus(HttpStatusCode::isError, response -> toException(response, profile))
                         .bodyToMono(StoredMediaResponse.class))
                 .map(mapper::toStoredMedia)
                 .onErrorMap(MediaApiAdapter::isUnexpected, error -> unavailable("store " + key, error));
@@ -73,7 +76,7 @@ public class MediaApiAdapter implements MediaStore {
         return Mono.defer(() -> client.delete()
                         .uri(uri -> uri.path(MEDIA_PATH).queryParam("key", "{key}").build(key))
                         .retrieve()
-                        .onStatus(HttpStatusCode::isError, response -> toEventException(response, null))
+                        .onStatus(HttpStatusCode::isError, response -> toException(response, null))
                         .toBodilessEntity()
                         .then())
                 .onErrorMap(MediaApiAdapter::isUnexpected, error -> unavailable("delete " + key, error));
@@ -87,7 +90,7 @@ public class MediaApiAdapter implements MediaStore {
                         .contentType(MediaType.APPLICATION_JSON)
                         .bodyValue(new SignUrlsRequest(keys, URL_TTL_SECONDS))
                         .retrieve()
-                        .onStatus(HttpStatusCode::isError, response -> toEventException(response, null))
+                        .onStatus(HttpStatusCode::isError, response -> toException(response, null))
                         .bodyToMono(SignedUrlsResponse.class))
                 .map(response -> response.urls() == null ? Map.<String, String>of() : response.urls())
                 .defaultIfEmpty(Map.of())
@@ -95,39 +98,42 @@ public class MediaApiAdapter implements MediaStore {
     }
 
     /** wely-media's code decides: a refused image is the client's fault, the rest is ours. */
-    private static Mono<EventException> toEventException(ClientResponse response, MediaProfile profile) {
+    private static Mono<RuntimeException> toException(ClientResponse response, MediaProfile profile) {
         int status = response.statusCode().value();
         return response.bodyToMono(MediaProblem.class)
                 .map(MediaProblem::code)
                 .onErrorReturn("")
                 .defaultIfEmpty("")
-                .map(code -> {
-                    EventErrorCode error = errorCodeOf(code, profile);
-                    if (error == EventErrorCode.MEDIA_UNAVAILABLE) {
-                        log.warn("wely-media answered {} {}", status, code);
-                    }
-                    return new EventException(error);
-                });
+                .map(code -> refusalOf(code, profile)
+                        .<RuntimeException>map(BusinessException::new)
+                        .orElseGet(() -> {
+                            log.warn("wely-media answered {} {}", status, code);
+                            return new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE);
+                        }));
     }
 
-    /** Without a profile (delete, sign) no image is involved: any refusal is ours. */
-    static EventErrorCode errorCodeOf(String mediaCode, MediaProfile profile) {
+    /**
+     * The business code when wely-media refused the image itself; empty when the failure is ours.
+     * Without a profile (delete, sign) no image is involved: any refusal is ours.
+     */
+    static Optional<BusinessErrorCode> refusalOf(String mediaCode, MediaProfile profile) {
         if (profile == null) {
-            return EventErrorCode.MEDIA_UNAVAILABLE;
+            return Optional.empty();
         }
         return switch (mediaCode == null ? "" : mediaCode) {
-            case INVALID_IMAGE -> profile.invalidError();
-            case IMAGE_TOO_LARGE -> EventErrorCode.MEDIA_TOO_LARGE;
-            default -> EventErrorCode.MEDIA_UNAVAILABLE;
+            case INVALID_IMAGE -> Optional.of(profile.invalidError());
+            case IMAGE_TOO_LARGE -> Optional.of(BusinessErrorCode.MEDIA_TOO_LARGE);
+            default -> Optional.empty();
         };
     }
 
+    /** Anything not already translated: a refused image or a failure wely-media reported passes as it is. */
     private static boolean isUnexpected(Throwable error) {
-        return !(error instanceof EventException);
+        return !(error instanceof BusinessException || error instanceof TechnicalException);
     }
 
-    private static EventException unavailable(String what, Throwable error) {
+    private static TechnicalException unavailable(String what, Throwable error) {
         log.warn("Could not {} on wely-media: {}", what, error.toString());
-        return new EventException(EventErrorCode.MEDIA_UNAVAILABLE);
+        return new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE, error);
     }
 }

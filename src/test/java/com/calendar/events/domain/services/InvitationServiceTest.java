@@ -9,8 +9,8 @@ import com.calendar.events.domain.models.PollStatus;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,15 +64,15 @@ class InvitationServiceTest {
         return event;
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
     }
 
     private void organizes(Event event) {
         when(eventService.requireOrganizer("e1", ORGANIZER)).thenReturn(Mono.just(event));
     }
 
-    private void expectInviteRefused(EventErrorCode code) {
+    private void expectInviteRefused(BusinessErrorCode code) {
         StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
                 .expectErrorMatches(error -> hasCode(error, code))
                 .verify();
@@ -97,7 +97,7 @@ class InvitationServiceTest {
         organizes(dinner());
         when(socialGraph.friendIdsOf(ORGANIZER)).thenReturn(Mono.just(Set.of("hugo")));
 
-        expectInviteRefused(EventErrorCode.FRIEND_NOT_FOUND);
+        expectInviteRefused(BusinessErrorCode.FRIEND_NOT_FOUND);
     }
 
     @Test
@@ -105,7 +105,7 @@ class InvitationServiceTest {
         organizes(dinner());
         when(socialGraph.friendIdsOf(ORGANIZER)).thenReturn(Mono.empty());
 
-        expectInviteRefused(EventErrorCode.FRIEND_NOT_FOUND);
+        expectInviteRefused(BusinessErrorCode.FRIEND_NOT_FOUND);
     }
 
     @Test
@@ -114,7 +114,7 @@ class InvitationServiceTest {
         event.getParticipantIds().add(FRIEND);
         organizes(event);
 
-        expectInviteRefused(EventErrorCode.ALREADY_TAKING_PART);
+        expectInviteRefused(BusinessErrorCode.ALREADY_TAKING_PART);
     }
 
     @Test
@@ -123,7 +123,7 @@ class InvitationServiceTest {
         event.setCommunityId("club");
         organizes(event);
 
-        expectInviteRefused(EventErrorCode.INVITATION_NOT_ALLOWED);
+        expectInviteRefused(BusinessErrorCode.INVITATION_NOT_ALLOWED);
     }
 
     @Test
@@ -132,7 +132,7 @@ class InvitationServiceTest {
         event.setStartDate(NOW.minus(Duration.ofDays(1)));
         organizes(event);
 
-        expectInviteRefused(EventErrorCode.INVITATION_NOT_ALLOWED);
+        expectInviteRefused(BusinessErrorCode.INVITATION_NOT_ALLOWED);
     }
 
     @Test
@@ -156,7 +156,7 @@ class InvitationServiceTest {
         event.setHiddenFrom(List.of(FRIEND));
         organizes(event);
 
-        expectInviteRefused(EventErrorCode.INVITATION_NOT_ALLOWED);
+        expectInviteRefused(BusinessErrorCode.INVITATION_NOT_ALLOWED);
     }
 
     @Test
@@ -166,7 +166,7 @@ class InvitationServiceTest {
         event.setHonoreeId(FRIEND);
         organizes(event);
 
-        expectInviteRefused(EventErrorCode.INVITATION_NOT_ALLOWED);
+        expectInviteRefused(BusinessErrorCode.INVITATION_NOT_ALLOWED);
     }
 
     @Test
@@ -176,17 +176,17 @@ class InvitationServiceTest {
         when(eventRepository.invite("e1", ORGANIZER, FRIEND)).thenReturn(Mono.empty());
 
         StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
     @Test
     void invite_shouldLetTheOrganizerCheckThrough() {
         when(eventService.requireOrganizer("e1", FRIEND))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.EVENT_ACCESS_DENIED)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.EVENT_ACCESS_DENIED)));
 
         StepVerifier.create(service.invite("e1", FRIEND, "hugo"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
     }
 
@@ -216,7 +216,7 @@ class InvitationServiceTest {
         when(eventService.getEventById("e1", "hugo")).thenReturn(Mono.just(event));
 
         StepVerifier.create(service.withdraw("e1", "hugo", FRIEND))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
         verify(eventRepository, never()).withdrawInvitation(anyString(), anyString());
     }
@@ -227,7 +227,7 @@ class InvitationServiceTest {
         when(eventRepository.withdrawInvitation("e1", FRIEND)).thenReturn(Mono.empty());
 
         StepVerifier.create(service.withdraw("e1", FRIEND, FRIEND))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 }

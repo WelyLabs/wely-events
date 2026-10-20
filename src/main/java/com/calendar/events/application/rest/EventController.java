@@ -7,8 +7,8 @@ import com.calendar.events.domain.services.EventService;
 import com.calendar.events.domain.services.FriendshipService;
 import com.calendar.events.domain.models.FeedRank;
 import com.calendar.events.domain.models.ViewerFriends;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import com.calendar.events.domain.models.EventKind;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.SurpriseService;
@@ -71,7 +71,7 @@ public class EventController {
                                                @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
         return Mono.justOrEmpty(FeedRank.named(rank))
-                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.FEED_RANK_INVALID)))
+                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.FEED_RANK_INVALID)))
                 .flatMapMany(feedRank -> friendshipService.viewerFriends(userId)
                         .flatMapMany(friends -> respond(eventService.getFeedEvents(userId, friends, feedRank), friends)));
     }

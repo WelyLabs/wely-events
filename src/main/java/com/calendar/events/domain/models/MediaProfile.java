@@ -1,22 +1,22 @@
 package com.calendar.events.domain.models;
 
-import com.calendar.events.exception.EventErrorCode;
+import com.calendar.events.exception.BusinessErrorCode;
 
 /** How wely-media prepares a picture; each profile is one use case, refused with its own code. */
 public enum MediaProfile {
     /** An event's cover: at most 1600 px wide. */
-    COVER(EventErrorCode.COVER_INVALID),
+    COVER(BusinessErrorCode.COVER_INVALID),
     /** An expense's receipt: longest side at most 2000 px, so the small print stays readable. */
-    RECEIPT(EventErrorCode.RECEIPT_INVALID);
+    RECEIPT(BusinessErrorCode.RECEIPT_INVALID);
 
-    private final EventErrorCode invalidError;
+    private final BusinessErrorCode invalidError;
 
-    MediaProfile(EventErrorCode invalidError) {
+    MediaProfile(BusinessErrorCode invalidError) {
         this.invalidError = invalidError;
     }
 
     /** What an upload that is not a usable image answers with. */
-    public EventErrorCode invalidError() {
+    public BusinessErrorCode invalidError() {
         return invalidError;
     }
 }

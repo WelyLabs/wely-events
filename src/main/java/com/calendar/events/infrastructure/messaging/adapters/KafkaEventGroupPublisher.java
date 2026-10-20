@@ -1,7 +1,7 @@
 package com.calendar.events.infrastructure.messaging.adapters;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.messaging.models.EventGroupChangedDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.stream.function.StreamBridge;
@@ -23,8 +23,8 @@ public class KafkaEventGroupPublisher {
     }
 
     /**
-     * Completes once Kafka has the record. A refusal or a broker failure arrives as an
-     * {@link EventException}, never as the binder's own exception.
+     * Completes once Kafka has the record. A refusal or a broker failure arrives as a
+     * {@link TechnicalException}, never as the binder's own exception.
      */
     public Mono<Void> publish(EventGroupChangedDTO group) {
         return Mono.fromCallable(() -> streamBridge.send(DESTINATION, group))
@@ -33,12 +33,18 @@ public class KafkaEventGroupPublisher {
                 .flatMap(sent -> Boolean.TRUE.equals(sent)
                         ? Mono.<Void>empty()
                         : Mono.<Void>error(unavailable(group, "the record was refused")))
-                .onErrorMap(error -> !(error instanceof EventException),
-                        error -> unavailable(group, error.getMessage()));
+                .onErrorMap(error -> !(error instanceof TechnicalException),
+                        error -> unavailable(group, error));
     }
 
-    private static EventException unavailable(EventGroupChangedDTO group, String reason) {
+    private static TechnicalException unavailable(EventGroupChangedDTO group, String reason) {
         log.warn("Could not send the group of event {} to Kafka: {}", group.eventId(), reason);
-        return new EventException(EventErrorCode.BROKER_UNAVAILABLE);
+        return new TechnicalException(TechnicalErrorCode.BROKER_UNAVAILABLE);
+    }
+
+    /** The binder's own failure, kept as the cause. */
+    private static TechnicalException unavailable(EventGroupChangedDTO group, Throwable error) {
+        log.warn("Could not send the group of event {} to Kafka: {}", group.eventId(), error.getMessage());
+        return new TechnicalException(TechnicalErrorCode.BROKER_UNAVAILABLE, error);
     }
 }

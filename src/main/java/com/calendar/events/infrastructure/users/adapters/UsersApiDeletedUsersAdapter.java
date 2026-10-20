@@ -2,8 +2,8 @@ package com.calendar.events.infrastructure.users.adapters;
 
 import com.calendar.events.domain.models.DeletedUsersPage;
 import com.calendar.events.domain.ports.DeletedUsersSource;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.users.mappers.DeletedUsersMapper;
 import com.calendar.events.infrastructure.users.models.DeletedUsersPageResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -51,7 +51,7 @@ public class UsersApiDeletedUsersAdapter implements DeletedUsersSource {
     public Mono<DeletedUsersPage> page(String after, int limit) {
         if (!configured) {
             log.warn("USERS_API_URL or DELETED_USERS_READER_SECRET is not set: deleted accounts cannot be listed");
-            return Mono.error(new EventException(EventErrorCode.USERS_UNAVAILABLE));
+            return Mono.error(new TechnicalException(TechnicalErrorCode.USERS_UNAVAILABLE));
         }
         return Mono.defer(() -> client.get()
                         .uri(builder -> {
@@ -67,7 +67,7 @@ public class UsersApiDeletedUsersAdapter implements DeletedUsersSource {
                 .filter(UsersApiDeletedUsersAdapter::isComplete)
                 .switchIfEmpty(Mono.error(() -> new IllegalStateException("Empty or incomplete deleted-users page")))
                 .map(mapper::toDomain)
-                .onErrorMap(error -> !(error instanceof EventException), UsersApiDeletedUsersAdapter::unavailable);
+                .onErrorMap(error -> !(error instanceof TechnicalException), UsersApiDeletedUsersAdapter::unavailable);
     }
 
     private static boolean isComplete(DeletedUsersPageResponse page) {
@@ -75,8 +75,8 @@ public class UsersApiDeletedUsersAdapter implements DeletedUsersSource {
     }
 
     // The secret travels in a header, which no exception message carries.
-    private static EventException unavailable(Throwable error) {
+    private static TechnicalException unavailable(Throwable error) {
         log.warn("Could not list deleted accounts from wely-users: {}", error.toString());
-        return new EventException(EventErrorCode.USERS_UNAVAILABLE);
+        return new TechnicalException(TechnicalErrorCode.USERS_UNAVAILABLE, error);
     }
 }

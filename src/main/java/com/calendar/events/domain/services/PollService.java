@@ -6,8 +6,8 @@ import com.calendar.events.domain.models.PollAnswer;
 import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.PollUpdates;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
@@ -40,14 +40,14 @@ public class PollService {
         return eventService.getEventById(eventId, voterId)
                 .flatMap(event -> {
                     if (!event.isPolling()) {
-                        return Mono.error(new EventException(EventErrorCode.POLL_CLOSED));
+                        return Mono.error(new BusinessException(BusinessErrorCode.POLL_CLOSED));
                     }
                     if (!event.getPoll().acceptsBallot(answers)) {
-                        return Mono.error(new EventException(EventErrorCode.POLL_SLOT_UNKNOWN));
+                        return Mono.error(new BusinessException(BusinessErrorCode.POLL_SLOT_UNKNOWN));
                     }
                     return eventRepository.castBallot(eventId, voterId, answers)
                             // Fixed between the read and the write.
-                            .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.POLL_CLOSED)));
+                            .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.POLL_CLOSED)));
                 })
                 .map(Event::getPoll)
                 .doOnNext(poll -> pollUpdates.publish(eventId, poll));
@@ -58,22 +58,22 @@ public class PollService {
         return eventService.requireOrganizer(eventId, organizerId)
                 .flatMap(event -> {
                     if (!event.isPolling()) {
-                        return Mono.error(new EventException(EventErrorCode.POLL_CLOSED));
+                        return Mono.error(new BusinessException(BusinessErrorCode.POLL_CLOSED));
                     }
                     Poll poll = event.getPoll();
                     PollSlot slot = poll.slot(slotId).orElse(null);
                     if (slot == null) {
-                        return Mono.error(new EventException(EventErrorCode.POLL_SLOT_UNKNOWN));
+                        return Mono.error(new BusinessException(BusinessErrorCode.POLL_SLOT_UNKNOWN));
                     }
                     if (eventService.isInPast(false, slot.start(), slot.end())) {
                         // A slot gone by while the poll stayed open: the date is fixed on one to come.
-                        return Mono.error(new EventException(EventErrorCode.EVENT_IN_PAST));
+                        return Mono.error(new BusinessException(BusinessErrorCode.EVENT_IN_PAST));
                     }
                     List<String> yesVoters = poll.yesVotersOf(slotId);
                     return accountGuard.deletedAmong(yesVoters)
                             .flatMap(deleted -> eventRepository.fixPollDate(eventId, organizerId, slot,
                                     yesVoters.stream().filter(voter -> !deleted.contains(voter)).toList()))
-                            .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.POLL_CLOSED)));
+                            .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.POLL_CLOSED)));
                 })
                 .doOnNext(fixed -> pollUpdates.publish(eventId, fixed.getPoll()));
     }
@@ -88,7 +88,7 @@ public class PollService {
         return accountGuard.requireLive(viewerId)
                 .then(Mono.defer(() -> eventService.getEventById(eventId, viewerId)))
                 .flatMap(event -> event.getPoll() == null
-                        ? Mono.error(new EventException(EventErrorCode.POLL_CLOSED))
+                        ? Mono.error(new BusinessException(BusinessErrorCode.POLL_CLOSED))
                         : Mono.just(liveStates(eventId, viewerId)));
     }
 

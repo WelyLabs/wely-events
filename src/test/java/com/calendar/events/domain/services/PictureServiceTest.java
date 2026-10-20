@@ -8,8 +8,8 @@ import com.calendar.events.domain.models.Share;
 import com.calendar.events.domain.models.SplitMode;
 import com.calendar.events.domain.models.StoredMedia;
 import com.calendar.events.domain.ports.MediaStore;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -79,7 +79,7 @@ class PictureServiceTest {
 
     @Test
     void discard_shouldSwallowAFailure_andStillDeleteTheOthers() {
-        when(mediaStore.delete("events/a.jpg")).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+        when(mediaStore.delete("events/a.jpg")).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
         when(mediaStore.delete("events/b.jpg")).thenReturn(Mono.empty());
 
         StepVerifier.create(service.discard(List.of("events/a.jpg", "events/b.jpg"))).verifyComplete();
@@ -143,7 +143,7 @@ class PictureServiceTest {
 
     @Test
     void signCovers_shouldDropTheUrls_ratherThanFail_whenWelyMediaIsDown() {
-        when(mediaStore.urls(any())).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+        when(mediaStore.urls(any())).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
 
         StepVerifier.create(service.signCovers(List.of(coveredBy("events/1/cover-a.jpg"))))
                 .assertNext(urls -> assertThat(urls.urlOf("events/1/cover-a.jpg")).isNull())

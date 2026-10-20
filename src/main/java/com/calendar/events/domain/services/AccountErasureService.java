@@ -9,8 +9,8 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
@@ -101,7 +101,7 @@ public class AccountErasureService {
     /** Hands the event to the earliest participant neither deleted nor protected, or deletes it; a missed write decides again. */
     private Mono<Release> release(Event event, String userId, Instant at, int attemptsLeft) {
         if (attemptsLeft == 0) {
-            return Mono.error(new EventException(EventErrorCode.ERASURE_INCOMPLETE));
+            return Mono.error(new TechnicalException(TechnicalErrorCode.ERASURE_INCOMPLETE));
         }
         return markers.deletedAmong(event.getParticipantIds())
                 .flatMap(deleted -> {

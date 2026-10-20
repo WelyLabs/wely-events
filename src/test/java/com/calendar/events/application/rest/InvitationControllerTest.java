@@ -5,8 +5,8 @@ import com.calendar.events.application.dtos.ParticipantsResponse;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.services.InvitationService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -53,10 +53,10 @@ class InvitationControllerTest {
     @Test
     void invite_shouldPassOnARefusal() {
         when(invitationService.invite("e1", "robin", "lea"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.FRIEND_NOT_FOUND)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.FRIEND_NOT_FOUND)));
 
         StepVerifier.create(controller.invite("e1", new InvitationRequest("lea"), jwt))
-                .expectError(EventException.class)
+                .expectError(BusinessException.class)
                 .verify();
     }
 

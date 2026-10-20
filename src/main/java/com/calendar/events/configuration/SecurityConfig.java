@@ -1,6 +1,7 @@
 package com.calendar.events.configuration;
 
 import com.calendar.events.domain.services.AccountGuard;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -18,7 +19,7 @@ public class SecurityConfig {
     /** Deny by default: every exchange but the CORS preflight needs a valid JWT, and a deleted account cannot write. */
     @Bean
     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http, AccountGuard accountGuard,
-                                                           ServerCodecConfigurer codecs) {
+                                                           ServerCodecConfigurer codecs, MeterRegistry meterRegistry) {
         return http
                 .cors(Customizer.withDefaults())
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
@@ -37,7 +38,7 @@ public class SecurityConfig {
                                       "/swagger-ui.html", "/webjars/swagger-ui/**").permitAll()
                         .anyExchange().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
-                .addFilterAfter(new DeletedRequesterFilter(accountGuard, codecs), SecurityWebFiltersOrder.AUTHORIZATION)
+                .addFilterAfter(new DeletedRequesterFilter(accountGuard, codecs, meterRegistry), SecurityWebFiltersOrder.AUTHORIZATION)
                 .build();
     }
 }

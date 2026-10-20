@@ -5,8 +5,8 @@ import com.calendar.events.application.mappers.FriendshipRestMapper;
 import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.ReunionCandidate;
 import com.calendar.events.domain.services.ReunionService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -61,11 +61,11 @@ class ReunionControllerTest {
     @Test
     void dismiss_shouldPassANotFoundOn() {
         when(reunionService.dismiss("me", "stranger"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.FRIEND_NOT_FOUND)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.FRIEND_NOT_FOUND)));
 
         StepVerifier.create(controller.dismiss("stranger", jwt))
-                .expectErrorMatches(error -> error instanceof EventException e
-                        && e.getErrorCode() == EventErrorCode.FRIEND_NOT_FOUND)
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.FRIEND_NOT_FOUND)
                 .verify();
     }
 }

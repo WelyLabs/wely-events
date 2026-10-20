@@ -1,8 +1,8 @@
 package com.calendar.events.application.rest;
 
 import com.calendar.events.domain.models.MediaProfile;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.core.io.buffer.DataBufferUtils;
@@ -26,10 +26,10 @@ final class Uploads {
         return form
                 .flatMap(parts -> parts.getFirst(FILE_PART) instanceof FilePart file
                         ? DataBufferUtils.join(file.content(), MAX_BYTES).map(Uploads::bytesOf)
-                        : Mono.error(new EventException(profile.invalidError())))
-                .onErrorMap(DataBufferLimitException.class, error -> new EventException(EventErrorCode.MEDIA_TOO_LARGE))
+                        : Mono.error(new BusinessException(profile.invalidError())))
+                .onErrorMap(DataBufferLimitException.class, error -> new BusinessException(BusinessErrorCode.MEDIA_TOO_LARGE))
                 .filter(bytes -> bytes.length > 0)
-                .switchIfEmpty(Mono.error(() -> new EventException(profile.invalidError())));
+                .switchIfEmpty(Mono.error(() -> new BusinessException(profile.invalidError())));
     }
 
     private static byte[] bytesOf(DataBuffer buffer) {

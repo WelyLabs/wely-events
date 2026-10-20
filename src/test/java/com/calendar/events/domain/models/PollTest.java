@@ -1,7 +1,7 @@
 package com.calendar.events.domain.models;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -27,9 +27,9 @@ class PollTest {
 
     private static void assertInvalid(List<PollSlot> candidates) {
         assertThatThrownBy(() -> Poll.open(candidates, NOW))
-                .isInstanceOf(EventException.class)
-                .extracting(error -> ((EventException) error).getErrorCode())
-                .isEqualTo(EventErrorCode.POLL_INVALID);
+                .isInstanceOf(BusinessException.class)
+                .extracting(error -> ((BusinessException) error).getErrorCode())
+                .isEqualTo(BusinessErrorCode.POLL_INVALID);
     }
 
     @Test

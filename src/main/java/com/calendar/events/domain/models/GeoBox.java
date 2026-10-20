@@ -1,7 +1,7 @@
 package com.calendar.events.domain.models;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 
 /**
  * The area a map shows, in decimal degrees.
@@ -18,7 +18,7 @@ public record GeoBox(double south, double west, double north, double east) {
         boolean ordered = south < north && west < east;
         boolean small = north - south <= MAX_SPAN_DEGREES && east - west <= MAX_SPAN_DEGREES;
         if (!onTheGlobe || !ordered || !small) {
-            throw new EventException(EventErrorCode.INVALID_MAP_AREA);
+            throw new BusinessException(BusinessErrorCode.INVALID_MAP_AREA);
         }
     }
 }

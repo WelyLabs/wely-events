@@ -5,8 +5,8 @@ import com.calendar.events.application.dtos.CircleEntryResponse;
 import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.services.FriendCalendarService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,7 +38,7 @@ public class FriendCalendarController {
     public Flux<CircleEntryResponse> getCircleCalendar(@RequestParam Instant from, @RequestParam Instant to,
                                                        @AuthenticationPrincipal Jwt jwt) {
         if (!to.isAfter(from)) {
-            return Flux.error(new EventException(EventErrorCode.INVALID_CIRCLE_REQUEST));
+            return Flux.error(new BusinessException(BusinessErrorCode.INVALID_CIRCLE_REQUEST));
         }
         String userId = jwt.getClaimAsString("businessId");
         return friendCalendarService.getCircleCalendar(userId, new TimeRange(from, to)).map(mapper::toResponse);
@@ -51,7 +51,7 @@ public class FriendCalendarController {
                                                          @RequestParam Instant to,
                                                          @AuthenticationPrincipal Jwt jwt) {
         if (!to.isAfter(from)) {
-            return Flux.error(new EventException(EventErrorCode.INVALID_CALENDAR_REQUEST));
+            return Flux.error(new BusinessException(BusinessErrorCode.INVALID_CALENDAR_REQUEST));
         }
         String userId = jwt.getClaimAsString("businessId");
         return friendCalendarService.getFriendCalendar(userId, friendId, new TimeRange(from, to))

@@ -16,14 +16,15 @@ import com.calendar.events.domain.models.SplitMode;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.ExpenseService;
 import com.calendar.events.domain.services.PictureService;
-import com.calendar.events.exception.EventErrorCode;
+import com.calendar.events.exception.BusinessErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mapstruct.factory.Mappers;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -153,7 +154,7 @@ class ExpenseControllerTest {
     @Test
     void list_shouldAnswerWithoutReceiptUrls_whenWelyMediaIsDown() {
         when(expenseService.list("ev-1", "alice")).thenReturn(Flux.just(withReceipt("x1", "events/ev-1/receipts/x1-a.jpg")));
-        when(mediaStore.urls(any())).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+        when(mediaStore.urls(any())).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
         ExpenseController realMapping = new ExpenseController(expenseService, new PictureService(mediaStore),
                 Mappers.getMapper(ExpenseRestMapper.class));
 
@@ -179,7 +180,7 @@ class ExpenseControllerTest {
     @Test
     void attachReceipt_shouldRefuseAFileOver10Megabytes_beforeTheService() {
         StepVerifier.create(controller.attachReceipt("ev-1", "x1", UploadsTest.form(UploadsTest.file(Uploads.MAX_BYTES + 1)), jwt))
-                .expectErrorMatches(error -> UploadsTest.failsWith(error, EventErrorCode.MEDIA_TOO_LARGE))
+                .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.MEDIA_TOO_LARGE))
                 .verify();
         verify(expenseService, never()).attachReceipt(any(), any(), any(), any());
     }
@@ -187,7 +188,7 @@ class ExpenseControllerTest {
     @Test
     void attachReceipt_shouldRefuseAFormWithoutFile_asAnInvalidReceipt() {
         StepVerifier.create(controller.attachReceipt("ev-1", "x1", UploadsTest.form(null), jwt))
-                .expectErrorMatches(error -> UploadsTest.failsWith(error, EventErrorCode.RECEIPT_INVALID))
+                .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.RECEIPT_INVALID))
                 .verify();
     }
 

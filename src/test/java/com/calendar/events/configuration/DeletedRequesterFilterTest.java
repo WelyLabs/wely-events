@@ -2,8 +2,12 @@ package com.calendar.events.configuration;
 
 import com.calendar.events.domain.ports.DeletedUserMarkers;
 import com.calendar.events.domain.services.AccountGuard;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.GlobalErrorHandler;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,12 +43,14 @@ class DeletedRequesterFilterTest {
     private DeletedUserMarkers markers;
 
     private DeletedRequesterFilter filter;
+    private SimpleMeterRegistry meterRegistry;
     private final AtomicBoolean chainRan = new AtomicBoolean();
     private final WebFilterChain chain = exchange -> Mono.fromRunnable(() -> chainRan.set(true));
 
     @BeforeEach
     void setUp() {
-        filter = new DeletedRequesterFilter(new AccountGuard(markers), ServerCodecConfigurer.create());
+        meterRegistry = new SimpleMeterRegistry();
+        filter = new DeletedRequesterFilter(new AccountGuard(markers), ServerCodecConfigurer.create(), meterRegistry);
     }
 
     private static JwtAuthenticationToken tokenOf(String businessId) {
@@ -98,8 +104,11 @@ class DeletedRequesterFilterTest {
                 .assertNext(body -> assertThat(body)
                         .contains("\"code\":\"EVT-BUS-025\"")
                         .contains("\"status\":410")
-                        .contains("\"instance\":\"/events-service/events/e1/subscribe\""))
+                        .contains("\"instance\":\"/events-service/events/e1/subscribe\"")
+                        .contains("\"requestId\":\"" + exchange.getRequest().getId() + "\""))
                 .verifyComplete();
+        assertThat(exchange.getRequest().getId()).isNotBlank();
+        assertThat(meterRegistry.find(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC).counters()).isEmpty();
     }
 
     @Test
@@ -128,19 +137,30 @@ class DeletedRequesterFilterTest {
 
     @Test
     void filter_shouldAnswerTheStoreError_whenTheMarkerCannotBeRead() {
-        when(markers.isDeleted("lea")).thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+        when(markers.isDeleted("lea")).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
         MockServerWebExchange exchange = post();
 
         StepVerifier.create(run(exchange, tokenOf("lea"))).verifyComplete();
 
         assertThat(exchange.getResponse().getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(exchange.getResponse().getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_PROBLEM_JSON);
+        StepVerifier.create(exchange.getResponse().getBodyAsString())
+                .assertNext(body -> assertThat(body)
+                        .contains("\"code\":\"EVT-TEC-005\"")
+                        .contains("\"status\":502")
+                        .contains("\"instance\":\"/events-service/events/e1/subscribe\"")
+                        .contains("\"requestId\":\"" + exchange.getRequest().getId() + "\""))
+                .verifyComplete();
+        // Answered here, never through GlobalErrorHandler: the filter counts it itself.
+        assertThat(meterRegistry.counter(GlobalErrorHandler.TECHNICAL_ERRORS_METRIC, GlobalErrorHandler.CODE_TAG,
+                TechnicalErrorCode.STORE_UNAVAILABLE.getCode()).count()).isEqualTo(1.0);
         assertThat(chainRan).isFalse();
     }
 
     @Test
     void filter_shouldNotCatchErrorsRaisedDownTheChain() {
         when(markers.isDeleted("lea")).thenReturn(Mono.just(false));
-        EventException downstream = new EventException(EventErrorCode.EVENT_NOT_FOUND);
+        BusinessException downstream = new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND);
         WebFilterChain failing = exchange -> Mono.error(downstream);
 
         StepVerifier.create(filter.filter(post(), failing)

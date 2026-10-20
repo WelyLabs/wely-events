@@ -5,8 +5,8 @@ import com.calendar.events.application.dtos.TimeRangeResponse;
 import com.calendar.events.application.mappers.FreeSlotRestMapper;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.services.FreeSlotService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -35,7 +35,7 @@ public class FreeSlotController {
     public Flux<TimeRangeResponse> findCommonFreeSlots(@Valid @RequestBody FreeSlotSearchRequest request,
                                                        @AuthenticationPrincipal Jwt jwt) {
         if (!request.end().isAfter(request.start())) {
-            return Flux.error(new EventException(EventErrorCode.INVALID_SLOT_SEARCH));
+            return Flux.error(new BusinessException(BusinessErrorCode.INVALID_SLOT_SEARCH));
         }
         String userId = jwt.getClaimAsString("businessId");
         return freeSlotService.findCommonFreeRanges(userId, request.friendIds(),

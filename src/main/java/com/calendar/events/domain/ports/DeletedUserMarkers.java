@@ -7,7 +7,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Set;
 
-/** The permanent register of accounts wely-users deleted; a store failure arrives as STORE_UNAVAILABLE. */
+/** The permanent register of accounts wely-users deleted; a store failure arrives as the technical STORE_UNAVAILABLE. */
 public interface DeletedUserMarkers {
 
     /** Records the deletion if absent and returns the stored marker: the first deletedAt wins. */

@@ -14,8 +14,10 @@ import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -93,8 +95,12 @@ class PollServiceTest {
                 .participantIds(new ArrayList<>()).poll(poll).build();
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
+    }
+
+    private static boolean hasCode(Throwable error, TechnicalErrorCode code) {
+        return error instanceof TechnicalException e && e.getErrorCode() == code;
     }
 
     @Test
@@ -129,7 +135,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PRIVATE, openPoll(Map.of()))));
 
         StepVerifier.create(pollService.vote("e1", "stranger", Map.of("thu", PollAnswer.YES)))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(eventRepository, never()).castBallot(anyString(), anyString(), any());
         verifyNoInteractions(pollUpdates);
@@ -150,7 +156,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, closed)));
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of("thu", PollAnswer.YES)))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_CLOSED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
                 .verify();
     }
 
@@ -159,7 +165,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, null)));
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of()))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_CLOSED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
                 .verify();
     }
 
@@ -169,7 +175,7 @@ class PollServiceTest {
         when(eventRepository.castBallot("e1", "lea", Map.of("thu", PollAnswer.YES))).thenReturn(Mono.empty());
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of("thu", PollAnswer.YES)))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_CLOSED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
                 .verify();
         verifyNoInteractions(pollUpdates);
     }
@@ -179,7 +185,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, openPoll(Map.of()))));
 
         StepVerifier.create(pollService.vote("e1", "lea", Map.of("thu", PollAnswer.YES, "sun", PollAnswer.NO)))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_SLOT_UNKNOWN))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_SLOT_UNKNOWN))
                 .verify();
         verify(eventRepository, never()).castBallot(anyString(), anyString(), any());
     }
@@ -220,10 +226,10 @@ class PollServiceTest {
     void fix_shouldAnswerTheStoreError_whenTheRegisterCannotBeRead() {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PRIVATE,
                 openPoll(Map.of("lea", Map.of("fri", PollAnswer.YES))))));
-        when(markers.deletedAmong(any())).thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+        when(markers.deletedAmong(any())).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
 
         StepVerifier.create(pollService.fix("e1", "org", "fri"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.STORE_UNAVAILABLE))
+                .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.STORE_UNAVAILABLE))
                 .verify();
         verify(eventRepository, never()).fixPollDate(anyString(), anyString(), any(), any());
     }
@@ -233,7 +239,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, openPoll(Map.of()))));
 
         StepVerifier.create(pollService.fix("e1", "lea", "fri"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
         verify(eventRepository, never()).fixPollDate(anyString(), anyString(), any(), any());
     }
@@ -243,7 +249,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PRIVATE, openPoll(Map.of()))));
 
         StepVerifier.create(pollService.fix("e1", "stranger", "fri"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -253,7 +259,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, closed)));
 
         StepVerifier.create(pollService.fix("e1", "org", "fri"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_CLOSED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
                 .verify();
     }
 
@@ -263,7 +269,7 @@ class PollServiceTest {
         when(eventRepository.fixPollDate("e1", "org", FRIDAY, List.of())).thenReturn(Mono.empty());
 
         StepVerifier.create(pollService.fix("e1", "org", "fri"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_CLOSED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
                 .verify();
         verifyNoInteractions(pollUpdates);
     }
@@ -273,7 +279,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, openPoll(Map.of()))));
 
         StepVerifier.create(pollService.fix("e1", "org", "sun"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_SLOT_UNKNOWN))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_SLOT_UNKNOWN))
                 .verify();
     }
 
@@ -284,7 +290,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, poll)));
 
         StepVerifier.create(pollService.fix("e1", "org", "gone"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_IN_PAST))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_IN_PAST))
                 .verify();
         verify(eventRepository, never()).fixPollDate(any(), any(), any(), any());
     }
@@ -302,7 +308,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PRIVATE, openPoll(Map.of()))));
 
         StepVerifier.create(pollService.watch("e1", "stranger"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verifyNoInteractions(pollUpdates);
     }
@@ -312,7 +318,7 @@ class PollServiceTest {
         when(markers.isDeleted("gone")).thenReturn(Mono.just(true));
 
         StepVerifier.create(pollService.watch("e1", "gone"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.ACCOUNT_DELETED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.ACCOUNT_DELETED))
                 .verify();
         verify(eventRepository, never()).findById(anyString());
         verifyNoInteractions(pollUpdates);
@@ -337,12 +343,12 @@ class PollServiceTest {
     void watch_shouldFailTheStream_whenTheRecheckCannotReadTheRegister() {
         when(markers.isDeleted("lea"))
                 .thenReturn(Mono.just(false))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, openPoll(Map.of()))));
         when(pollUpdates.stream("e1", "lea")).thenReturn(Flux.never());
 
         StepVerifier.create(pollService.watch("e1", "lea").flatMapMany(states -> states))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.STORE_UNAVAILABLE))
+                .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.STORE_UNAVAILABLE))
                 .verify(Duration.ofSeconds(5));
     }
 
@@ -351,7 +357,7 @@ class PollServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(polling(Visibility.PUBLIC, null)));
 
         StepVerifier.create(pollService.watch("e1", "lea"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_CLOSED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_CLOSED))
                 .verify();
     }
 

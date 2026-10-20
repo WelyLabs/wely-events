@@ -25,8 +25,10 @@ import com.calendar.events.domain.models.FeedRank;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.services.PictureService;
 import com.calendar.events.domain.services.SurpriseService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.domain.services.EventService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -135,8 +137,8 @@ class EventControllerTest {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
 
         StepVerifier.create(controller.getMyFeedEvents("popularity", jwt))
-                .expectErrorMatches(error -> error instanceof EventException e
-                        && e.getErrorCode() == EventErrorCode.FEED_RANK_INVALID)
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.FEED_RANK_INVALID)
                 .verify();
         verify(eventService, never()).getFeedEvents(any(), any(), any());
     }
@@ -175,10 +177,10 @@ class EventControllerTest {
     void getParticipants_shouldPassOnNotFound() {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
         when(eventService.getParticipants("1", "user1"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.EVENT_NOT_FOUND)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)));
 
         StepVerifier.create(controller.getParticipants("1", jwt))
-                .expectError(EventException.class)
+                .expectError(BusinessException.class)
                 .verify();
     }
 
@@ -281,8 +283,8 @@ class EventControllerTest {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
 
         StepVerifier.create(controller.getMapEvents(45.81, 4.77, 45.70, 4.92, jwt))
-                .expectErrorMatches(error -> error instanceof EventException e
-                        && e.getErrorCode() == EventErrorCode.INVALID_MAP_AREA)
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.INVALID_MAP_AREA)
                 .verify();
     }
 
@@ -315,7 +317,7 @@ class EventControllerTest {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
         when(eventService.getFeedEvents("user1", ViewerFriends.NONE, FeedRank.DEFAULT)).thenReturn(Flux.just(coveredBy("1", "events/1/cover-a.jpg"),
                 coveredBy("2", "/demo/events/picnic.jpg")));
-        when(mediaStore.urls(any())).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+        when(mediaStore.urls(any())).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
 
         StepVerifier.create(withRealMapping().getMyFeedEvents(null, jwt).map(response -> String.valueOf(response.getImage())))
                 .expectNext("null", "/demo/events/picnic.jpg")
@@ -354,7 +356,7 @@ class EventControllerTest {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
 
         StepVerifier.create(controller.setCover("1", UploadsTest.form(UploadsTest.file(Uploads.MAX_BYTES + 1)), jwt))
-                .expectErrorMatches(error -> UploadsTest.failsWith(error, EventErrorCode.MEDIA_TOO_LARGE))
+                .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.MEDIA_TOO_LARGE))
                 .verify();
         verify(eventService, never()).setCover(any(), any(), any());
     }
@@ -364,7 +366,7 @@ class EventControllerTest {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
 
         StepVerifier.create(controller.setCover("1", UploadsTest.form(null), jwt))
-                .expectErrorMatches(error -> UploadsTest.failsWith(error, EventErrorCode.COVER_INVALID))
+                .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.COVER_INVALID))
                 .verify();
     }
 
@@ -372,10 +374,10 @@ class EventControllerTest {
     void setCover_shouldPassOnARefusal() {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
         when(eventService.setCover(eq("1"), eq("user1"), any()))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.EVENT_ACCESS_DENIED)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.EVENT_ACCESS_DENIED)));
 
         StepVerifier.create(controller.setCover("1", UploadsTest.form(UploadsTest.file(10)), jwt))
-                .expectErrorMatches(error -> UploadsTest.failsWith(error, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(error -> UploadsTest.failsWith(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
     }
 
@@ -423,10 +425,10 @@ class EventControllerTest {
     void leave_shouldReadNoBodyAsNeitherSuccessorNorConfirmation() {
         when(jwt.getClaimAsString("businessId")).thenReturn("user1");
         when(eventService.leave("1", "user1", null, false))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.LAST_MEMBER)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.LAST_MEMBER)));
 
         StepVerifier.create(controller.leave("1", null, jwt))
-                .expectErrorMatches(error -> error instanceof EventException e && e.getErrorCode() == EventErrorCode.LAST_MEMBER)
+                .expectErrorMatches(error -> error instanceof BusinessException e && e.getErrorCode() == BusinessErrorCode.LAST_MEMBER)
                 .verify();
     }
 

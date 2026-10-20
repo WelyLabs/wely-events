@@ -1,7 +1,7 @@
 package com.calendar.events.infrastructure.messaging.adapters;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.messaging.models.EventDateFixedDTO;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -10,6 +10,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cloud.stream.function.StreamBridge;
+import org.springframework.messaging.MessageDeliveryException;
 import reactor.test.StepVerifier;
 
 import java.time.Instant;
@@ -31,7 +32,7 @@ class KafkaEventDateFixedPublisherTest {
     private KafkaEventDateFixedPublisher publisher;
 
     private static boolean brokerUnavailable(Throwable error) {
-        return error instanceof EventException e && e.getErrorCode() == EventErrorCode.BROKER_UNAVAILABLE;
+        return error instanceof TechnicalException e && e.getErrorCode() == TechnicalErrorCode.BROKER_UNAVAILABLE;
     }
 
     @Test
@@ -49,18 +50,19 @@ class KafkaEventDateFixedPublisherTest {
         when(streamBridge.send(KafkaEventDateFixedPublisher.DESTINATION, FIXED)).thenReturn(false);
 
         StepVerifier.create(publisher.publish(FIXED))
-                .expectErrorMatches(KafkaEventDateFixedPublisherTest::brokerUnavailable)
+                .expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == null)
                 .verify();
     }
 
     @Test
     @DisplayName("the binder's own exception does not leak out of the adapter")
     void publish_shouldTranslateABinderFailure() {
+        MessageDeliveryException failure = new MessageDeliveryException("broker down");
         when(streamBridge.send(KafkaEventDateFixedPublisher.DESTINATION, FIXED))
-                .thenThrow(new org.springframework.messaging.MessageDeliveryException("broker down"));
+                .thenThrow(failure);
 
         StepVerifier.create(publisher.publish(FIXED))
-                .expectErrorMatches(KafkaEventDateFixedPublisherTest::brokerUnavailable)
+                .expectErrorMatches(error -> brokerUnavailable(error) && error.getCause() == failure)
                 .verify();
     }
 }

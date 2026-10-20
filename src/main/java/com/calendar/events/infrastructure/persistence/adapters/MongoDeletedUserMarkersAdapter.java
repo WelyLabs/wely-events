@@ -2,8 +2,8 @@ package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.DeletedUserMarker;
 import com.calendar.events.domain.ports.DeletedUserMarkers;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.persistence.entities.DeletedUserEntity;
 import com.calendar.events.infrastructure.persistence.mappers.DeletedUserPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveDeletedUserMongoRepository;
@@ -76,8 +76,8 @@ public class MongoDeletedUserMarkersAdapter implements DeletedUserMarkers {
                 .onErrorMap(DataAccessException.class, error -> unavailable("mark erased", error));
     }
 
-    private static EventException unavailable(String operation, DataAccessException error) {
+    private static TechnicalException unavailable(String operation, DataAccessException error) {
         log.warn("Deleted-accounts register: {} failed: {}", operation, error.getClass().getSimpleName());
-        return new EventException(EventErrorCode.STORE_UNAVAILABLE);
+        return new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE, error);
     }
 }

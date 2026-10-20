@@ -1,7 +1,7 @@
 package com.calendar.events.domain.models;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -110,7 +110,7 @@ public record Poll(PollStatus status, List<PollSlot> slots, Map<String, Map<Stri
         return id;
     }
 
-    private static EventException invalid() {
-        return new EventException(EventErrorCode.POLL_INVALID);
+    private static BusinessException invalid() {
+        return new BusinessException(BusinessErrorCode.POLL_INVALID);
     }
 }

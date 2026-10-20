@@ -8,8 +8,8 @@ import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.BirthdayNoticeOutbox;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -88,7 +88,7 @@ public class BirthdayService {
      */
     public Flux<BirthdayOccurrence> birthdaysFor(String viewerId, Instant from, Instant to) {
         if (from == null || to == null || !to.isAfter(from) || Duration.between(from, to).compareTo(MAX_RANGE) > 0) {
-            return Flux.error(new EventException(EventErrorCode.INVALID_BIRTHDAY_RANGE));
+            return Flux.error(new BusinessException(BusinessErrorCode.INVALID_BIRTHDAY_RANGE));
         }
         return socialGraph.friendsOf(viewerId)
                 .defaultIfEmpty(Map.of())

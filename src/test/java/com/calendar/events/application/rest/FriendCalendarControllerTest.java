@@ -7,8 +7,8 @@ import com.calendar.events.application.mappers.EventRestMapper;
 import com.calendar.events.domain.models.CalendarEntry;
 import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.services.FriendCalendarService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,8 +56,8 @@ class FriendCalendarControllerTest {
     @Test
     void getFriendCalendar_shouldRejectAWindowEndingBeforeItStarts() {
         StepVerifier.create(controller.getFriendCalendar("bob", TO, FROM, jwt))
-                .expectErrorMatches(e -> e instanceof EventException ex
-                        && ex.getErrorCode() == EventErrorCode.INVALID_CALENDAR_REQUEST)
+                .expectErrorMatches(e -> e instanceof BusinessException ex
+                        && ex.getErrorCode() == BusinessErrorCode.INVALID_CALENDAR_REQUEST)
                 .verify();
         verifyNoInteractions(service);
     }
@@ -77,8 +77,8 @@ class FriendCalendarControllerTest {
     @Test
     void getCircleCalendar_shouldRejectAWindowEndingBeforeItStarts() {
         StepVerifier.create(controller.getCircleCalendar(TO, FROM, jwt))
-                .expectErrorMatches(e -> e instanceof EventException ex
-                        && ex.getErrorCode() == EventErrorCode.INVALID_CIRCLE_REQUEST)
+                .expectErrorMatches(e -> e instanceof BusinessException ex
+                        && ex.getErrorCode() == BusinessErrorCode.INVALID_CIRCLE_REQUEST)
                 .verify();
         verifyNoInteractions(service);
     }

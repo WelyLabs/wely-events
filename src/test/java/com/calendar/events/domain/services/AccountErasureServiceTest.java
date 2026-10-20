@@ -21,8 +21,10 @@ import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.PollUpdates;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -148,8 +150,12 @@ class AccountErasureServiceTest {
         return service.erase(USER, DELETED_AT).block();
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
+    }
+
+    private static boolean hasCode(Throwable error, TechnicalErrorCode code) {
+        return error instanceof TechnicalException e && e.getErrorCode() == code;
     }
 
     // --- Order and reference time -----------------------------------------------------------------
@@ -457,7 +463,7 @@ class AccountErasureServiceTest {
         when(eventRepository.findById("e1")).thenReturn(Mono.just(event));
 
         StepVerifier.create(service.erase(USER, DELETED_AT))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.ERASURE_INCOMPLETE))
+                .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.ERASURE_INCOMPLETE))
                 .verify();
         verify(eventRepository, times(AccountErasureService.MAX_RELEASE_ATTEMPTS))
                 .handOver("e1", USER, "lea");
@@ -515,10 +521,10 @@ class AccountErasureServiceTest {
     void erase_shouldKeepTheReceiptKeyAndNotMarkErased_whenTheObjectCannotBeDeleted() {
         when(expenseRepository.findWithReceiptRecordedBy(USER)).thenReturn(Flux.just(receiptOf("x1", "events/e9/receipts/x1-a.jpg")));
         when(mediaStore.delete("events/e9/receipts/x1-a.jpg"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
 
         StepVerifier.create(service.erase(USER, DELETED_AT))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.MEDIA_UNAVAILABLE))
+                .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.MEDIA_UNAVAILABLE))
                 .verify();
         verify(expenseRepository, never()).clearReceipt(anyString(), anyString(), anyString());
         verify(markers, never()).markErased(anyString(), any());
@@ -539,20 +545,20 @@ class AccountErasureServiceTest {
     @Test
     void erase_shouldNotMarkErased_whenAStepFails() {
         when(eventRepository.leaveUpcoming(USER, DELETED_AT))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
 
         StepVerifier.create(service.erase(USER, DELETED_AT))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.STORE_UNAVAILABLE))
+                .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.STORE_UNAVAILABLE))
                 .verify();
         verify(markers, never()).markErased(anyString(), any());
     }
 
     @Test
     void erase_shouldFail_whenTheMarkerCannotBeWritten() {
-        when(markers.markDeleted(USER, DELETED_AT)).thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+        when(markers.markDeleted(USER, DELETED_AT)).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
 
         StepVerifier.create(service.erase(USER, DELETED_AT))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.STORE_UNAVAILABLE))
+                .expectErrorMatches(error -> hasCode(error, TechnicalErrorCode.STORE_UNAVAILABLE))
                 .verify();
         verifyNoInteractions(eventRepository, pollUpdates);
     }

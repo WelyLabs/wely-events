@@ -2,8 +2,8 @@ package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Expense;
 import com.calendar.events.domain.ports.ExpenseRepository;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import com.calendar.events.infrastructure.persistence.mappers.ExpensePersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveExpenseMongoRepository;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -41,7 +41,7 @@ public class MongoExpenseRepositoryAdapter implements ExpenseRepository {
         return mongoRepository.save(mapper.toEntity(expense))
                 .map(mapper::toDomain)
                 .onErrorMap(OptimisticLockingFailureException.class,
-                        error -> new EventException(EventErrorCode.EXPENSE_CONFLICT));
+                        error -> new BusinessException(BusinessErrorCode.EXPENSE_CONFLICT));
     }
 
     @Override

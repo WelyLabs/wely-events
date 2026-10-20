@@ -3,8 +3,8 @@ package com.calendar.events.application.rest;
 import com.calendar.events.application.dtos.CalendarLinkResponse;
 import com.calendar.events.domain.models.CalendarLink;
 import com.calendar.events.domain.services.CalendarExportService;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -80,11 +80,11 @@ class CalendarControllerTest {
     @Test
     void ics_shouldPassOnAnExpiredLink() {
         when(calendarExportService.icsFor("old"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.CALENDAR_LINK_EXPIRED)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.CALENDAR_LINK_EXPIRED)));
 
         StepVerifier.create(controller.ics("old"))
-                .expectErrorMatches(error -> error instanceof EventException e
-                        && e.getErrorCode() == EventErrorCode.CALENDAR_LINK_EXPIRED)
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.CALENDAR_LINK_EXPIRED)
                 .verify();
     }
 

@@ -2,8 +2,8 @@ package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.CalendarLink;
 import com.calendar.events.domain.ports.CalendarLinks;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.persistence.mappers.CalendarLinkPersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveCalendarLinkMongoRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -40,8 +40,8 @@ public class MongoCalendarLinksAdapter implements CalendarLinks {
                 .onErrorMap(DataAccessException.class, error -> unavailable("read", error));
     }
 
-    private static EventException unavailable(String operation, DataAccessException error) {
+    private static TechnicalException unavailable(String operation, DataAccessException error) {
         log.warn("Calendar links: {} failed: {}", operation, error.getClass().getSimpleName());
-        return new EventException(EventErrorCode.STORE_UNAVAILABLE);
+        return new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE, error);
     }
 }

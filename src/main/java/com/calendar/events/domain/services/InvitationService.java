@@ -4,8 +4,8 @@ import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.Participants;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
@@ -41,18 +41,18 @@ public class InvitationService {
         return eventService.requireOrganizer(eventId, organizerId)
                 .flatMap(event -> {
                     if (!mayInvite(event, inviteeId)) {
-                        return Mono.error(new EventException(EventErrorCode.INVITATION_NOT_ALLOWED));
+                        return Mono.error(new BusinessException(BusinessErrorCode.INVITATION_NOT_ALLOWED));
                     }
                     if (event.involves(inviteeId)) {
-                        return Mono.error(new EventException(EventErrorCode.ALREADY_TAKING_PART));
+                        return Mono.error(new BusinessException(BusinessErrorCode.ALREADY_TAKING_PART));
                     }
                     return socialGraph.friendIdsOf(organizerId)
                             .defaultIfEmpty(Set.of())
                             .flatMap(friendIds -> friendIds.contains(inviteeId)
                                     ? eventRepository.invite(event.getId(), organizerId, inviteeId)
-                                            .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                                            .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                                             .map(updated -> Participants.seenBy(updated, organizerId, friendIds))
-                                    : Mono.error(new EventException(EventErrorCode.FRIEND_NOT_FOUND)));
+                                    : Mono.error(new BusinessException(BusinessErrorCode.FRIEND_NOT_FOUND)));
                 });
     }
 
@@ -64,9 +64,9 @@ public class InvitationService {
         return eventService.getEventById(eventId, requesterId)
                 .flatMap(event -> requesterId.equals(event.getOrganizerId()) || requesterId.equals(inviteeId)
                         ? eventRepository.withdrawInvitation(event.getId(), inviteeId)
-                                .switchIfEmpty(Mono.error(() -> new EventException(EventErrorCode.EVENT_NOT_FOUND)))
+                                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                                 .then()
-                        : Mono.error(new EventException(EventErrorCode.EVENT_ACCESS_DENIED)));
+                        : Mono.error(new BusinessException(BusinessErrorCode.EVENT_ACCESS_DENIED)));
     }
 
     private boolean mayInvite(Event event, String inviteeId) {

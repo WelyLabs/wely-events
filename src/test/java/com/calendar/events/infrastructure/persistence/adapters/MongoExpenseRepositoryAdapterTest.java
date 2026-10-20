@@ -1,8 +1,8 @@
 package com.calendar.events.infrastructure.persistence.adapters;
 
 import com.calendar.events.domain.models.Expense;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import com.calendar.events.infrastructure.persistence.entities.ExpenseEntity;
 import com.calendar.events.infrastructure.persistence.mappers.ExpensePersistenceMapper;
 import com.calendar.events.infrastructure.persistence.repositories.ReactiveExpenseMongoRepository;
@@ -73,8 +73,8 @@ class MongoExpenseRepositoryAdapterTest {
         when(mongoRepository.save(entity)).thenReturn(Mono.error(new OptimisticLockingFailureException("stale")));
 
         StepVerifier.create(adapter.save(expense))
-                .expectErrorMatches(error -> error instanceof EventException exception
-                        && exception.getErrorCode() == EventErrorCode.EXPENSE_CONFLICT)
+                .expectErrorMatches(error -> error instanceof BusinessException exception
+                        && exception.getErrorCode() == BusinessErrorCode.EXPENSE_CONFLICT)
                 .verify();
     }
 

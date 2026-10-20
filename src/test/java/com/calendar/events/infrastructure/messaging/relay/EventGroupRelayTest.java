@@ -1,7 +1,7 @@
 package com.calendar.events.infrastructure.messaging.relay;
 
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import com.calendar.events.infrastructure.messaging.adapters.KafkaEventGroupPublisher;
 import com.calendar.events.infrastructure.messaging.mappers.EventGroupMapper;
 import com.calendar.events.infrastructure.messaging.models.EventGroupChangedDTO;
@@ -73,7 +73,7 @@ class EventGroupRelayTest {
         EventEntity fine = pending("e2", 1L);
         when(outbox.findPending(10)).thenReturn(Flux.just(failing, fine));
         when(publisher.publish(mapper.toDto(failing)))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.BROKER_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.BROKER_UNAVAILABLE)));
         when(publisher.publish(mapper.toDto(fine))).thenReturn(Mono.empty());
         when(outbox.markPublished("e2", 1L)).thenReturn(Mono.just(true));
 

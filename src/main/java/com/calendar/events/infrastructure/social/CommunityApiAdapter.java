@@ -2,8 +2,8 @@ package com.calendar.events.infrastructure.social;
 
 import com.calendar.events.domain.models.CommunityRole;
 import com.calendar.events.domain.ports.CommunityDirectory;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -50,10 +50,10 @@ public class CommunityApiAdapter implements CommunityDirectory {
                             return response.createError();
                         })
                         .timeout(TIMEOUT))
-                .onErrorMap(error -> !(error instanceof EventException), error -> {
+                .onErrorMap(error -> !(error instanceof TechnicalException), error -> {
                     log.warn("Could not read the role of {} in community {} from wely-social: {}",
                             userId, communityId, error.getMessage());
-                    return new EventException(EventErrorCode.SOCIAL_UNAVAILABLE);
+                    return new TechnicalException(TechnicalErrorCode.SOCIAL_UNAVAILABLE, error);
                 })
                 .flatMap(community -> community.role() == null
                         ? Mono.empty()

@@ -13,8 +13,8 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -97,8 +97,8 @@ class ScheduleServiceTest {
                 BOWLING_END.plus(Duration.ofDays(1)))), null, null);
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
     }
 
     @Test
@@ -127,7 +127,7 @@ class ScheduleServiceTest {
         TimeRange tooWide = new TimeRange(BOWLING_START, BOWLING_START.plus(Duration.ofDays(63)));
 
         StepVerifier.create(scheduleService.conflictsWith("me", tooWide, null))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.SCHEDULE_INVALID))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.SCHEDULE_INVALID))
                 .verify();
         verifyNoInteractions(eventRepository);
     }
@@ -171,7 +171,7 @@ class ScheduleServiceTest {
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(hidden));
 
         StepVerifier.create(scheduleService.conflictsOf("bowling", "me"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -216,7 +216,7 @@ class ScheduleServiceTest {
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(bowling("lea", "me")));
 
         StepVerifier.create(scheduleService.proposalsFor("bowling", "me"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
         verify(eventRepository, never()).findOccupying(any(), any(), any(), any());
     }
@@ -228,7 +228,7 @@ class ScheduleServiceTest {
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(polling));
 
         StepVerifier.create(scheduleService.proposalsFor("bowling", "me"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.SCHEDULE_LOCKED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.SCHEDULE_LOCKED))
                 .verify();
     }
 
@@ -269,7 +269,7 @@ class ScheduleServiceTest {
         when(eventRepository.reschedule(bowling, AN_HOUR_LATER, true)).thenReturn(Mono.empty());
 
         StepVerifier.create(scheduleService.reschedule("bowling", "me", AN_HOUR_LATER))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.SCHEDULE_CHANGED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.SCHEDULE_CHANGED))
                 .verify();
     }
 
@@ -278,7 +278,7 @@ class ScheduleServiceTest {
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(bowling("lea", "me")));
 
         StepVerifier.create(scheduleService.reschedule("bowling", "me", AN_HOUR_LATER))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
         verify(eventRepository, never()).reschedule(any(), any(), anyBoolean());
     }
@@ -290,7 +290,7 @@ class ScheduleServiceTest {
         when(eventRepository.findById("bowling")).thenReturn(Mono.just(polling));
 
         StepVerifier.create(scheduleService.reschedule("bowling", "me", AN_HOUR_LATER))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.SCHEDULE_LOCKED))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.SCHEDULE_LOCKED))
                 .verify();
     }
 
@@ -299,7 +299,7 @@ class ScheduleServiceTest {
         TimeRange tooWide = new TimeRange(BOWLING_START, BOWLING_START.plus(Duration.ofDays(63)));
 
         StepVerifier.create(scheduleService.reschedule("bowling", "me", tooWide))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.SCHEDULE_INVALID))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.SCHEDULE_INVALID))
                 .verify();
         verifyNoInteractions(eventRepository);
     }
@@ -310,7 +310,7 @@ class ScheduleServiceTest {
         TimeRange past = new TimeRange(NOW.minus(Duration.ofHours(2)), NOW.minus(Duration.ofHours(1)));
 
         StepVerifier.create(scheduleService.reschedule("bowling", "me", past))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_IN_PAST))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_IN_PAST))
                 .verify();
         verify(eventRepository, never()).reschedule(any(), any(), anyBoolean());
     }
@@ -328,7 +328,7 @@ class ScheduleServiceTest {
 
         StepVerifier.create(scheduleService.reschedule("bowling", "me", today)).expectNextCount(1).verifyComplete();
         StepVerifier.create(scheduleService.reschedule("bowling", "me", yesterday))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_IN_PAST))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_IN_PAST))
                 .verify();
     }
 
@@ -337,7 +337,7 @@ class ScheduleServiceTest {
         when(eventRepository.findById("bowling")).thenReturn(Mono.empty());
 
         StepVerifier.create(scheduleService.reschedule("bowling", "me", AN_HOUR_LATER))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 }

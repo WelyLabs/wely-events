@@ -31,8 +31,10 @@ import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.ExpenseRepository;
 import com.calendar.events.domain.ports.MediaStore;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -116,8 +118,12 @@ class EventServiceTest {
         return Event.builder().id("1").organizerId(organizer).visibility(visibility).participantIds(new ArrayList<>()).build();
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
+    }
+
+    private static boolean hasCode(Throwable error, TechnicalErrorCode code) {
+        return error instanceof TechnicalException e && e.getErrorCode() == code;
     }
 
     @Test
@@ -148,7 +154,7 @@ class EventServiceTest {
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of("bob")));
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -157,7 +163,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(by("bob", Visibility.PRIVATE)));
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verifyNoInteractions(socialGraph);
     }
@@ -177,7 +183,7 @@ class EventServiceTest {
         when(eventRepository.findById("missing")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.getEventById("missing", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -222,7 +228,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("carol", Visibility.PRIVATE, "alice")));
 
         StepVerifier.create(eventService.getParticipants("1", "erin"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -231,7 +237,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.getParticipants("1", "erin"))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -305,7 +311,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.createEvent(event, List.of(
                         candidate("2026-10-17T18:00:00Z", "2026-10-17T21:00:00Z"))))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_INVALID))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_INVALID))
                 .verify();
         verify(eventRepository, never()).save(any());
     }
@@ -317,7 +323,7 @@ class EventServiceTest {
         StepVerifier.create(eventService.createEvent(event, List.of(
                         candidate("2026-10-10T18:00:00Z", "2026-10-10T21:00:00Z"),
                         candidate("2026-10-17T18:00:00Z", "2026-10-17T21:00:00Z"))))
-                .expectErrorMatches(error -> hasCode(error, EventErrorCode.POLL_INVALID))
+                .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.POLL_INVALID))
                 .verify();
     }
 
@@ -374,8 +380,8 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
 
         StepVerifier.create(eventService.deleteEvent("1", "someone-else"))
-                .expectErrorMatches(e -> e instanceof EventException
-                        && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_ACCESS_DENIED)
+                .expectErrorMatches(e -> e instanceof BusinessException
+                        && ((BusinessException) e).getErrorCode() == BusinessErrorCode.EVENT_ACCESS_DENIED)
                 .verify();
         verify(eventRepository, never()).deleteByOrganizer(any(), any());
     }
@@ -385,8 +391,8 @@ class EventServiceTest {
         when(eventRepository.findById("missing")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.deleteEvent("missing", "organizer"))
-                .expectErrorMatches(e -> e instanceof EventException
-                        && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_NOT_FOUND)
+                .expectErrorMatches(e -> e instanceof BusinessException
+                        && ((BusinessException) e).getErrorCode() == BusinessErrorCode.EVENT_NOT_FOUND)
                 .verify();
         verify(eventRepository, never()).deleteByOrganizer(any(), any());
     }
@@ -416,7 +422,7 @@ class EventServiceTest {
         when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of()));
 
         StepVerifier.create(eventService.toggleSubscription("1", "user123"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(eventRepository, never()).addParticipant(any(), any());
     }
@@ -455,8 +461,8 @@ class EventServiceTest {
         when(eventRepository.findById("missing")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.toggleSubscription("missing", "user123"))
-                .expectErrorMatches(e -> e instanceof EventException
-                        && ((EventException) e).getErrorCode() == EventErrorCode.EVENT_NOT_FOUND)
+                .expectErrorMatches(e -> e instanceof BusinessException
+                        && ((BusinessException) e).getErrorCode() == BusinessErrorCode.EVENT_NOT_FOUND)
                 .verify();
     }
 
@@ -559,7 +565,7 @@ class EventServiceTest {
         when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.just(event));
         when(expenseRepository.findByEvent("1")).thenReturn(Flux.empty());
         when(expenseRepository.deleteByEvent("1")).thenReturn(Mono.empty());
-        when(mediaStore.delete(anyString())).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+        when(mediaStore.delete(anyString())).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer")).verifyComplete();
     }
@@ -608,7 +614,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -617,7 +623,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org")));
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(eventRepository, never()).removeParticipant(any(), any());
     }
@@ -651,7 +657,7 @@ class EventServiceTest {
         when(eventRepository.removeParticipant("1", "lea")).thenReturn(Mono.just(handedOver));
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
                 .verify();
     }
 
@@ -661,7 +667,7 @@ class EventServiceTest {
         when(eventRepository.removeParticipant("1", "lea")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.leave("1", "lea", null, false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -670,10 +676,10 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
                 .verify();
         StepVerifier.create(eventService.leave("1", "org", " ", true))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
                 .verify();
         verify(eventRepository, never()).handOver(any(), any(), any());
         verify(eventRepository, never()).deleteIfAlone(any(), any(), any());
@@ -684,7 +690,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
 
         StepVerifier.create(eventService.leave("1", "org", "hugo", false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_INVALID))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_INVALID))
                 .verify();
         verify(eventRepository, never()).handOver(any(), any(), any());
     }
@@ -694,7 +700,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
 
         StepVerifier.create(eventService.leave("1", "org", "org", false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_INVALID))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_INVALID))
                 .verify();
     }
 
@@ -717,7 +723,7 @@ class EventServiceTest {
         when(eventRepository.handOver("1", "org", "lea")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_INVALID))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_INVALID))
                 .verify();
     }
 
@@ -728,7 +734,7 @@ class EventServiceTest {
         when(eventRepository.handOver("1", "org", "lea")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
                 .verify();
     }
 
@@ -738,7 +744,7 @@ class EventServiceTest {
         when(eventRepository.handOver("1", "org", "lea")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -747,7 +753,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org")));
 
         StepVerifier.create(eventService.leave("1", "org", null, false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.LAST_MEMBER))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.LAST_MEMBER))
                 .verify();
         verify(eventRepository, never()).deleteIfAlone(any(), any(), any());
     }
@@ -791,7 +797,7 @@ class EventServiceTest {
         when(eventRepository.deleteIfAlone("1", "org", Set.of())).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
                 .verify();
         verify(deletionOutbox, never()).record(any());
         verify(expenseRepository, never()).deleteByEvent(any());
@@ -803,7 +809,7 @@ class EventServiceTest {
         when(eventRepository.deleteIfAlone("1", "org", Set.of())).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.leave("1", "org", null, true))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -828,7 +834,7 @@ class EventServiceTest {
         when(markers.deletedAmong(List.of("org", "gone"))).thenReturn(Mono.just(Set.of("gone")));
 
         StepVerifier.create(eventService.leave("1", "org", null, false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.LAST_MEMBER))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.LAST_MEMBER))
                 .verify();
         verify(eventRepository, never()).deleteIfAlone(any(), any(), any());
     }
@@ -839,7 +845,7 @@ class EventServiceTest {
         when(markers.deletedAmong(List.of("org", "gone", "lea"))).thenReturn(Mono.just(Set.of("gone")));
 
         StepVerifier.create(eventService.leave("1", "org", "gone", false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_INVALID))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_INVALID))
                 .verify();
         verify(eventRepository, never()).handOver(any(), any(), any());
     }
@@ -860,10 +866,10 @@ class EventServiceTest {
     void leave_shouldAnswerTheStoreError_whenTheRegisterCannotBeRead() {
         when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
         when(markers.deletedAmong(List.of("org", "lea")))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
 
         StepVerifier.create(eventService.leave("1", "org", "lea", false))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.STORE_UNAVAILABLE))
+                .expectErrorMatches(e -> hasCode(e, TechnicalErrorCode.STORE_UNAVAILABLE))
                 .verify();
         verify(eventRepository, never()).handOver(any(), any(), any());
     }
@@ -873,7 +879,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(quiz("org", "org", "lea")));
 
         StepVerifier.create(eventService.toggleSubscription("1", "org"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
                 .verify();
         verify(eventRepository, never()).removeParticipant(any(), any());
     }
@@ -884,7 +890,7 @@ class EventServiceTest {
         when(eventRepository.removeParticipant("1", "lea")).thenReturn(Mono.just(quiz("lea", "lea")));
 
         StepVerifier.create(eventService.toggleSubscription("1", "lea"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
                 .verify();
     }
 
@@ -922,7 +928,7 @@ class EventServiceTest {
         when(eventRepository.deleteByOrganizer("1", "organizer")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.deleteEvent("1", "organizer"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(deletionOutbox, never()).record(any());
         verify(expenseRepository, never()).deleteByEvent(any());
@@ -985,7 +991,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
 
         StepVerifier.create(eventService.updateDetails("1", "alice", NEW_DETAILS))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
         verify(eventRepository, never()).updateDetails(any(), any(), any(), anyBoolean());
     }
@@ -995,7 +1001,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
 
         StepVerifier.create(eventService.updateDetails("1", "mallory", NEW_DETAILS))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -1005,7 +1011,7 @@ class EventServiceTest {
         when(eventRepository.updateDetails(eq("1"), eq("organizer"), any(), anyBoolean())).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.updateDetails("1", "organizer", NEW_DETAILS))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -1044,7 +1050,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
 
         StepVerifier.create(eventService.setCover("1", "alice", new byte[]{1}))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
         verify(mediaStore, never()).store(any(), any(), any());
     }
@@ -1054,7 +1060,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
 
         StepVerifier.create(eventService.setCover("1", "mallory", new byte[]{1}))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(mediaStore, never()).store(any(), any(), any());
     }
@@ -1063,10 +1069,10 @@ class EventServiceTest {
     void setCover_shouldPassOnARefusedImage_withoutTouchingTheEvent() {
         when(eventRepository.findById("1")).thenReturn(Mono.just(by("organizer", Visibility.PRIVATE)));
         when(mediaStore.store(anyString(), any(), eq(MediaProfile.COVER)))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.COVER_INVALID)));
+                .thenReturn(Mono.error(new BusinessException(BusinessErrorCode.COVER_INVALID)));
 
         StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1}))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.COVER_INVALID))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.COVER_INVALID))
                 .verify();
         verify(eventRepository, never()).setImage(any(), any(), any());
     }
@@ -1079,7 +1085,7 @@ class EventServiceTest {
         when(mediaStore.delete(anyString())).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.setCover("1", "organizer", new byte[]{1}))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(mediaStore).delete(startsWith("events/1/cover-"));
     }
@@ -1113,7 +1119,7 @@ class EventServiceTest {
         Event event = Event.builder().id("1").organizerId("organizer").image("events/1/cover-a.jpg").build();
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
         when(eventRepository.setImage("1", "organizer", null)).thenReturn(Mono.just(by("organizer", Visibility.FRIENDS)));
-        when(mediaStore.delete("events/1/cover-a.jpg")).thenReturn(Mono.error(new EventException(EventErrorCode.MEDIA_UNAVAILABLE)));
+        when(mediaStore.delete("events/1/cover-a.jpg")).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.MEDIA_UNAVAILABLE)));
 
         StepVerifier.create(eventService.removeCover("1", "organizer")).verifyComplete();
     }
@@ -1125,7 +1131,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(event));
 
         StepVerifier.create(eventService.removeCover("1", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
         verify(eventRepository, never()).setImage(any(), any(), any());
     }
@@ -1135,7 +1141,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.removeCover("1", "organizer"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -1145,7 +1151,7 @@ class EventServiceTest {
         when(eventRepository.setImage("1", "organizer", null)).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.removeCover("1", "organizer"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(mediaStore, never()).delete(anyString());
     }
@@ -1177,7 +1183,7 @@ class EventServiceTest {
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.createEvent(event, null))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.COMMUNITY_MEMBERS_ONLY))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.COMMUNITY_MEMBERS_ONLY))
                 .verify();
         verify(eventRepository, never()).save(any());
     }
@@ -1207,7 +1213,7 @@ class EventServiceTest {
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -1217,7 +1223,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("bob", Visibility.COMMUNITY, "bob")));
 
         StepVerifier.create(eventService.getEventById("1", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(communityDirectory, never()).roleOf(anyString(), anyString());
     }
@@ -1236,7 +1242,7 @@ class EventServiceTest {
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.getCommunityEvents("c1", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.COMMUNITY_MEMBERS_ONLY))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.COMMUNITY_MEMBERS_ONLY))
                 .verify();
         verify(eventRepository, never()).findUpcomingInCommunity(anyString(), any(), any());
     }
@@ -1260,7 +1266,7 @@ class EventServiceTest {
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.just(CommunityRole.MEMBER));
 
         StepVerifier.create(eventService.deleteEvent("1", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
         verify(eventRepository, never()).deleteByOrganizer(anyString(), anyString());
     }
@@ -1271,7 +1277,7 @@ class EventServiceTest {
         when(communityDirectory.roleOf("c1", "alice")).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.deleteEvent("1", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_ACCESS_DENIED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_ACCESS_DENIED))
                 .verify();
     }
 
@@ -1292,7 +1298,7 @@ class EventServiceTest {
         when(eventRepository.respond("1", "alice", PollAnswer.NO)).thenReturn(Mono.empty());
 
         StepVerifier.create(eventService.respond("1", "alice", PollAnswer.NO))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
     }
 
@@ -1301,7 +1307,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(withParticipants("bob", Visibility.PUBLIC, "bob")));
 
         StepVerifier.create(eventService.respond("1", "alice", PollAnswer.YES))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NOT_A_COMMUNITY_EVENT))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NOT_A_COMMUNITY_EVENT))
                 .verify();
         verify(eventRepository, never()).respond(anyString(), anyString(), any());
     }
@@ -1320,7 +1326,7 @@ class EventServiceTest {
         when(eventRepository.findById("1")).thenReturn(Mono.just(inCommunity("bob", "bob")));
 
         StepVerifier.create(eventService.respond("1", "bob", PollAnswer.MAYBE))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NEW_ORGANIZER_REQUIRED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NEW_ORGANIZER_REQUIRED))
                 .verify();
     }
 
@@ -1351,7 +1357,7 @@ class EventServiceTest {
         doReturn(Mono.empty()).when(eventRepository).findShownTo("1", "lea");
 
         StepVerifier.create(eventService.getEventById("1", "lea"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_NOT_FOUND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_NOT_FOUND))
                 .verify();
         verify(eventRepository).findShownTo("1", "lea");
         verify(eventRepository, never()).findById(anyString());
@@ -1361,7 +1367,7 @@ class EventServiceTest {
     void createEvent_shouldRefuseABirthdayOrASurprise_whichHaveTheirOwnPaths() {
         for (EventKind kind : List.of(EventKind.BIRTHDAY, EventKind.SURPRISE)) {
             StepVerifier.create(eventService.createEvent(Event.builder().title("x").kind(kind).build(), null))
-                    .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_KIND_INVALID))
+                    .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_KIND_INVALID))
                     .verify();
         }
         verify(eventRepository, never()).save(any());
@@ -1415,13 +1421,13 @@ class EventServiceTest {
                 Event.builder().title("d").allDay(true).build());
         for (Event event : invalid) {
             StepVerifier.create(eventService.createEvent(event))
-                    .expectErrorMatches(e -> hasCode(e, EventErrorCode.ALL_DAY_INVALID))
+                    .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.ALL_DAY_INVALID))
                     .verify();
         }
         List<PollSlot> slots = List.of(new PollSlot(null, NOW.plusSeconds(86_400), NOW.plusSeconds(90_000)),
                 new PollSlot(null, NOW.plusSeconds(172_800), NOW.plusSeconds(176_400)));
         StepVerifier.create(eventService.createEvent(Event.builder().title("e").allDay(true).startDate(midnight).build(), slots))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.ALL_DAY_INVALID))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.ALL_DAY_INVALID))
                 .verify();
         verify(eventRepository, never()).save(any());
     }
@@ -1434,7 +1440,7 @@ class EventServiceTest {
                 Event.builder().title("c").allDay(true).startDate(Instant.parse("2026-10-10T00:00:00Z")).build());
         for (Event event : past) {
             StepVerifier.create(eventService.createEvent(event))
-                    .expectErrorMatches(e -> hasCode(e, EventErrorCode.EVENT_IN_PAST))
+                    .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.EVENT_IN_PAST))
                     .verify();
         }
         verify(eventRepository, never()).save(any());
@@ -1459,7 +1465,7 @@ class EventServiceTest {
 
         StepVerifier.create(eventService.updateDetails("1", "organizer",
                         new EventDetails("Afterwork", " ", null, null, Visibility.PUBLIC)))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.LOCATION_REQUIRED))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.LOCATION_REQUIRED))
                 .verify();
         verify(eventRepository, never()).updateDetails(anyString(), anyString(), any(), anyBoolean());
     }

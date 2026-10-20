@@ -4,8 +4,8 @@ import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.FriendOverview;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
@@ -37,11 +37,11 @@ public class FriendOverviewService {
     public Mono<FriendOverview> overviewOf(String viewerId, String friendId) {
         // Same refusal as a friend's calendar asked for oneself.
         if (viewerId.equals(friendId)) {
-            return Mono.error(new EventException(EventErrorCode.INVALID_CALENDAR_REQUEST));
+            return Mono.error(new BusinessException(BusinessErrorCode.INVALID_CALENDAR_REQUEST));
         }
 
         Mono<Closeness> friendship = socialGraph.closenessBetween(viewerId, friendId)
-                .switchIfEmpty(Mono.error(new EventException(EventErrorCode.NOT_A_FRIEND)));
+                .switchIfEmpty(Mono.error(new BusinessException(BusinessErrorCode.NOT_A_FRIEND)));
         Mono<Set<String>> viewerFriends = socialGraph.friendIdsOf(viewerId).defaultIfEmpty(Set.of());
 
         return Mono.zip(friendship, viewerFriends)

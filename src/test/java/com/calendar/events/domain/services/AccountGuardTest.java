@@ -1,8 +1,10 @@
 package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.ports.DeletedUserMarkers;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,8 +53,8 @@ class AccountGuardTest {
         when(markers.isDeleted("gone")).thenReturn(Mono.just(true));
 
         StepVerifier.create(guard.requireLive("gone"))
-                .expectErrorMatches(error -> error instanceof EventException e
-                        && e.getErrorCode() == EventErrorCode.ACCOUNT_DELETED)
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.ACCOUNT_DELETED)
                 .verify();
     }
 
@@ -65,11 +67,11 @@ class AccountGuardTest {
 
     @Test
     void requireLive_shouldPassOnAStoreFailure() {
-        when(markers.isDeleted("lea")).thenReturn(Mono.error(new EventException(EventErrorCode.STORE_UNAVAILABLE)));
+        when(markers.isDeleted("lea")).thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.STORE_UNAVAILABLE)));
 
         StepVerifier.create(guard.requireLive("lea"))
-                .expectErrorMatches(error -> error instanceof EventException e
-                        && e.getErrorCode() == EventErrorCode.STORE_UNAVAILABLE)
+                .expectErrorMatches(error -> error instanceof TechnicalException e
+                        && e.getErrorCode() == TechnicalErrorCode.STORE_UNAVAILABLE)
                 .verify();
     }
 

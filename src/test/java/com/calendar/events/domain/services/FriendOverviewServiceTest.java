@@ -8,8 +8,10 @@ import com.calendar.events.domain.models.PollSlot;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -74,8 +76,12 @@ class FriendOverviewServiceTest {
                 .participantIds(new ArrayList<>(List.of(participants))).build();
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
+    }
+
+    private static boolean hasCode(Throwable error, TechnicalErrorCode code) {
+        return error instanceof TechnicalException e && e.getErrorCode() == code;
     }
 
     private List<String> friendUpcomingTitles() {
@@ -173,7 +179,7 @@ class FriendOverviewServiceTest {
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of()));
 
         StepVerifier.create(service.overviewOf("alice", "carol"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NOT_A_FRIEND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NOT_A_FRIEND))
                 .verify();
         verify(eventRepository, never()).findUpcomingInvolving(any(), any(), any());
         verify(eventRepository, never()).countPastInvolvingBoth(any(), any(), any());
@@ -184,7 +190,7 @@ class FriendOverviewServiceTest {
     @Test
     void overviewOf_shouldRefuseTheCallersOwnPage() {
         StepVerifier.create(service.overviewOf("alice", "alice"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_CALENDAR_REQUEST))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_CALENDAR_REQUEST))
                 .verify();
         verifyNoInteractions(socialGraph, eventRepository);
     }
@@ -192,11 +198,11 @@ class FriendOverviewServiceTest {
     @Test
     void overviewOf_shouldPassOnASocialOutage() {
         when(socialGraph.closenessBetween("alice", "bob"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.SOCIAL_UNAVAILABLE)));
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of()));
 
         StepVerifier.create(service.overviewOf("alice", "bob"))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.SOCIAL_UNAVAILABLE))
+                .expectErrorMatches(e -> hasCode(e, TechnicalErrorCode.SOCIAL_UNAVAILABLE))
                 .verify();
     }
 

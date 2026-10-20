@@ -7,8 +7,10 @@ import com.calendar.events.domain.models.TimeRange;
 import com.calendar.events.domain.models.Visibility;
 import com.calendar.events.domain.ports.EventRepository;
 import com.calendar.events.domain.ports.SocialGraph;
-import com.calendar.events.exception.EventErrorCode;
-import com.calendar.events.exception.EventException;
+import com.calendar.events.exception.BusinessErrorCode;
+import com.calendar.events.exception.BusinessException;
+import com.calendar.events.exception.TechnicalErrorCode;
+import com.calendar.events.exception.TechnicalException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,8 +59,12 @@ class FriendCalendarServiceTest {
                 .participantIds(new ArrayList<>(List.of("bob"))).build();
     }
 
-    private static boolean hasCode(Throwable error, EventErrorCode code) {
-        return error instanceof EventException e && e.getErrorCode() == code;
+    private static boolean hasCode(Throwable error, BusinessErrorCode code) {
+        return error instanceof BusinessException e && e.getErrorCode() == code;
+    }
+
+    private static boolean hasCode(Throwable error, TechnicalErrorCode code) {
+        return error instanceof TechnicalException e && e.getErrorCode() == code;
     }
 
     @Test
@@ -93,7 +99,7 @@ class FriendCalendarServiceTest {
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of()));
 
         StepVerifier.create(service.getFriendCalendar("alice", "carol", WEEK))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.NOT_A_FRIEND))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.NOT_A_FRIEND))
                 .verify();
         verify(eventRepository, never()).findOccupying(any(), any(), any(), any());
     }
@@ -101,18 +107,18 @@ class FriendCalendarServiceTest {
     @Test
     void getFriendCalendar_shouldPassOnASocialOutage() {
         when(socialGraph.closenessBetween("alice", "bob"))
-                .thenReturn(Mono.error(new EventException(EventErrorCode.SOCIAL_UNAVAILABLE)));
+                .thenReturn(Mono.error(new TechnicalException(TechnicalErrorCode.SOCIAL_UNAVAILABLE)));
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of()));
 
         StepVerifier.create(service.getFriendCalendar("alice", "bob", WEEK))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.SOCIAL_UNAVAILABLE))
+                .expectErrorMatches(e -> hasCode(e, TechnicalErrorCode.SOCIAL_UNAVAILABLE))
                 .verify();
     }
 
     @Test
     void getFriendCalendar_shouldRefuseTheCallersOwnCalendar() {
         StepVerifier.create(service.getFriendCalendar("alice", "alice", WEEK))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_CALENDAR_REQUEST))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_CALENDAR_REQUEST))
                 .verify();
         verifyNoInteractions(socialGraph, eventRepository);
     }
@@ -122,7 +128,7 @@ class FriendCalendarServiceTest {
         TimeRange tooLong = new TimeRange(FROM, FROM.plus(FriendCalendarService.MAX_WINDOW).plusSeconds(1));
 
         StepVerifier.create(service.getFriendCalendar("alice", "bob", tooLong))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_CALENDAR_REQUEST))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_CALENDAR_REQUEST))
                 .verify();
         verifyNoInteractions(socialGraph, eventRepository);
     }
@@ -171,7 +177,7 @@ class FriendCalendarServiceTest {
     @Test
     void getCircleCalendar_shouldRefuseAWindowOverSixtyTwoDays() {
         StepVerifier.create(service.getCircleCalendar("alice", new TimeRange(FROM, FROM.plus(Duration.ofDays(63)))))
-                .expectErrorMatches(e -> hasCode(e, EventErrorCode.INVALID_CIRCLE_REQUEST))
+                .expectErrorMatches(e -> hasCode(e, BusinessErrorCode.INVALID_CIRCLE_REQUEST))
                 .verify();
         verifyNoInteractions(socialGraph);
     }
