@@ -97,11 +97,41 @@ class EventControllerTest {
         when(eventService.getSubscribedEvents("user1")).thenReturn(Flux.just(event));
         when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
 
-        Flux<EventResponse> result = controller.getMySubscribedEvents(jwt);
+        Flux<EventResponse> result = controller.getMySubscribedEvents(null, null, jwt);
 
         StepVerifier.create(result)
                 .expectNext(response)
                 .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void getMySubscribedEvents_shouldNarrowToTheRange_whenBothBoundsAreGiven() {
+        Instant from = Instant.parse("2026-10-21T00:00:00Z");
+        Instant to = Instant.parse("2026-10-22T00:00:00Z");
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        Event event = Event.builder().id("1").build();
+        EventResponse response = EventResponse.builder().id("1").build();
+
+        when(eventService.getSubscribedEvents("user1", from, to)).thenReturn(Flux.just(event));
+        when(mapper.toResponse(event, SignedUrls.NONE, ViewerFriends.NONE)).thenReturn(response);
+
+        StepVerifier.create(controller.getMySubscribedEvents(from, to, jwt))
+                .expectNext(response)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void getMySubscribedEvents_shouldAskTheServiceToJudgeAHalfGivenRange() {
+        Instant from = Instant.parse("2026-10-21T00:00:00Z");
+        when(jwt.getClaimAsString("businessId")).thenReturn("user1");
+        when(eventService.getSubscribedEvents("user1", from, null))
+                .thenReturn(Flux.error(new BusinessException(BusinessErrorCode.TIME_RANGE_INVALID)));
+
+        StepVerifier.create(controller.getMySubscribedEvents(from, null, jwt))
+                .expectError(BusinessException.class)
+                .verify(Duration.ofSeconds(10));
+
+        verify(eventService, never()).getSubscribedEvents("user1");
     }
 
     @Test

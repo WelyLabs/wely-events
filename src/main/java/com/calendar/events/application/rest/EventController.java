@@ -26,6 +26,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.codec.multipart.Part;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.Instant;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -56,10 +58,19 @@ public class EventController {
         this.mapper = mapper;
     }
 
+    /**
+     * The caller's own events. With {@code from} and {@code to} the answer is narrowed to the events
+     * overlapping that range, soonest first; without them it is the whole calendar, as before.
+     */
     @GetMapping("/me/subscribed")
-    public Flux<EventResponse> getMySubscribedEvents(@AuthenticationPrincipal Jwt jwt) {
+    public Flux<EventResponse> getMySubscribedEvents(@RequestParam(required = false) Instant from,
+                                                     @RequestParam(required = false) Instant to,
+                                                     @AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getClaimAsString("businessId");
-        return respond(eventService.getSubscribedEvents(userId), userId);
+        Flux<Event> events = from == null && to == null
+                ? eventService.getSubscribedEvents(userId)
+                : eventService.getSubscribedEvents(userId, from, to);
+        return respond(events, userId);
     }
 
     /**

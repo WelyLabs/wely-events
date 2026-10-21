@@ -87,6 +87,11 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
+    public Flux<Event> findByParticipantIdBetween(String userId, Instant from, Instant to) {
+        return mongoRepository.findSubscribedBetween(userId, from, to).map(mapper::toDomain);
+    }
+
+    @Override
     public Flux<Event> findFeed(String userId, Collection<String> friendIds) {
         return mongoRepository.findFeed(userId, friendIds).map(mapper::toDomain);
     }

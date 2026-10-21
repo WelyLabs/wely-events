@@ -487,6 +487,54 @@ class EventServiceTest {
     }
 
     @Test
+    void getSubscribedEvents_shouldNarrowToTheRange_whenOneIsGiven() {
+        Instant from = Instant.parse("2026-10-21T00:00:00Z");
+        Instant to = Instant.parse("2026-10-22T00:00:00Z");
+        Event event = Event.builder().id("1").startDate(Instant.parse("2026-10-21T19:00:00Z")).build();
+        when(eventRepository.findByParticipantIdBetween("user123", from, to)).thenReturn(Flux.just(event));
+
+        StepVerifier.create(eventService.getSubscribedEvents("user123", from, to))
+                .expectNext(event)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void getSubscribedEvents_shouldRejectWhenTheEndIsNotAfterTheStart() {
+        Instant from = Instant.parse("2026-10-22T00:00:00Z");
+        Instant to = Instant.parse("2026-10-21T00:00:00Z");
+
+        StepVerifier.create(eventService.getSubscribedEvents("user123", from, to))
+                .expectErrorMatches(e -> e instanceof BusinessException
+                        && ((BusinessException) e).getErrorCode() == BusinessErrorCode.TIME_RANGE_INVALID)
+                .verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void getSubscribedEvents_shouldRejectWhenTheRangeIsEmpty() {
+        Instant sameInstant = Instant.parse("2026-10-21T00:00:00Z");
+
+        StepVerifier.create(eventService.getSubscribedEvents("user123", sameInstant, sameInstant))
+                .expectError(BusinessException.class)
+                .verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void getSubscribedEvents_shouldRejectWhenABoundIsMissing() {
+        StepVerifier.create(eventService.getSubscribedEvents("user123", null, Instant.now()))
+                .expectError(BusinessException.class)
+                .verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void getSubscribedEvents_shouldNotReadTheDatabaseWhenTheRangeIsUnusable() {
+        StepVerifier.create(eventService.getSubscribedEvents("user123", Instant.now(), null))
+                .expectError(BusinessException.class)
+                .verify(Duration.ofSeconds(10));
+
+        verify(eventRepository, never()).findByParticipantIdBetween(any(), any(), any());
+    }
+
+    @Test
     void getFeedEvents_shouldPassTheUsersFriends_inTheStoredOrder() {
         Event later = Event.builder().id("1").organizerId("bob").startDate(Instant.parse("2026-11-02T10:00:00Z")).build();
         Event sooner = Event.builder().id("2").organizerId("ana").startDate(Instant.parse("2026-11-01T10:00:00Z")).build();

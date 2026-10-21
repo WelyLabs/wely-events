@@ -100,6 +100,85 @@ class MongoEventRepositoryAdapterIntegrationTest {
                 .expectComplete().verify(Duration.ofSeconds(10));
     }
 
+    private Event aSubscribedEvent(String title, String start, String end) {
+        return adapter.save(Event.builder()
+                .title(title)
+                .organizerId(ORGANIZER)
+                .startDate(Instant.parse(start))
+                .endDate(end == null ? null : Instant.parse(end))
+                .participantIds(new ArrayList<>(List.of("alice")))
+                .build()).block();
+    }
+
+    @Test
+    @DisplayName("the range query keeps an event inside it and drops the ones outside")
+    void findByParticipantIdBetween_shouldKeepOnlyOverlappingEvents() {
+        aSubscribedEvent("inside", "2026-10-21T10:00:00Z", "2026-10-21T12:00:00Z");
+        aSubscribedEvent("before", "2026-10-19T10:00:00Z", "2026-10-19T12:00:00Z");
+        aSubscribedEvent("after", "2026-10-23T10:00:00Z", "2026-10-23T12:00:00Z");
+
+        StepVerifier.create(adapter.findByParticipantIdBetween("alice",
+                        Instant.parse("2026-10-21T00:00:00Z"), Instant.parse("2026-10-22T00:00:00Z"))
+                        .map(Event::getTitle))
+                .expectNext("inside")
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @DisplayName("an event straddling the start of the range is kept")
+    void findByParticipantIdBetween_shouldKeepAnEventStraddlingTheRange() {
+        aSubscribedEvent("straddles", "2026-10-20T20:00:00Z", "2026-10-21T04:00:00Z");
+
+        StepVerifier.create(adapter.findByParticipantIdBetween("alice",
+                        Instant.parse("2026-10-21T00:00:00Z"), Instant.parse("2026-10-22T00:00:00Z")))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @DisplayName("an event with no end is matched on its start alone")
+    void findByParticipantIdBetween_shouldKeepAnEventWithoutEnd() {
+        aSubscribedEvent("open", "2026-10-21T23:00:00Z", null);
+
+        StepVerifier.create(adapter.findByParticipantIdBetween("alice",
+                        Instant.parse("2026-10-21T00:00:00Z"), Instant.parse("2026-10-22T00:00:00Z")))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @DisplayName("the end of the range is exclusive")
+    void findByParticipantIdBetween_shouldTreatTheEndAsExclusive() {
+        aSubscribedEvent("onTheEdge", "2026-10-22T00:00:00Z", null);
+
+        StepVerifier.create(adapter.findByParticipantIdBetween("alice",
+                        Instant.parse("2026-10-21T00:00:00Z"), Instant.parse("2026-10-22T00:00:00Z")))
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @DisplayName("the range query answers soonest first")
+    void findByParticipantIdBetween_shouldSortBySoonest() {
+        aSubscribedEvent("later", "2026-10-21T18:00:00Z", null);
+        aSubscribedEvent("sooner", "2026-10-21T09:00:00Z", null);
+
+        StepVerifier.create(adapter.findByParticipantIdBetween("alice",
+                        Instant.parse("2026-10-21T00:00:00Z"), Instant.parse("2026-10-22T00:00:00Z"))
+                        .map(Event::getTitle))
+                .expectNext("sooner", "later")
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @DisplayName("the range query leaves out an event the caller does not take part in")
+    void findByParticipantIdBetween_shouldNotReturnSomeoneElsesEvent() {
+        anEvent("not alice's");
+
+        StepVerifier.create(adapter.findByParticipantIdBetween("alice",
+                        Instant.parse("2025-06-01T00:00:00Z"), Instant.parse("2025-06-02T00:00:00Z")))
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
     @Test
     @DisplayName("an unknown id yields nothing rather than a blank event")
     void findById_shouldBeEmptyForAnUnknownId() {

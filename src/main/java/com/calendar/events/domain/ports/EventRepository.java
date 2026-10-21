@@ -37,6 +37,9 @@ public interface EventRepository {
 
     Flux<Event> findByParticipantId(String userId);
 
+    /** The same events, narrowed in the query to those overlapping [from, to), soonest first. */
+    Flux<Event> findByParticipantIdBetween(String userId, Instant from, Instant to);
+
     /**
      * Events the user does not take part in but may see: their own, public ones, and those shared
      * with the organizer's friends when the organizer is one of {@code friendIds}.
