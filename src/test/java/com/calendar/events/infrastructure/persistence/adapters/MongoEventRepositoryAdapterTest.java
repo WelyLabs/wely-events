@@ -233,6 +233,21 @@ class MongoEventRepositoryAdapterTest {
     }
 
     @Test
+    void findByParticipantIdBetween_shouldPassTheRangeToTheQuery() {
+        Instant from = Instant.parse("2026-10-21T00:00:00Z");
+        Instant to = Instant.parse("2026-10-22T00:00:00Z");
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+
+        when(mongoRepository.findSubscribedBetween("user1", from, to)).thenReturn(Flux.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.findByParticipantIdBetween("user1", from, to))
+                .expectNext(domain)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
     void findOccupying_shouldLetEventsWithoutAnEndLastTheDefaultDuration() {
         EventEntity entity = new EventEntity();
         Event domain = Event.builder().build();

@@ -419,6 +419,17 @@ public class EventService {
     }
 
     /**
+     * The same events, narrowed to those overlapping [from, to) and soonest first. The range is
+     * checked here so an unusable one answers 400 instead of reaching the database.
+     */
+    public Flux<Event> getSubscribedEvents(String userId, Instant from, Instant to) {
+        if (from == null || to == null || !to.isAfter(from)) {
+            return Flux.error(new BusinessException(BusinessErrorCode.TIME_RANGE_INVALID));
+        }
+        return eventRepository.findByParticipantIdBetween(userId, from, to);
+    }
+
+    /**
      * The events the user may see without taking part, given the user's friends as read for the
      * response. Ranked by affinity, the events the closest friends go to come first, then the soonest;
      * otherwise in the order they are stored.

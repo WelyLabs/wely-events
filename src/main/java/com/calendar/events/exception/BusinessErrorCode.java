@@ -257,6 +257,12 @@ public enum BusinessErrorCode {
             "This person already takes part in the event: there is nothing to invite them to.",
             HttpStatus.CONFLICT),
 
+    TIME_RANGE_INVALID(
+            "EVT-BUS-041",
+            "Invalid time range",
+            "Give both 'from' and 'to' as ISO-8601 instants, with 'to' after 'from'.",
+            HttpStatus.BAD_REQUEST),
+
     /** Written by the security chain, not raised: the request carries no valid token. */
     AUTHENTICATION_REQUIRED(
             "EVT-REQ-001",

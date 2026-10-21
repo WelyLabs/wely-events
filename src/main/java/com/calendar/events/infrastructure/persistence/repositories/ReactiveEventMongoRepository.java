@@ -25,6 +25,19 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     @Query("{ participantIds: ?0, kind: { $ne: 'BIRTHDAY' }, hiddenFrom: { $ne: ?0 } }")
     Flux<EventEntity> findSubscribed(String userId);
 
+    /**
+     * The same events, narrowed to those overlapping [from, to). The range is applied in the query,
+     * so a long calendar is never read whole only to be filtered away. An event with no end counts
+     * as ending when it starts, and endDate: null matches a missing field as well as a null one.
+     */
+    @Query(value = """
+            { participantIds: ?0, kind: { $ne: 'BIRTHDAY' }, hiddenFrom: { $ne: ?0 },
+              startDate: { $lt: ?2 },
+              $or: [ { endDate: { $gte: ?1 } },
+                     { endDate: null, startDate: { $gte: ?1 } } ] }
+            """, sort = "{ startDate: 1 }")
+    Flux<EventEntity> findSubscribedBetween(String userId, Instant from, Instant to);
+
     /** One event, unless it is a BIRTHDAY or hidden from the viewer. */
     @Query("{ '_id': ?0, kind: { $ne: 'BIRTHDAY' }, hiddenFrom: { $ne: ?1 } }")
     Mono<EventEntity> findShownTo(String eventId, String viewerId);
