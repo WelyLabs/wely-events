@@ -32,9 +32,9 @@ public class InvitationController {
 
     /**
      * Invites a friend: who takes part and is invited, as the organizer sees it. 403 EVT-BUS-002 for
-     * anyone but the organizer, 404 EVT-BUS-036 for someone not their friend, 409 EVT-BUS-039 on a
-     * community event, one that is over, or for whoever it is hidden from, 409 EVT-BUS-040 for someone
-     * already taking part.
+     * anyone but the organizer, 404 EVT-BUS-036 for someone who is not a friend of the organizer --
+     * or, on a SURPRISE, not a friend of the honoree -- 409 EVT-BUS-039 on a community event, one
+     * that is over, or for whoever it is hidden from, 409 EVT-BUS-040 for someone already taking part.
      */
     @PostMapping("/{id}/invitations")
     public Mono<ParticipantsResponse> invite(@PathVariable String id, @Valid @RequestBody InvitationRequest request,

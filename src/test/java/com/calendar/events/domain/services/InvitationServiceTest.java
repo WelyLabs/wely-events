@@ -43,6 +43,7 @@ class InvitationServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-19T10:00:00Z");
     private static final String ORGANIZER = "robin";
     private static final String FRIEND = "lea";
+    private static final String HONOREE = "camille";
 
     @Mock
     private EventRepository eventRepository;
@@ -61,6 +62,13 @@ class InvitationServiceTest {
     private static Event dinner() {
         return Event.builder().id("e1").title("Dîner").organizerId(ORGANIZER).visibility(Visibility.PRIVATE)
                 .startDate(NOW.plus(Duration.ofDays(2))).participantIds(new ArrayList<>(List.of(ORGANIZER))).build();
+    }
+
+    private static Event surpriseFor(String honoreeId) {
+        Event event = dinner();
+        event.setKind(EventKind.SURPRISE);
+        event.setHonoreeId(honoreeId);
+        return event;
     }
 
     private static Event invited(Event event, String... invitees) {
@@ -175,6 +183,53 @@ class InvitationServiceTest {
         organizes(event);
 
         expectInviteRefused(BusinessErrorCode.INVITATION_NOT_ALLOWED);
+    }
+
+    @Test
+    void invite_shouldInviteAFriendOfTheHonoree_onASurprise() {
+        organizes(surpriseFor(HONOREE));
+        when(socialGraph.friendIdsOf(ORGANIZER)).thenReturn(Mono.just(Set.of()));
+        when(socialGraph.friendIdsOf(HONOREE)).thenReturn(Mono.just(Set.of(FRIEND)));
+        when(eventRepository.invite("e1", ORGANIZER, FRIEND)).thenReturn(Mono.just(invited(dinner(), FRIEND)));
+
+        StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+        assertThat(activity.invitationsSent).hasValue(1);
+    }
+
+    @Test
+    void invite_shouldRefuseTheOrganizersFriendWhoIsAStrangerToTheHonoree_onASurprise() {
+        organizes(surpriseFor(HONOREE));
+        when(socialGraph.friendIdsOf(ORGANIZER)).thenReturn(Mono.just(Set.of(FRIEND)));
+        when(socialGraph.friendIdsOf(HONOREE)).thenReturn(Mono.just(Set.of("hugo")));
+
+        expectInviteRefused(BusinessErrorCode.FRIEND_NOT_FOUND);
+        assertThat(activity.isSilent()).isTrue();
+    }
+
+    @Test
+    void invite_shouldRefuse_whenTheHonoreesFriendsCannotBeRead() {
+        organizes(surpriseFor(HONOREE));
+        when(socialGraph.friendIdsOf(ORGANIZER)).thenReturn(Mono.just(Set.of(FRIEND)));
+        when(socialGraph.friendIdsOf(HONOREE)).thenReturn(Mono.empty());
+
+        expectInviteRefused(BusinessErrorCode.FRIEND_NOT_FOUND);
+        assertThat(activity.isSilent()).isTrue();
+    }
+
+    @Test
+    void invite_shouldStillReadTheOrganizersFriends_onASurprise() {
+        organizes(surpriseFor(HONOREE));
+        when(socialGraph.friendIdsOf(ORGANIZER)).thenReturn(Mono.just(Set.of(FRIEND)));
+        when(socialGraph.friendIdsOf(HONOREE)).thenReturn(Mono.just(Set.of(FRIEND)));
+        when(eventRepository.invite("e1", ORGANIZER, FRIEND)).thenReturn(Mono.just(invited(dinner(), FRIEND)));
+
+        StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
+                .expectNext(new Participants(1, List.of(ORGANIZER), List.of(), List.of(FRIEND)))
+                .expectComplete().verify(Duration.ofSeconds(10));
+
+        verify(socialGraph).friendIdsOf(ORGANIZER);
     }
 
     @Test

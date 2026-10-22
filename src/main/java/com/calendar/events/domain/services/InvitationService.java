@@ -15,8 +15,12 @@ import java.util.Set;
 /**
  * Invitations, one friend at a time. An invitee sees the event whatever its visibility, a PRIVATE
  * one included, and may join it, which answers the invitation, or decline it. Only the organizer
- * invites, and only their friends; the invitee hears of it through a message the app sends.
- * Who may see an event is decided by {@link EventService}, so the rule stays in one place.
+ * invites; the invitee hears of it through a message the app sends. Who may see an event is decided
+ * by {@link EventService}, so the rule stays in one place.
+ *
+ * <p>Who may be invited depends on the kind: the organizer's friends on a standard event, and the
+ * HONOREE's friends on a SURPRISE -- a surprise gathers the people whose birthday it is, not the
+ * organizer's own circle.
  */
 public class InvitationService {
 
@@ -49,14 +53,17 @@ public class InvitationService {
                     if (event.involves(inviteeId)) {
                         return Mono.error(new BusinessException(BusinessErrorCode.ALREADY_TAKING_PART));
                     }
+                    // The organizer's friends are read whatever the kind: the answer shows which of
+                    // them take part, which is the organizer's view and not the guest rule.
                     return socialGraph.friendIdsOf(organizerId)
                             .defaultIfEmpty(Set.of())
-                            .flatMap(friendIds -> friendIds.contains(inviteeId)
-                                    ? eventRepository.invite(event.getId(), organizerId, inviteeId)
-                                            .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
-                                            .doOnNext(updated -> activity.invitationSent())
-                                            .map(updated -> Participants.seenBy(updated, organizerId, friendIds))
-                                    : Mono.error(new BusinessException(BusinessErrorCode.FRIEND_NOT_FOUND)));
+                            .flatMap(organizerFriends -> mayBeInvitedTo(event, organizerFriends)
+                                    .flatMap(guests -> guests.contains(inviteeId)
+                                            ? eventRepository.invite(event.getId(), organizerId, inviteeId)
+                                                    .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
+                                                    .doOnNext(updated -> activity.invitationSent())
+                                                    .map(updated -> Participants.seenBy(updated, organizerId, organizerFriends))
+                                            : Mono.error(new BusinessException(BusinessErrorCode.FRIEND_NOT_FOUND))));
                 });
     }
 
@@ -71,6 +78,17 @@ public class InvitationService {
                                 .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
                                 .then()
                         : Mono.error(new BusinessException(BusinessErrorCode.EVENT_ACCESS_DENIED)));
+    }
+
+    /**
+     * Who may be invited: the organizer's friends, or the honoree's on a SURPRISE. A refusal answers
+     * the same FRIEND_NOT_FOUND as elsewhere, on purpose: a 403 naming the reason would let an
+     * organizer read the honoree's friend list one id at a time.
+     */
+    private Mono<Set<String>> mayBeInvitedTo(Event event, Set<String> organizerFriends) {
+        return event.isSurprise()
+                ? socialGraph.friendIdsOf(event.getHonoreeId()).defaultIfEmpty(Set.of())
+                : Mono.just(organizerFriends);
     }
 
     private boolean mayInvite(Event event, String inviteeId) {
