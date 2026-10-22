@@ -76,7 +76,10 @@ public class InvitationService {
     private boolean mayInvite(Event event, String inviteeId) {
         return !event.isCommunityEvent()
                 && !event.isHiddenFrom(inviteeId)
-                && !(event.isSurprise() && inviteeId.equals(event.getHonoreeId()))
+                // A surprise is not invited to at all: the honoree's friends see it and join it
+                // themselves, their plain friends asking the organizer first. Inviting would only
+                // duplicate that -- and would have needed the honoree's circle to be readable.
+                && !event.isSurprise()
                 && !event.isOverAt(clock.instant());
     }
 }

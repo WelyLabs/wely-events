@@ -92,7 +92,7 @@ class InvitationServiceTest {
         when(eventRepository.invite("e1", ORGANIZER, FRIEND)).thenReturn(Mono.just(invited(dinner(), FRIEND)));
 
         StepVerifier.create(service.invite("e1", ORGANIZER, FRIEND))
-                .expectNext(new Participants(1, List.of(ORGANIZER), List.of(), List.of(FRIEND)))
+                .expectNext(new Participants(1, List.of(ORGANIZER), List.of(), List.of(FRIEND), List.of()))
                 .expectComplete().verify(Duration.ofSeconds(10));
         assertThat(activity.invitationsSent).hasValue(1);
     }
@@ -168,13 +168,25 @@ class InvitationServiceTest {
     }
 
     @Test
-    void invite_shouldRefuseTheHonoreeOfASurprise() {
+    void invite_shouldRefuseASurpriseAltogether() {
+        // Found, not offered: the honoree's friends see it and join it themselves.
         Event event = dinner();
         event.setKind(EventKind.SURPRISE);
-        event.setHonoreeId(FRIEND);
+        event.setHonoreeId("camille");
         organizes(event);
 
         expectInviteRefused(BusinessErrorCode.INVITATION_NOT_ALLOWED);
+    }
+
+    @Test
+    void invite_shouldRefuseASurpriseEvenForTheOrganizersOwnFriend() {
+        Event event = dinner();
+        event.setKind(EventKind.SURPRISE);
+        event.setHonoreeId("camille");
+        organizes(event);
+
+        expectInviteRefused(BusinessErrorCode.INVITATION_NOT_ALLOWED);
+        verify(socialGraph, never()).friendIdsOf(anyString());
     }
 
     @Test

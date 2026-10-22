@@ -840,4 +840,60 @@ class MongoEventRepositoryAdapterTest {
 
         StepVerifier.create(adapter.findSurprisesHonoring("lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
     }
+
+    @Test
+    void requestToJoin_shouldRecordTheRequestAndAnswerTheEvent() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        when(mongoRepository.requestToJoin("e1", "u1")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("e1")).thenReturn(Mono.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.requestToJoin("e1", "u1"))
+                .expectNext(domain)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void withdrawRequest_shouldTakeItBackAndAnswerTheEvent() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        when(mongoRepository.withdrawRequest("e1", "u1")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("e1")).thenReturn(Mono.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.withdrawRequest("e1", "u1"))
+                .expectNext(domain)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void acceptRequest_shouldAnswerTheEventWhenTheUpdateMatched() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().build();
+        when(mongoRepository.acceptRequest("e1", "organizer", "u1")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("e1")).thenReturn(Mono.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.acceptRequest("e1", "organizer", "u1"))
+                .expectNext(domain)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void acceptRequest_shouldBeEmptyWhenNothingMatched() {
+        when(mongoRepository.acceptRequest("e1", "organizer", "u1")).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.acceptRequest("e1", "organizer", "u1"))
+                .expectComplete().verify(Duration.ofSeconds(10));
+        verify(mongoRepository, never()).findById((String) any());
+    }
+
+    @Test
+    void declineRequest_shouldBeEmptyWhenNothingMatched() {
+        when(mongoRepository.declineRequest("e1", "organizer", "u1")).thenReturn(Mono.just(0L));
+
+        StepVerifier.create(adapter.declineRequest("e1", "organizer", "u1"))
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
 }

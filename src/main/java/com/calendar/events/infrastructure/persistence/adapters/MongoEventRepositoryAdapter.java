@@ -109,6 +109,32 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
+    public Mono<Event> requestToJoin(String eventId, String userId) {
+        return mongoRepository.requestToJoin(eventId, userId).then(findById(eventId));
+    }
+
+    @Override
+    public Mono<Event> withdrawRequest(String eventId, String userId) {
+        return mongoRepository.withdrawRequest(eventId, userId).then(findById(eventId));
+    }
+
+    // Filtered on the organizer and on a standing request: no match means it is not theirs to answer,
+    // or the asker took it back, and the empty answer is what tells the domain so.
+    @Override
+    public Mono<Event> acceptRequest(String eventId, String organizerId, String userId) {
+        return mongoRepository.acceptRequest(eventId, organizerId, userId)
+                .filter(matched -> matched > 0)
+                .flatMap(matched -> findById(eventId));
+    }
+
+    @Override
+    public Mono<Event> declineRequest(String eventId, String organizerId, String userId) {
+        return mongoRepository.declineRequest(eventId, organizerId, userId)
+                .filter(matched -> matched > 0)
+                .flatMap(matched -> findById(eventId));
+    }
+
+    @Override
     public Mono<Event> invite(String eventId, String organizerId, String inviteeId) {
         return mongoRepository.invite(eventId, organizerId, inviteeId).then(findById(eventId));
     }

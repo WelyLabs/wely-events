@@ -95,6 +95,28 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     @Update("{ '$addToSet': { 'participantIds': ?1 }, '$pull': { 'invitedIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
     Mono<Long> addParticipant(String eventId, String userId);
 
+    // Asking to join a surprise: nobody asks for what they already joined, and asking twice is one ask.
+    // No group bump: nothing is announced until the organizer answers.
+    @Query("{ '_id': ?0, 'participantIds': { $ne: ?1 } }")
+    @Update("{ '$addToSet': { 'requestedIds': ?1 } }")
+    Mono<Long> requestToJoin(String eventId, String userId);
+
+    // Taking one's own request back; withdrawing one already answered changes nothing.
+    @Query("{ '_id': ?0 }")
+    @Update("{ '$pull': { 'requestedIds': ?1 } }")
+    Mono<Long> withdrawRequest(String eventId, String userId);
+
+    // The organizer accepts: the same update takes them off the askers and marks the group for the relay.
+    // Filtered on the standing request, so an answer to a withdrawn one adds nobody.
+    @Query("{ '_id': ?0, 'organizerId': ?1, 'requestedIds': ?2 }")
+    @Update("{ '$addToSet': { 'participantIds': ?2 }, '$pull': { 'requestedIds': ?2 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
+    Mono<Long> acceptRequest(String eventId, String organizerId, String userId);
+
+    // The organizer declines: the request goes, nothing else. Declining twice changes nothing.
+    @Query("{ '_id': ?0, 'organizerId': ?1 }")
+    @Update("{ '$pull': { 'requestedIds': ?2 } }")
+    Mono<Long> declineRequest(String eventId, String organizerId, String userId);
+
     // Filtered on the organizer, who alone invites, and on the absent participant: nobody is invited to what they already joined.
     @Query("{ '_id': ?0, 'organizerId': ?1, 'participantIds': { $ne: ?2 } }")
     @Update("{ '$addToSet': { 'invitedIds': ?2 } }")

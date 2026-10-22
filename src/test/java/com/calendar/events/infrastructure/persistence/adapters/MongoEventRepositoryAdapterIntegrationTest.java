@@ -180,6 +180,90 @@ class MongoEventRepositoryAdapterIntegrationTest {
     }
 
     @Test
+    @DisplayName("asking to join records the request without taking part")
+    void requestToJoin_shouldOnlyRecordTheRequest() {
+        Event saved = anEvent("Surprise");
+
+        StepVerifier.create(adapter.requestToJoin(saved.getId(), "alice"))
+                .assertNext(updated -> {
+                    assertThat(updated.getRequestedIds()).containsExactly("alice");
+                    assertThat(updated.getParticipantIds()).doesNotContain("alice");
+                })
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @DisplayName("asking twice leaves one request")
+    void requestToJoin_shouldBeIdempotent() {
+        Event saved = anEvent("Surprise");
+        adapter.requestToJoin(saved.getId(), "alice").block();
+
+        StepVerifier.create(adapter.requestToJoin(saved.getId(), "alice"))
+                .assertNext(updated -> assertThat(updated.getRequestedIds()).containsExactly("alice"))
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @DisplayName("withdrawing a request leaves nothing behind")
+    void withdrawRequest_shouldRemoveIt() {
+        Event saved = anEvent("Surprise");
+        adapter.requestToJoin(saved.getId(), "alice").block();
+
+        StepVerifier.create(adapter.withdrawRequest(saved.getId(), "alice"))
+                .assertNext(updated -> assertThat(updated.getRequestedIds()).isEmpty())
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @DisplayName("accepting a request makes the asker a participant and clears the request")
+    void acceptRequest_shouldTakeTheAskerIn() {
+        Event saved = anEvent("Surprise");
+        adapter.requestToJoin(saved.getId(), "alice").block();
+
+        StepVerifier.create(adapter.acceptRequest(saved.getId(), ORGANIZER, "alice"))
+                .assertNext(updated -> {
+                    assertThat(updated.getParticipantIds()).contains("alice");
+                    assertThat(updated.getRequestedIds()).isEmpty();
+                })
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    @DisplayName("only the organizer answers a request")
+    void acceptRequest_shouldRefuseAnyoneElse() {
+        Event saved = anEvent("Surprise");
+        adapter.requestToJoin(saved.getId(), "alice").block();
+
+        StepVerifier.create(adapter.acceptRequest(saved.getId(), "someone-else", "alice"))
+                .expectComplete().verify(Duration.ofSeconds(10));
+        assertThat(adapter.findById(saved.getId()).block().getParticipantIds()).doesNotContain("alice");
+    }
+
+    @Test
+    @DisplayName("accepting a withdrawn request takes nobody in")
+    void acceptRequest_shouldBeEmptyWithoutAStandingRequest() {
+        Event saved = anEvent("Surprise");
+
+        StepVerifier.create(adapter.acceptRequest(saved.getId(), ORGANIZER, "alice"))
+                .expectComplete().verify(Duration.ofSeconds(10));
+        assertThat(adapter.findById(saved.getId()).block().getParticipantIds()).doesNotContain("alice");
+    }
+
+    @Test
+    @DisplayName("declining a request removes it and takes nobody in")
+    void declineRequest_shouldRemoveTheRequestOnly() {
+        Event saved = anEvent("Surprise");
+        adapter.requestToJoin(saved.getId(), "alice").block();
+
+        StepVerifier.create(adapter.declineRequest(saved.getId(), ORGANIZER, "alice"))
+                .assertNext(updated -> {
+                    assertThat(updated.getRequestedIds()).isEmpty();
+                    assertThat(updated.getParticipantIds()).doesNotContain("alice");
+                })
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
     @DisplayName("an unknown id yields nothing rather than a blank event")
     void findById_shouldBeEmptyForAnUnknownId() {
         StepVerifier.create(adapter.findById("64b7f9f2e4b0a1c2d3e4f5a6")).expectComplete().verify(Duration.ofSeconds(10));

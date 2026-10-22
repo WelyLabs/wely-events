@@ -69,6 +69,13 @@ public class Event {
      */
     @Builder.Default
     private List<String> invitedIds = new ArrayList<>();
+
+    /**
+     * Who asked to join and waits for the organizer's answer. A surprise only: the honoree's plain
+     * friends ask, their close and intimate ones walk in.
+     */
+    @Builder.Default
+    private List<String> requestedIds = new ArrayList<>();
     /** Users every query keeps the event from, as if it did not exist: a surprise's honoree. */
     @Builder.Default
     private List<String> hiddenFrom = new ArrayList<>();
@@ -166,6 +173,10 @@ public class Event {
      * hidden from; those taking part or invited always can; a surprise, the honoree's friends; otherwise it
      * depends on the visibility.
      */
+    public boolean hasRequested(String userId) {
+        return requestedIds != null && requestedIds.contains(userId);
+    }
+
     public boolean isVisibleTo(String userId, Set<String> friendIdsOfUser) {
         if (isHiddenFrom(userId)) {
             return false;

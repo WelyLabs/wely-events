@@ -60,6 +60,18 @@ public interface EventRepository {
      */
     Mono<Event> addParticipant(String eventId, String userId);
 
+    /** Records that the user asked to join; the event as stored, or empty when they already take part. */
+    Mono<Event> requestToJoin(String eventId, String userId);
+
+    /** Takes the user's own request back. */
+    Mono<Event> withdrawRequest(String eventId, String userId);
+
+    /** The organizer accepts a standing request: the asker becomes a participant. */
+    Mono<Event> acceptRequest(String eventId, String organizerId, String userId);
+
+    /** The organizer declines: the request goes and nothing else changes. */
+    Mono<Event> declineRequest(String eventId, String organizerId, String userId);
+
     /**
      * Invites the user to the event and returns it, unless they took part or the organizer changed
      * meanwhile: the event comes back unchanged. Inviting twice is one invitation.

@@ -1,6 +1,7 @@
 package com.calendar.events.domain.services;
 
 import com.calendar.events.domain.models.CommunityRole;
+import com.calendar.events.domain.models.Closeness;
 import com.calendar.events.domain.models.Event;
 import com.calendar.events.domain.models.EventDetails;
 import com.calendar.events.domain.models.EventCover;
@@ -369,7 +370,51 @@ public class EventService {
                         // Joining needs to see the event first: no subscribing by guessed id.
                         : requireVisible(event, userId)
                                 .switchIfEmpty(Mono.error(new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
-                                .flatMap(visible -> eventRepository.addParticipant(id, userId)));
+                                .flatMap(visible -> join(visible, userId)));
+    }
+
+    /**
+     * Joining, or asking to. A surprise is the honoree's party: their close and intimate friends walk
+     * in, their plain friends ask the organizer first. Asking again takes the request back, as
+     * joining again leaves -- the same toggle, one step earlier.
+     */
+    private Mono<Event> join(Event event, String userId) {
+        return mustAsk(event, userId)
+                .flatMap(mustAsk -> {
+                    if (!mustAsk) {
+                        return eventRepository.addParticipant(event.getId(), userId);
+                    }
+                    return event.hasRequested(userId)
+                            ? eventRepository.withdrawRequest(event.getId(), userId)
+                            : eventRepository.requestToJoin(event.getId(), userId);
+                });
+    }
+
+    /** Only on a surprise, and only below CLOSE: an unreadable closeness asks rather than walks in. */
+    private Mono<Boolean> mustAsk(Event event, String userId) {
+        if (!event.isSurprise() || event.getHonoreeId() == null) {
+            return Mono.just(false);
+        }
+        return socialGraph.closenessBetween(event.getHonoreeId(), userId)
+                .map(closeness -> closeness.compareTo(Closeness.CLOSE) < 0)
+                .defaultIfEmpty(true);
+    }
+
+    /**
+     * The organizer accepts someone who asked: they take part from then on. 403 EVT-BUS-002 for
+     * anyone but the organizer, 404 EVT-BUS-042 for a request that was withdrawn or already answered.
+     */
+    public Mono<Event> acceptJoinRequest(String eventId, String organizerId, String userId) {
+        return requireOrganizer(eventId, organizerId)
+                .flatMap(event -> eventRepository.acceptRequest(eventId, organizerId, userId)
+                        .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.JOIN_REQUEST_NOT_FOUND))));
+    }
+
+    /** The organizer declines: the request goes, and the asker may ask again. */
+    public Mono<Event> declineJoinRequest(String eventId, String organizerId, String userId) {
+        return requireOrganizer(eventId, organizerId)
+                .flatMap(event -> eventRepository.declineRequest(eventId, organizerId, userId)
+                        .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.JOIN_REQUEST_NOT_FOUND))));
     }
 
     private Mono<Event> unsubscribe(Event event, String userId) {
