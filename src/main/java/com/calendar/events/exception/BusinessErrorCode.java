@@ -263,6 +263,13 @@ public enum BusinessErrorCode {
             "Give both 'from' and 'to' as ISO-8601 instants, with 'to' after 'from'.",
             HttpStatus.BAD_REQUEST),
 
+    /** 404 rather than 403: a request already answered and one that never existed read the same. */
+    JOIN_REQUEST_NOT_FOUND(
+            "EVT-BUS-042",
+            "No such request",
+            "Nobody is waiting on this event with that request.",
+            HttpStatus.NOT_FOUND),
+
     /** Written by the security chain, not raised: the request carries no valid token. */
     AUTHENTICATION_REQUIRED(
             "EVT-REQ-001",

@@ -41,8 +41,8 @@ class InvitationControllerTest {
 
     @Test
     void invite_shouldInviteOnBehalfOfTheCaller_andAnswerWithTheInvitations() {
-        Participants participants = new Participants(1, List.of("robin"), List.of(), List.of("lea"));
-        ParticipantsResponse response = new ParticipantsResponse(1, List.of("robin"), List.of(), List.of("lea"));
+        Participants participants = new Participants(1, List.of("robin"), List.of(), List.of("lea"), List.of());
+        ParticipantsResponse response = new ParticipantsResponse(1, List.of("robin"), List.of(), List.of("lea"), List.of());
         when(invitationService.invite("e1", "robin", "lea")).thenReturn(Mono.just(participants));
         when(mapper.toResponse(participants)).thenReturn(response);
 

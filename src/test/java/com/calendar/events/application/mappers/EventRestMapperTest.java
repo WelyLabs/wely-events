@@ -167,9 +167,9 @@ class EventRestMapperTest {
 
     @Test
     void toResponse_shouldMapParticipantsAsIs() {
-        ParticipantsResponse response = mapper.toResponse(new Participants(3, List.of("a", "b", "c"), List.of("b"), List.of("d")));
+        ParticipantsResponse response = mapper.toResponse(new Participants(3, List.of("a", "b", "c"), List.of("b"), List.of("d"), List.of("e")));
 
-        assertEquals(new ParticipantsResponse(3, List.of("a", "b", "c"), List.of("b"), List.of("d")), response);
+        assertEquals(new ParticipantsResponse(3, List.of("a", "b", "c"), List.of("b"), List.of("d"), List.of("e")), response);
     }
 
     @Test

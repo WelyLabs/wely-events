@@ -89,4 +89,40 @@ class ParticipantsTest {
 
         assertThat(Participants.seenBy(event, "carol", Set.of()).invitedIds()).isEmpty();
     }
+
+    @Test
+    void seenBy_shouldShowEveryRequestToTheOrganizer() {
+        Event event = Event.builder().id("1").organizerId("organizer")
+                .participantIds(new ArrayList<>(List.of("organizer")))
+                .requestedIds(new ArrayList<>(List.of("asker", "other"))).build();
+
+        assertThat(Participants.seenBy(event, "organizer", Set.of()).requestedIds())
+                .containsExactly("asker", "other");
+    }
+
+    @Test
+    void seenBy_shouldShowAnAskerOnlyTheirOwnRequest() {
+        Event event = Event.builder().id("1").organizerId("organizer")
+                .participantIds(new ArrayList<>(List.of("organizer")))
+                .requestedIds(new ArrayList<>(List.of("asker", "other"))).build();
+
+        assertThat(Participants.seenBy(event, "asker", Set.of()).requestedIds()).containsExactly("asker");
+    }
+
+    @Test
+    void seenBy_shouldShowNoRequestToAnyoneElse() {
+        Event event = Event.builder().id("1").organizerId("organizer")
+                .participantIds(new ArrayList<>(List.of("organizer")))
+                .requestedIds(new ArrayList<>(List.of("asker"))).build();
+
+        assertThat(Participants.seenBy(event, "bystander", Set.of()).requestedIds()).isEmpty();
+    }
+
+    @Test
+    void seenBy_shouldAnswerNoRequestsWhenTheEventHasNone() {
+        Event event = Event.builder().id("1").organizerId("organizer")
+                .participantIds(new ArrayList<>(List.of("organizer"))).build();
+
+        assertThat(Participants.seenBy(event, "organizer", Set.of()).requestedIds()).isEmpty();
+    }
 }

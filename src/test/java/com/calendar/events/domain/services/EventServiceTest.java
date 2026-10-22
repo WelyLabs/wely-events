@@ -202,7 +202,7 @@ class EventServiceTest {
         when(socialGraph.friendIdsOf("alice")).thenReturn(Mono.just(Set.of("dave")));
 
         StepVerifier.create(eventService.getParticipants("1", "alice"))
-                .expectNext(new Participants(3, List.of("alice", "bob", "dave"), List.of("dave"), List.of()))
+                .expectNext(new Participants(3, List.of("alice", "bob", "dave"), List.of("dave"), List.of(), List.of()))
                 .expectComplete().verify(Duration.ofSeconds(10));
     }
 
@@ -212,7 +212,7 @@ class EventServiceTest {
         when(socialGraph.friendIdsOf("erin")).thenReturn(Mono.just(Set.of("bob")));
 
         StepVerifier.create(eventService.getParticipants("1", "erin"))
-                .expectNext(new Participants(2, List.of(), List.of("bob"), List.of()))
+                .expectNext(new Participants(2, List.of(), List.of("bob"), List.of(), List.of()))
                 .expectComplete().verify(Duration.ofSeconds(10));
     }
 
@@ -405,6 +405,12 @@ class EventServiceTest {
         verify(eventRepository, never()).deleteByOrganizer(any(), any());
     }
 
+    private static Event surpriseFor(String honoreeId) {
+        return Event.builder().id("1").title("Surprise").organizerId("organizer").kind(EventKind.SURPRISE)
+                .honoreeId(honoreeId).visibility(Visibility.FRIENDS).participantIds(new ArrayList<>())
+                .requestedIds(new ArrayList<>()).build();
+    }
+
     @Test
     void toggleSubscription_shouldSubscribeWhenNotParticipant() {
         Event event = Event.builder().id("1").organizerId("carol").visibility(Visibility.PUBLIC)
@@ -422,6 +428,157 @@ class EventServiceTest {
         verify(eventRepository, never()).removeParticipant(any(), any());
         // No save: rewriting the document would lose a concurrent subscription.
         verify(eventRepository, never()).save(any());
+    }
+
+    @Test
+    void toggleSubscription_shouldLetTheHonoreesCloseFriendWalkIntoASurprise() {
+        Event surprise = surpriseFor("lea");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surprise));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of("lea")));
+        when(socialGraph.closenessBetween("lea", "user123")).thenReturn(Mono.just(Closeness.CLOSE));
+        when(eventRepository.addParticipant("1", "user123")).thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "user123"))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+
+        verify(eventRepository).addParticipant("1", "user123");
+        verify(eventRepository, never()).requestToJoin(any(), any());
+    }
+
+    @Test
+    void toggleSubscription_shouldLetAnIntimateFriendWalkIntoASurprise() {
+        Event surprise = surpriseFor("lea");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surprise));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of("lea")));
+        when(socialGraph.closenessBetween("lea", "user123")).thenReturn(Mono.just(Closeness.INTIMATE));
+        when(eventRepository.addParticipant("1", "user123")).thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "user123"))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+
+        verify(eventRepository).addParticipant("1", "user123");
+    }
+
+    @Test
+    void toggleSubscription_shouldMakeAPlainFriendAskBeforeJoiningASurprise() {
+        Event surprise = surpriseFor("lea");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surprise));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of("lea")));
+        when(socialGraph.closenessBetween("lea", "user123")).thenReturn(Mono.just(Closeness.FRIEND));
+        when(eventRepository.requestToJoin("1", "user123")).thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "user123"))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+
+        verify(eventRepository).requestToJoin("1", "user123");
+        verify(eventRepository, never()).addParticipant(any(), any());
+    }
+
+    @Test
+    void toggleSubscription_shouldMakeAnUnreadableClosenessAskRatherThanWalkIn() {
+        Event surprise = surpriseFor("lea");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surprise));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of("lea")));
+        when(socialGraph.closenessBetween("lea", "user123")).thenReturn(Mono.empty());
+        when(eventRepository.requestToJoin("1", "user123")).thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "user123"))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+
+        verify(eventRepository).requestToJoin("1", "user123");
+    }
+
+    @Test
+    void toggleSubscription_shouldTakeAStandingRequestBack() {
+        Event surprise = surpriseFor("lea");
+        surprise.setRequestedIds(new ArrayList<>(List.of("user123")));
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surprise));
+        when(socialGraph.friendIdsOf("user123")).thenReturn(Mono.just(Set.of("lea")));
+        when(socialGraph.closenessBetween("lea", "user123")).thenReturn(Mono.just(Closeness.FRIEND));
+        when(eventRepository.withdrawRequest("1", "user123")).thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "user123"))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+
+        verify(eventRepository).withdrawRequest("1", "user123");
+        verify(eventRepository, never()).requestToJoin(any(), any());
+    }
+
+    @Test
+    void toggleSubscription_shouldNotAskOnAStandardEvent() {
+        Event event = Event.builder().id("1").organizerId("carol").visibility(Visibility.PUBLIC)
+                .participantIds(new ArrayList<>()).build();
+        when(eventRepository.findById("1")).thenReturn(Mono.just(event));
+        when(eventRepository.addParticipant("1", "user123")).thenReturn(Mono.just(event));
+
+        StepVerifier.create(eventService.toggleSubscription("1", "user123"))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+
+        verify(eventRepository).addParticipant("1", "user123");
+        verify(socialGraph, never()).closenessBetween(any(), any());
+    }
+
+    @Test
+    void acceptJoinRequest_shouldLetTheOrganizerTakeSomeoneIn() {
+        Event surprise = surpriseFor("lea");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surprise));
+        when(eventRepository.acceptRequest("1", "organizer", "user123")).thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(eventService.acceptJoinRequest("1", "organizer", "user123"))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void acceptJoinRequest_shouldAnswerNotFound_whenTheRequestWentMeanwhile() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surpriseFor("lea")));
+        when(eventRepository.acceptRequest("1", "organizer", "user123")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.acceptJoinRequest("1", "organizer", "user123"))
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.JOIN_REQUEST_NOT_FOUND)
+                .verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void acceptJoinRequest_shouldRefuseAnyoneButTheOrganizer() {
+        // A friend of the honoree: they see the surprise, they simply do not run it.
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surpriseFor("lea")));
+        when(socialGraph.friendIdsOf("someone-else")).thenReturn(Mono.just(Set.of("lea")));
+
+        StepVerifier.create(eventService.acceptJoinRequest("1", "someone-else", "user123"))
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.EVENT_ACCESS_DENIED)
+                .verify(Duration.ofSeconds(10));
+        verify(eventRepository, never()).acceptRequest(any(), any(), any());
+    }
+
+    @Test
+    void declineJoinRequest_shouldLetTheOrganizerTurnSomeoneDown() {
+        Event surprise = surpriseFor("lea");
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surprise));
+        when(eventRepository.declineRequest("1", "organizer", "user123")).thenReturn(Mono.just(surprise));
+
+        StepVerifier.create(eventService.declineJoinRequest("1", "organizer", "user123"))
+                .expectNextCount(1)
+                .expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
+    void declineJoinRequest_shouldAnswerNotFound_whenThereIsNothingToDecline() {
+        when(eventRepository.findById("1")).thenReturn(Mono.just(surpriseFor("lea")));
+        when(eventRepository.declineRequest("1", "organizer", "user123")).thenReturn(Mono.empty());
+
+        StepVerifier.create(eventService.declineJoinRequest("1", "organizer", "user123"))
+                .expectErrorMatches(error -> error instanceof BusinessException e
+                        && e.getErrorCode() == BusinessErrorCode.JOIN_REQUEST_NOT_FOUND)
+                .verify(Duration.ofSeconds(10));
     }
 
     @Test
