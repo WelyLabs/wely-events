@@ -2,6 +2,7 @@ package com.calendar.events.infrastructure.realtime;
 
 import com.calendar.events.domain.models.Poll;
 import com.calendar.events.domain.ports.PollUpdates;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
@@ -9,8 +10,9 @@ import reactor.core.publisher.Sinks;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-/** Poll updates passed in memory, one sink per watched event, so on a single replica only (see AUDIT.md). */
+/** Poll updates passed in memory, one sink per watched event: they only reach this pod's viewers. */
 @Component
+@ConditionalOnProperty(name = "app.poll-updates.mode", havingValue = "local")
 public class InMemoryPollUpdates implements PollUpdates {
 
     private final ConcurrentMap<String, Channel> channels = new ConcurrentHashMap<>();
@@ -60,6 +62,11 @@ public class InMemoryPollUpdates implements PollUpdates {
             current.watchers--;
             return current.watchers == 0 ? null : current;
         });
+    }
+
+    /** Whether someone on this pod watches the event. */
+    boolean isWatched(String eventId) {
+        return channels.containsKey(eventId);
     }
 
     /** Package-private for the tests: how many events have a channel. */

@@ -131,4 +131,16 @@ class InMemoryPollUpdatesTest {
 
         assertThat(updates.channelCount()).isZero();
     }
+
+    @Test
+    void isWatched_shouldFollowTheOpenStreams() {
+        InMemoryPollUpdates updates = new InMemoryPollUpdates();
+        assertThat(updates.isWatched("e1")).isFalse();
+
+        Disposable watching = updates.stream("e1", "bob").subscribe();
+        assertThat(updates.isWatched("e1")).isTrue();
+
+        watching.dispose();
+        assertThat(updates.isWatched("e1")).isFalse();
+    }
 }
