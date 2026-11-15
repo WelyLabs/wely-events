@@ -26,7 +26,6 @@
 		<sonar.sources>src/main/java</sonar.sources>
 		<sonar.tests>src/test/java</sonar.tests>
 		<sonar.java.source>25</sonar.java.source>
-		<testcontainers.version>1.20.4</testcontainers.version>
 		<springdoc.version>3.0.1</springdoc.version>
 	</properties>
 	<dependencyManagement>
@@ -118,12 +117,12 @@
 		</dependency>
 		<dependency>
 			<groupId>org.testcontainers</groupId>
-			<artifactId>mongodb</artifactId>
+			<artifactId>testcontainers-mongodb</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.testcontainers</groupId>
-			<artifactId>junit-jupiter</artifactId>
+			<artifactId>testcontainers-junit-jupiter</artifactId>
 			<scope>test</scope>
 		</dependency>
 		<dependency>
