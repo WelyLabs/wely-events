@@ -504,8 +504,8 @@ client peut tester et un `timestamp` :
 | Variable | Description |
 |---|---|
 | `MONGODB_URI` | URI de connexion MongoDB |
-| `KEYCLOAK_ISSUER_URI` | Issuer public — validation de l'émetteur |
-| `KEYCLOAK_INTERNAL_JWK_SET_URI` | JWKS interne — récupération des clés |
+| `OIDC_ISSUER_URI` | Émetteur Auth0 : `https://auth.welylabs.app/`, slash final compris |
+| `OIDC_JWK_SET_URI` | Clés de signature : `https://auth.welylabs.app/.well-known/jwks.json` |
 | `SOCIAL_API_URL` | In-cluster URL of `wely-social`, asked for community membership only; friendships come from the projection |
 | `MEDIA_API_URL` | URL interne de `wely-media` (`http://localhost:8085` en profil `dev`) |
 | `EVENT_DATE_FIXED_TOPIC` | Topic des dates fixées, `EVENT_DATE_FIXED` par défaut |
@@ -536,8 +536,8 @@ client peut tester et un `timestamp` :
 > `wely-gitops-infra` a été supprimé en novembre 2026 avec les bases qu'il déployait : depuis que
 > PostgreSQL, Neo4j, MongoDB, Kafka et le stockage des photos sont des services managés (Neon,
 > Aura, Atlas, Confluent Cloud, Cloudflare R2), un cluster local n'amorcerait qu'une coquille sans
-> rien à interroger. Pour travailler sur ce service, lance Keycloak par le `docker compose` du
-> dépôt de plateforme et donne-lui, par variables d'environnement, les URI de tes propres
+> rien à interroger. Pour travailler sur ce service, lance-le en profil `dev`, qui valide les
+> jetons du tenant Auth0 (`auth.welylabs.app`), et donne-lui, par variables d'environnement, les URI de tes propres
 > instances — les paliers gratuits de ces cinq services suffisent.
 
 ---
