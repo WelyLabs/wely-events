@@ -81,7 +81,13 @@ public interface EventRepository {
     /** Takes the user off the event's invited, idempotently; empty when the event is gone. */
     Mono<Event> withdrawInvitation(String eventId, String inviteeId);
 
-    /** Takes the user off every invitation; returns how many events had one. */
+    /**
+     * The user declines the event, invited or not: off the invited, and out of their feed and map
+     * until invited again or joining. Nothing changes for a participant; empty when the event is gone.
+     */
+    Mono<Event> decline(String eventId, String userId);
+
+    /** Takes the user off every invitation and refusal; returns how many events had one. */
     Mono<Long> forgetInvitations(String userId);
 
     /**

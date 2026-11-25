@@ -438,6 +438,36 @@ class MongoEventRepositoryAdapterIntegrationTest {
     }
 
     @Test
+    @DisplayName("a declined event stays out of the feed, until its organizer invites again")
+    void findFeed_shouldLeaveOutADeclinedEvent_untilInvitedAgain() {
+        visible("Concert", "bob", Visibility.PUBLIC, List.of());
+        String id = adapter.findFeed("alice", List.of()).blockFirst().getId();
+        adapter.invite(id, "bob", "alice").block();
+
+        Event declined = adapter.decline(id, "alice").block();
+
+        assertThat(declined.getInvitedIds()).isEmpty();
+        assertThat(declined.getDeclinedIds()).containsExactly("alice");
+        assertThat(feedTitles("alice", List.of("bob"))).isEmpty();
+        assertThat(feedTitles("carol", List.of())).containsExactly("Concert");
+
+        adapter.invite(id, "bob", "alice").block();
+        assertThat(feedTitles("alice", List.of())).containsExactly("Concert");
+    }
+
+    @Test
+    @DisplayName("joining after declining takes the refusal back, and a participant cannot decline")
+    void decline_shouldGiveWayToJoining_andSkipParticipants() {
+        String id = privateDinnerOf("bob");
+        adapter.decline(id, "alice").block();
+
+        Event joined = adapter.addParticipant(id, "alice").block();
+        assertThat(joined.getDeclinedIds()).isEmpty();
+
+        assertThat(adapter.decline(id, "alice").block().getDeclinedIds()).isEmpty();
+    }
+
+    @Test
     @DisplayName("inviting twice is one invitation, and only the organizer invites")
     void invite_shouldBeIdempotent_andFilterOnTheOrganizer() {
         String id = privateDinnerOf("bob");
@@ -480,9 +510,13 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.invite(second, "carol", "alice").block();
         adapter.invite(second, "carol", "dave").block();
 
-        assertThat(adapter.forgetInvitations("alice").block()).isEqualTo(2);
+        String third = privateDinnerOf("erin");
+        adapter.decline(third, "alice").block();
+
+        assertThat(adapter.forgetInvitations("alice").block()).isEqualTo(3);
         assertThat(adapter.findById(first).block().getInvitedIds()).isEmpty();
         assertThat(adapter.findById(second).block().getInvitedIds()).containsExactly("dave");
+        assertThat(adapter.findById(third).block().getDeclinedIds()).isEmpty();
     }
 
     @Test
@@ -860,6 +894,17 @@ class MongoEventRepositoryAdapterIntegrationTest {
         adapter.addParticipant(id, "camille").block();
 
         assertThat(mapTitles("camille", List.of(), 200)).containsExactly("Private dinner");
+    }
+
+    @Test
+    @DisplayName("the map leaves out what the caller declined")
+    void findOnMap_shouldLeaveOutDeclinedEvents() {
+        placed("Concert", "zoe", Visibility.PUBLIC, TRANSBORDEUR, "2026-10-12T19:00:00Z", null);
+        String id = adapter.findOnMap("zoe", List.of(), LYON, MAP_NOW, 10).blockFirst().getId();
+        adapter.decline(id, "camille").block();
+
+        assertThat(mapTitles("camille", List.of(), 200)).isEmpty();
+        assertThat(mapTitles("lea", List.of(), 200)).containsExactly("Concert");
     }
 
     @Test

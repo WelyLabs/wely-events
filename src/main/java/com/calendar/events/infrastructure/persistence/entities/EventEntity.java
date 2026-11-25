@@ -96,6 +96,8 @@ public class EventEntity {
 
     /** Who asked to join and waits for the organizer's answer; a surprise only. */
     private List<String> requestedIds;
+    /** Who declined the event; absent on events stored before refusals were kept. */
+    private List<String> declinedIds;
     /** Users every read query leaves the event out for: a surprise's honoree. */
     private List<String> hiddenFrom;
     /** A BIRTHDAY's month (1-12) and day; its dates sit in the placeholder year 2000. */

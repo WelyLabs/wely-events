@@ -220,12 +220,22 @@ class InvitationServiceTest {
 
         StepVerifier.create(service.withdraw("e1", ORGANIZER, FRIEND)).expectComplete().verify(Duration.ofSeconds(10));
         verify(eventRepository).withdrawInvitation("e1", FRIEND);
+        verify(eventRepository, never()).decline(anyString(), anyString());
     }
 
     @Test
-    void withdraw_shouldLetTheInviteeDecline() {
+    void withdraw_shouldLetTheInviteeDecline_forGood() {
         when(eventService.getEventById("e1", FRIEND)).thenReturn(Mono.just(invited(dinner(), FRIEND)));
-        when(eventRepository.withdrawInvitation("e1", FRIEND)).thenReturn(Mono.just(dinner()));
+        when(eventRepository.decline("e1", FRIEND)).thenReturn(Mono.just(dinner()));
+
+        StepVerifier.create(service.withdraw("e1", FRIEND, FRIEND)).expectComplete().verify(Duration.ofSeconds(10));
+        verify(eventRepository, never()).withdrawInvitation(anyString(), anyString());
+    }
+
+    @Test
+    void withdraw_shouldLetAViewerDecline_withoutAnInvitation() {
+        when(eventService.getEventById("e1", FRIEND)).thenReturn(Mono.just(dinner()));
+        when(eventRepository.decline("e1", FRIEND)).thenReturn(Mono.just(dinner()));
 
         StepVerifier.create(service.withdraw("e1", FRIEND, FRIEND)).expectComplete().verify(Duration.ofSeconds(10));
     }
@@ -245,7 +255,7 @@ class InvitationServiceTest {
     @Test
     void withdraw_shouldAnswerNotFound_whenTheEventWentMeanwhile() {
         when(eventService.getEventById("e1", FRIEND)).thenReturn(Mono.just(invited(dinner(), FRIEND)));
-        when(eventRepository.withdrawInvitation("e1", FRIEND)).thenReturn(Mono.empty());
+        when(eventRepository.decline("e1", FRIEND)).thenReturn(Mono.empty());
 
         StepVerifier.create(service.withdraw("e1", FRIEND, FRIEND))
                 .expectErrorMatches(error -> hasCode(error, BusinessErrorCode.EVENT_NOT_FOUND))

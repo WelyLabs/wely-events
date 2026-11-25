@@ -145,6 +145,11 @@ public class MongoEventRepositoryAdapter implements EventRepository {
     }
 
     @Override
+    public Mono<Event> decline(String eventId, String userId) {
+        return mongoRepository.decline(eventId, userId).then(findById(eventId));
+    }
+
+    @Override
     public Mono<Long> forgetInvitations(String userId) {
         return mongoRepository.forgetInvitations(userId);
     }

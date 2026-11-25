@@ -76,6 +76,9 @@ public class Event {
      */
     @Builder.Default
     private List<String> requestedIds = new ArrayList<>();
+    /** Who declined the event: the feed and the map leave it out for them until they are invited again or join. */
+    @Builder.Default
+    private List<String> declinedIds = new ArrayList<>();
     /** Users every query keeps the event from, as if it did not exist: a surprise's honoree. */
     @Builder.Default
     private List<String> hiddenFrom = new ArrayList<>();

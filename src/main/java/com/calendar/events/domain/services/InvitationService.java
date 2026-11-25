@@ -61,16 +61,19 @@ public class InvitationService {
     }
 
     /**
-     * Withdraws an invitation: the organizer takes it back, or the invitee declines it. Nobody
-     * else may. Withdrawing one already gone changes nothing.
+     * Withdraws an invitation: the organizer takes it back, or the invitee declines it, which keeps
+     * the event out of their feed and map until they are invited again; one may decline an event
+     * seen without an invitation too. Nobody else may. Withdrawing one already gone changes nothing.
      */
     public Mono<Void> withdraw(String eventId, String requesterId, String inviteeId) {
         return eventService.getEventById(eventId, requesterId)
-                .flatMap(event -> requesterId.equals(event.getOrganizerId()) || requesterId.equals(inviteeId)
+                .flatMap(event -> requesterId.equals(inviteeId)
+                        ? eventRepository.decline(event.getId(), inviteeId)
+                        : requesterId.equals(event.getOrganizerId())
                         ? eventRepository.withdrawInvitation(event.getId(), inviteeId)
-                                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
-                                .then()
-                        : Mono.error(new BusinessException(BusinessErrorCode.EVENT_ACCESS_DENIED)));
+                        : Mono.<Event>error(new BusinessException(BusinessErrorCode.EVENT_ACCESS_DENIED)))
+                .switchIfEmpty(Mono.error(() -> new BusinessException(BusinessErrorCode.EVENT_NOT_FOUND)))
+                .then();
     }
 
     private boolean mayInvite(Event event, String inviteeId) {

@@ -445,6 +445,17 @@ class MongoEventRepositoryAdapterTest {
     }
 
     @Test
+    void decline_shouldReadTheEventBack() {
+        EventEntity entity = new EventEntity();
+        Event domain = Event.builder().id("1").build();
+        when(mongoRepository.decline("1", "lea")).thenReturn(Mono.just(1L));
+        when(mongoRepository.findById("1")).thenReturn(Mono.just(entity));
+        when(mapper.toDomain(entity)).thenReturn(domain);
+
+        StepVerifier.create(adapter.decline("1", "lea")).expectNext(domain).expectComplete().verify(Duration.ofSeconds(10));
+    }
+
+    @Test
     void forgetInvitations_shouldPassTheCountOn() {
         when(mongoRepository.forgetInvitations("lea")).thenReturn(Mono.just(3L));
 

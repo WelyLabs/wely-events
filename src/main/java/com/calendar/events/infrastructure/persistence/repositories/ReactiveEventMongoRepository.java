@@ -43,7 +43,7 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     Mono<EventEntity> findShownTo(String eventId, String viewerId);
 
     /**
-     * The feed: not taken part in, and either mine, one I am invited to, public, or shared with
+     * The feed: not taken part in nor declined, and either mine, one I am invited to, public, or shared with
      * friends by one of mine. A missing visibility counts as FRIENDS, which {@code $in} with null matches. A surprise
      * is for the honoree's friends, whoever organizes it.
      */
@@ -52,6 +52,7 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
                 { participantIds: { $ne: ?0 } },
                 { kind: { $ne: 'BIRTHDAY' } },
                 { hiddenFrom: { $ne: ?0 } },
+                { declinedIds: { $ne: ?0 } },
                 { $or: [
                     { organizerId: ?0 },
                     { invitedIds: ?0 },
@@ -74,6 +75,7 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
                 { $or: [ { endDate: { $gt: ?6 } }, { endDate: null, startDate: { $gt: ?7 } } ] },
                 { kind: { $ne: 'BIRTHDAY' } },
                 { hiddenFrom: { $ne: ?0 } },
+                { declinedIds: { $ne: ?0 } },
                 { $or: [
                     { organizerId: ?0 },
                     { participantIds: ?0 },
@@ -90,9 +92,9 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
     // $addToSet and $pull touch only the array, so concurrent subscriptions cannot overwrite each other.
     // The same update marks the group for the relay: no window where the change exists unannounced.
     // Matching on the absent participant (or present one) keeps a repeated click from bumping the version.
-    // Joining answers an invitation: the same update takes the user off the invited.
+    // Joining answers an invitation, or changes one's mind: the same update takes the user off the invited and the declined.
     @Query("{ '_id': ?0, 'participantIds': { $ne: ?1 } }")
-    @Update("{ '$addToSet': { 'participantIds': ?1 }, '$pull': { 'invitedIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
+    @Update("{ '$addToSet': { 'participantIds': ?1 }, '$pull': { 'invitedIds': ?1, 'declinedIds': ?1 }, '$inc': { 'groupVersion': 1 }, '$set': { 'groupSynced': false } }")
     Mono<Long> addParticipant(String eventId, String userId);
 
     // Asking to join a surprise: nobody asks for what they already joined, and asking twice is one ask.
@@ -119,16 +121,22 @@ public interface ReactiveEventMongoRepository extends ReactiveMongoRepository<Ev
 
     // Filtered on the organizer, who alone invites, and on the absent participant: nobody is invited to what they already joined.
     @Query("{ '_id': ?0, 'organizerId': ?1, 'participantIds': { $ne: ?2 } }")
-    @Update("{ '$addToSet': { 'invitedIds': ?2 } }")
+    // Inviting again someone who declined shows them the event again.
+    @Update("{ '$addToSet': { 'invitedIds': ?2 }, '$pull': { 'declinedIds': ?2 } }")
     Mono<Long> invite(String eventId, String organizerId, String inviteeId);
 
     @Query("{ '_id': ?0 }")
     @Update("{ '$pull': { 'invitedIds': ?1 } }")
     Mono<Long> withdrawInvitation(String eventId, String inviteeId);
 
-    /** Takes the user off every invitation, past or not, for an erasure. */
-    @Query("{ 'invitedIds': ?0 }")
-    @Update("{ '$pull': { 'invitedIds': ?0 } }")
+    // Declining, invited or not: off the invited, and kept out of the feed and the map. Nobody declines what they joined.
+    @Query("{ '_id': ?0, 'participantIds': { $ne: ?1 } }")
+    @Update("{ '$pull': { 'invitedIds': ?1 }, '$addToSet': { 'declinedIds': ?1 } }")
+    Mono<Long> decline(String eventId, String userId);
+
+    /** Takes the user off every invitation and every refusal, past or not, for an erasure. */
+    @Query("{ $or: [ { 'invitedIds': ?0 }, { 'declinedIds': ?0 } ] }")
+    @Update("{ '$pull': { 'invitedIds': ?0, 'declinedIds': ?0 } }")
     Mono<Long> forgetInvitations(String userId);
 
     // Never the organizer: leaving the organizer's seat empty is a hand-over or a deletion.
